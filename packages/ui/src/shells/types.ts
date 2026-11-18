@@ -7,6 +7,7 @@ import type { ValueChipProps } from '../components/ValueChip';
 import type {
   ExportBody,
   ExportConfigurations,
+  ExportPmi,
   ExportRequest,
   ExportTarget,
 } from '../export/types';
@@ -78,6 +79,8 @@ export interface ShellProps {
   /** The export form's chosen target (on open and on change), so the host can prepare it. */
   onExportTargetChange?(target: ExportTarget): void;
   exportBusy?: boolean;
+  /** M5a: the part's annotations, for STEP "AP242 with model dimensions and tolerances (PMI)". */
+  exportPmi?: ExportPmi;
 
   /* ---- M2 touch & tablet ---- */
   /**

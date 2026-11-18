@@ -143,14 +143,17 @@ export {
   type ExportMenuProps,
   ExportPanel,
 } from './export/ExportMenu';
+export { PmiReport, type PmiReportEntry, type PmiReportProps } from './export/PmiReport';
 export {
   buildExportRequest,
   EXPORT_TARGETS,
   type ExportBody,
   type ExportConfigurations,
+  type ExportPmi,
   type ExportRequest,
   type ExportTarget,
   QUALITY_PRESETS,
+  type StepPmiChoice,
   type TessellationQuality,
 } from './export/types';
 export {
