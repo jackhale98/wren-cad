@@ -85,6 +85,11 @@ loaded on first import is the way to split it.
 | `whittle-kernel-st.js`   |    56 KiB |   21 KiB |   19 KiB |
 | `whittle-kernel.js`      |    63 KiB |   24 KiB |   21 KiB |
 
+M5a (STEP AP242 PMI, `whittle_pmi.cpp`): a local single-threaded link measured 20.96 MiB raw,
+6.58 MiB gzip, 4.59 MiB brotli, at most +50 KiB brotli over the M3.5 row above (that difference
+also holds M4's `subShapeGeometry`). OCCT's GD&T reader and writer were already linked (STEP import
+and export reach them), so the façade code is most of it; CI's size report has the exact delta.
+
 Budget: ≤ 15 MB brotli per kernel (PLAN §7.2). A full two-variant build takes about 20 to 30 min
 (M2: 29.7 min on 4 busy cores; M3: 32 min busy, about 25 min idle); most of that is wasm-opt
 `-O4 --converge` on the 20 MB binaries.
