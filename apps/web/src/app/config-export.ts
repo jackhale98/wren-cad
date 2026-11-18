@@ -93,6 +93,12 @@ export async function exportAll(wb: Workbench, request: ExportRequest): Promise<
   const saved: string[] = [];
   let failed: { name: string; message: string } | null = null;
   let written = 0;
+  /** M5a: each configuration's PMI report (STEP with PMI), shown together at the end. */
+  const pmiReports: {
+    name: string;
+    report: import('@wren-cad/contracts').PmiExportReport;
+    notes: { annotationId: string; note: string }[];
+  }[] = [];
   const docId = doc.meta.id;
   // Each wait of the export races Cancel and a per-configuration timeout (a kernel that hangs must
   // not hold the model forever); both release the hold and the live model regenerates.
@@ -161,6 +167,13 @@ export async function exportAll(wb: Workbench, request: ExportRequest): Promise<
               continue;
             }
             bytes = r.bytes;
+            if (r.pmi) {
+              pmiReports.push({
+                name: nameOf(f.configurationId),
+                report: r.pmi,
+                notes: r.pmi.notes ?? [],
+              });
+            }
           } else {
             const bodies = result.bodies.filter(
               (b) => !request.options.bodies || request.options.bodies.includes(b.id),
@@ -195,6 +208,29 @@ export async function exportAll(wb: Workbench, request: ExportRequest): Promise<
     wb.config.setExportingAll(false);
   }
   if (written > 0) wb.exports.set((n) => n + 1);
+  if (pmiReports.length > 0) {
+    const pmi = await import('./pmi');
+    const ui = pmiReports.map((p) => ({
+      name: p.name,
+      ui: pmi.exportReportUi(
+        part.annotations ?? [],
+        p.report,
+        p.notes,
+        new Map(),
+        request.options.pmi?.presentation !== false,
+      ),
+    }));
+    const exported = pmiReports.reduce((n, p) => n + p.report.exported, 0);
+    wb.patchUi({
+      pmiReport: {
+        ...(ui[0]?.ui as NonNullable<ReturnType<typeof pmi.exportReportUi>>),
+        title: `Exported ${exported} annotations as PMI in ${pmiReports.length} files (AP242)`,
+        entries: ui.flatMap((u) =>
+          u.ui.entries.map((e) => ({ ...e, label: `${u.name}: ${e.label}` })),
+        ),
+      },
+    });
+  }
   const f = failed as { name: string; message: string } | null;
   if (f) {
     wb.toast(

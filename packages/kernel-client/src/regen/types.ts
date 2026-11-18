@@ -12,6 +12,8 @@ import type {
   MergedRef,
   MeshBuffers,
   MeshQuality,
+  PmiExportReport,
+  PmiImportResult,
   RegenResult,
   ShapeHandle,
   SketchSolveInput,
@@ -68,6 +70,12 @@ export interface RegenEngineDeps {
    */
   reprojectLinked?: ReprojectLinked;
   options?: RegenEngineOptions;
+  /**
+   * M5a (ADR-100): the drawing font's TTF bytes (Osifont), for stroked text in STEP presentation
+   * PMI. Default: `@wren-cad/drawing/font`'s `loadDrawingFont()` (the hashed asset, fetched once);
+   * Node tests read the file.
+   */
+  pmiFont?: () => Promise<Uint8Array>;
 }
 
 /**
@@ -114,10 +122,18 @@ export interface RegenOutput extends RegenResult {
 }
 
 export type ImportResult =
-  | { ok: true; bodies: { shape: ShapeHandle; mesh: MeshBuffers; name?: string }[] }
+  | {
+      ok: true;
+      bodies: { shape: ShapeHandle; mesh: MeshBuffers; name?: string }[];
+      /** M5a: a STEP file's PMI on the bodies' indices (contract `importFile`). */
+      pmi?: PmiImportResult;
+    }
   | { ok: false; error: KernelError };
 
-export type ExportResult = { ok: true; bytes: Uint8Array } | { ok: false; error: KernelError };
+/** `exportPart`'s result; with `ExportOptions.pmi`, the PMI report (notes included). */
+export type ExportResult =
+  | { ok: true; bytes: Uint8Array; pmi?: PmiExportReport }
+  | { ok: false; error: KernelError };
 
 // Memory guard types live in the contracts (H1); re-exported here for existing importers.
 export type { RegenMemoryStats, RegenSlotStats } from '@wren-cad/contracts';

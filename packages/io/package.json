@@ -4,10 +4,11 @@
   "private": true,
   "license": "GPL-3.0-or-later",
   "type": "module",
-  "description": "Mesh exporters/importers (3MF, GLB, STL, OBJ), local library, file pickers, thumbnails.",
+  "description": "Mesh exporters/importers (3MF, GLB, STL, OBJ), STEP AP242 PMI mappings, local library, file pickers, thumbnails.",
   "exports": {
     ".": "./src/index.ts",
-    "./browser": "./src/browser.ts"
+    "./browser": "./src/browser.ts",
+    "./pmi": "./src/pmi/index.ts"
   },
   "scripts": {
     "typecheck": "tsc -p .",

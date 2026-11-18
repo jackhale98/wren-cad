@@ -531,6 +531,7 @@ export function ExportControl({
         onExport={props.onExportRequest}
         bodies={props.exportBodies}
         configurations={props.exportConfigurations}
+        pmi={props.exportPmi}
         unavailable={props.exportUnavailable}
         notes={props.exportNotes}
         onTargetChange={props.onExportTargetChange}

@@ -18,6 +18,7 @@ import type {
   MeshBuffers,
   NamingMap,
   Part,
+  PmiImportResult,
   RegenSlot,
   Result,
   ShapeHandle,
@@ -51,6 +52,11 @@ export interface RawImport {
   /** Mesh formats: one mesh per object in the file (TS-side; placed and handed to the kernel per use). */
   meshes: MeshBuffers[];
   lastUsed: number;
+  /**
+   * M5a (ADR-100): a STEP file's PMI as the façade read it, on `shapes` (body = index in file
+   * order, 1-based TopExp index). Absent: not STEP, or the kernel build reads no PMI.
+   */
+  pmi?: PmiImportResult;
 }
 
 export interface SketchState {
@@ -154,6 +160,8 @@ export interface PartCache {
      * the latest regen's, live until the next regen of the slot replaces `latest`.
      */
     context?: WalkContext;
+    /** That regen's annotation resolutions, when it resolved them (M5a: the STEP PMI export). */
+    annotations?: AnnotationResolution[];
   } | null;
   lastGood: { bodies: BodyState[]; keys: Set<string> } | null;
   /** Imported attachments by sha256. */

@@ -50,6 +50,8 @@ const ConfigNotices = lazy(() =>
   import('../ui/ConfigNotices').then((m) => ({ default: m.ConfigNotices })),
 );
 const ConfigurationBar = lazy(() => import('../ui/ConfigurationBar'));
+// M5a: the PMI export/import report, fetched only when there is one.
+const PmiNotice = lazy(() => import('../ui/PmiNotice').then((m) => ({ default: m.PmiNotice })));
 const ConfigurationPanel = lazy(() => import('../ui/ConfigurationPanel'));
 // M4: the drawing route is a lazy chunk, fetched when the first drawing opens (or on idle after it was used).
 const DrawingRoute = lazy(() => import('../drawing/DrawingRoute'));
@@ -440,6 +442,7 @@ export function App({ wb }: { wb: Workbench }) {
             if (EXACT_EXPORTS.has(target)) wb.ensureKernel();
           }}
           exportBusy={ui.exporting}
+          exportPmi={{ annotations: part?.annotations?.length ?? 0 }}
           viewport={
             <>
               <ViewportHost
@@ -452,6 +455,11 @@ export function App({ wb }: { wb: Workbench }) {
               <Suspense fallback={null}>
                 <ConfigNotices wb={wb} touch={touch} />
               </Suspense>
+              {ui.pmiReport ? (
+                <Suspense fallback={null}>
+                  <PmiNotice wb={wb} touch={touch} />
+                </Suspense>
+              ) : null}
               {viewportError && (
                 <div
                   role="alert"

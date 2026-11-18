@@ -693,6 +693,9 @@ interface RefTarget {
   /** Current persistent name of the body sub-shape (absent for sketch, plane and datum refs). */
   name?: string;
   kind?: 'face' | 'edge' | 'vertex';
+  /** M5a: the body that owns it and its 0-based TopExp index there (STEP PMI targets). */
+  owner?: string;
+  index?: number;
 }
 
 /**
@@ -780,6 +783,8 @@ async function refGeometry(
   if (ctx.state.bodies.has(t.owner)) {
     target.name = t.name;
     target.kind = t.kind;
+    target.owner = t.owner;
+    target.index = t.index;
   }
   const g = await subGeometry(core, { shape: t.shape, kind: t.kind, index: t.index });
   if (g?.t === 'axis') g.name = t.name;
@@ -1206,6 +1211,53 @@ export async function queryAnchors(
     if (grown) answer.grown = grown;
     if (rebound) answer.rebound = rebound;
     out.push(answer);
+  }
+  return out;
+}
+
+/** M5a (ADR-100): where one annotation ref is in the final state's bodies, or why it is not. */
+export type AnnotationRefTarget =
+  | { owner: string; kind: 'face' | 'edge' | 'vertex'; index: number; name: string }
+  | { reason: string };
+
+/**
+ * M5a (ADR-100): the body sub-shape each of an annotation's refs resolves to in a regen's final
+ * state (`final`), with exactly the rules `resolveAnnotations` uses (`refGeometry`, the same
+ * kind and point qualifier per ref), for STEP PMI targets. Construction geometry (origin, planes,
+ * axes, sketch points, pitch circles, whole bodies) has no sub-shape and says so. Like
+ * `queryAnchors` it reads the slot and never writes it.
+ */
+export async function annotationRefTargets(
+  core: EngineCore,
+  final: WalkContext,
+  a: Annotation,
+): Promise<AnnotationRefTarget[]> {
+  const pc = { ...final.pc, lastResolved: new Map(), absorbed: new Map(final.pc.absorbed) };
+  const ctx: WalkContext = { ...final, pc };
+  const out: AnnotationRefTarget[] = [];
+  for (let i = 0; i < a.refs.length; i++) {
+    const ref = a.refs[i] as EntityRef;
+    ctx.current = { featureId: `A:${a.id}`, rebound: [], merged: [], grown: [] };
+    const unresolved: RegenUnresolvedRef[] = [];
+    const target: RefTarget = {};
+    const use = { kind: a.kind, at: a.at?.[i] ?? 'self' };
+    const g = await refGeometry(core, ctx, ref, `/refs/${i}`, unresolved, use, target, []);
+    if (!g || unresolved.length > 0) {
+      out.push({ reason: `${ref.name} does not resolve` });
+    } else if (
+      target.owner === undefined ||
+      target.kind === undefined ||
+      target.index === undefined ||
+      target.name === undefined
+    ) {
+      out.push({
+        reason: /^S[0-9A-Za-z]+:/.test(ref.name)
+          ? `${ref.name} is in a sketch, not a face or edge of the exported solid`
+          : `${ref.name} is construction geometry, not part of the exported solid`,
+      });
+    } else {
+      out.push({ owner: target.owner, kind: target.kind, index: target.index, name: target.name });
+    }
   }
   return out;
 }

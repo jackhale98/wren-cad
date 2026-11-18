@@ -1,12 +1,13 @@
 import { Download, Loader2 } from 'lucide-react';
 import { useEffect, useId, useRef, useState } from 'react';
-import { Field, Segmented } from '../components/controls';
+import { Field, Segmented, Switch } from '../components/controls';
 import { Button, cn } from '../components/primitives';
 import {
   buildExportRequest,
   EXPORT_TARGETS,
   type ExportBody,
   type ExportConfigurations,
+  type ExportPmi,
   type ExportRequest,
   type ExportTarget,
   QUALITY_PRESETS,
@@ -19,6 +20,11 @@ export interface ExportFormProps {
   bodies?: readonly ExportBody[];
   /** M3.7: the part has configurations: choose the active one or all, one file each. */
   configurations?: ExportConfigurations;
+  /**
+   * M5a: the part's annotations, for STEP "AP242 with model dimensions and tolerances (PMI)" (on
+   * by default when there are any) and its presentation toggle. Absent: no PMI option.
+   */
+  pmi?: ExportPmi;
   defaultTarget?: ExportTarget;
   /** Targets the host cannot produce yet; shown disabled with a reason. */
   unavailable?: Partial<Record<ExportTarget, string>>;
@@ -32,13 +38,14 @@ export interface ExportFormProps {
 }
 
 /**
- * Export options (PLAN 12 M1): STEP AP214, STL (binary/ASCII, merged/per body, quality presets),
- * 3MF, GLB and `.wrencad`. Emits one `ExportRequest`; the host runs it. Lazy-loaded.
+ * Export options (PLAN 12 M1): STEP AP214 (M5a: AP242 with PMI), STL (binary/ASCII, merged/per
+ * body, quality presets), 3MF, GLB and `.wrencad`. Emits one `ExportRequest`; the host runs it. Lazy-loaded.
  */
 export default function ExportForm({
   onExport,
   bodies = [],
   configurations,
+  pmi,
   defaultTarget = 'step',
   unavailable = {},
   notes = {},
@@ -63,6 +70,8 @@ export default function ExportForm({
   const [quality, setQuality] = useState<TessellationQuality>('standard');
   const [off, setOff] = useState<ReadonlySet<string>>(new Set());
   const [which, setWhich] = useState<'active' | 'all'>('active');
+  const [withPmi, setWithPmi] = useState((pmi?.annotations ?? 0) > 0);
+  const [presentation, setPresentation] = useState(true);
   const gid = useId();
   const meta = EXPORT_TARGETS.find((t) => t.id === target);
   const selected = bodies.filter((b) => !off.has(b.id)).map((b) => b.id);
@@ -107,7 +116,11 @@ export default function ExportForm({
                   className="block truncate text-2xs text-fg-muted"
                   data-testid={notes[t.id] && !reason ? `export-note-${t.id}` : undefined}
                 >
-                  {reason ?? notes[t.id] ?? t.blurb}
+                  {reason ??
+                    notes[t.id] ??
+                    (t.id === 'step' && pmi && withPmi
+                      ? 'Exact solids with model dimensions and tolerances (AP242)'
+                      : t.blurb)}
                 </span>
               </span>
             </label>
@@ -141,6 +154,30 @@ export default function ExportForm({
               ]}
             />
           </Field>
+        </div>
+      ) : null}
+
+      {target === 'step' && pmi ? (
+        <div className="flex flex-col gap-2" data-testid="export-pmi">
+          <Switch
+            checked={withPmi}
+            onChange={setWithPmi}
+            label="AP242 with model dimensions and tolerances (PMI)"
+            className={size === 'touch' ? 'min-h-11' : 'min-h-8'}
+          />
+          {withPmi ? (
+            <Switch
+              checked={presentation}
+              onChange={setPresentation}
+              label="Include presentation (annotations as drawn)"
+              className={cn('pl-6', size === 'touch' ? 'min-h-11' : 'min-h-8')}
+            />
+          ) : null}
+          <p className="text-2xs text-fg-subtle">
+            {pmi.annotations === 0
+              ? 'This part has no dimensions or tolerances yet.'
+              : `${pmi.annotations} ${pmi.annotations === 1 ? 'annotation' : 'annotations'}; any that need attention are left out and listed after the export.`}
+          </p>
         </div>
       ) : null}
 
@@ -247,6 +284,7 @@ export default function ExportForm({
               bodies: bodies.length ? selected : undefined,
               allBodies: bodies.length,
               ...(configurations ? { configurations: which } : {}),
+              ...(pmi ? { stepPmi: { pmi: withPmi, presentation } } : {}),
             }),
           )
         }

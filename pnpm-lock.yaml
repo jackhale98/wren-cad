@@ -207,6 +207,9 @@ importers:
       '@wren-cad/document':
         specifier: workspace:*
         version: link:../document
+      '@wren-cad/drawing':
+        specifier: workspace:*
+        version: link:../drawing
       '@wren-cad/io':
         specifier: workspace:*
         version: link:../io

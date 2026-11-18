@@ -201,6 +201,16 @@ export interface BoxSelect {
   mode: 'window' | 'crossing';
 }
 
+/** M5a: a PMI export or import report as the viewport overlay shows it (`PmiReport`). */
+export interface PmiReportUi {
+  /** New per report (a second export replaces the first). */
+  id: number;
+  kind: 'export' | 'import';
+  title: string;
+  summary?: string;
+  entries: { label: string; reason: string; tone: 'skipped' | 'note' }[];
+}
+
 /** Settings surface (a panel, never a dialog): which tab is showing. */
 export type SettingsTab = 'navigation' | 'keyboard' | 'radial' | 'motion';
 
@@ -225,6 +235,11 @@ export interface UiState {
   welcome: boolean;
   exporting: boolean;
   toast: Toast | null;
+  /**
+   * M5a (ADR-100): the non-modal summary after a STEP PMI export or import (what went across, and
+   * every annotation or entity that did not, with the reason). Stays until dismissed.
+   */
+  pmiReport: PmiReportUi | null;
   /** The last tool, for Space = repeat last. */
   lastTool: ModelTool | FeatureTool | null;
   pushPull: PushPullUi | null;
@@ -273,6 +288,7 @@ export const initialUi: UiState = {
   welcome: false,
   exporting: false,
   toast: null,
+  pmiReport: null,
   lastTool: null,
   pushPull: null,
   measure: null,

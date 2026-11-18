@@ -10,8 +10,10 @@ import type {
   ImportFeature,
   KernelError,
   NamingMap,
+  PmiImportResult,
   ResolvedRef,
   Result,
+  ShapeFingerprints,
   ShapeHandle,
   UnresolvedRef,
   Vec3,
@@ -164,12 +166,17 @@ async function rawImport(
   } else {
     // IGES (M3): the kernel sews loose faces; closed shells become solids, open ones stay
     // shell bodies (whittle_io.cpp importIges).
-    const r = await core.kernel.importShapes(
-      bytes,
-      format === 'brep' ? 'brep' : format === 'iges' ? 'iges' : 'step',
-    );
+    const kind = format === 'brep' ? 'brep' : format === 'iges' ? 'iges' : 'step';
+    // M5a (ADR-100): a STEP file's PMI is read with its shapes, once, and kept with them.
+    const withPmi = kind === 'step' ? core.kernel.importShapesWithPmi : undefined;
+    const r: Result<{ bodies: { shape: ShapeHandle }[]; pmi?: PmiImportResult }> = withPmi
+      ? await withPmi.call(core.kernel, bytes, kind)
+      : await core.kernel
+          .importShapes(bytes, kind)
+          .then((x) => (x.ok ? { ok: true as const, value: { bodies: x.value } } : x));
     if (!r.ok) return r;
-    raw.shapes = r.value.map((b) => b.shape);
+    if (r.value.pmi) raw.pmi = r.value.pmi;
+    raw.shapes = r.value.bodies.map((b) => b.shape);
     for (const h of raw.shapes) core.ownedHandles.add(h);
     if (raw.shapes.length === 0) {
       return { ok: false, error: kerr('INVALID_INPUT', 'The file contains no solids') };
@@ -460,4 +467,41 @@ async function runImport(
     warnings.push(kerr('OPERATION_FAILED', 'The imported shape does not touch any body'));
   }
   return { result: { ok: true, set, remove: [], touched, warnings }, owned };
+}
+
+/**
+ * M5a (ADR-100): the names the import feature `f` gives the sub-shapes of source body `i` of its
+ * file (file order, as the façade's PMI targets count bodies), and that placed body's
+ * fingerprints. Runs the kernel `import` op on that body alone: faces are named per body by
+ * geometric key and edges and vertices from their faces (`namedSolids`), so these are exactly the
+ * feature's names, whichever body id it gave the body. The placed shape is released.
+ */
+export async function importedBodyNaming(
+  core: EngineCore,
+  f: ImportFeature,
+  raw: RawImport,
+  i: number,
+): Promise<Result<{ naming: NamingMap; fingerprints: ShapeFingerprints | null }>> {
+  const m = frameMatrix(f.frame ?? IDENTITY_FRAME);
+  const shape = raw.shapes[i];
+  if (!m || shape === undefined) {
+    return { ok: false, error: kerr('INVALID_INPUT', `Body ${i + 1} is not in the imported file`) };
+  }
+  const r = await namedSolids(core, f, { ...raw, shapes: [shape] }, m);
+  if (!r.ok) return r;
+  try {
+    const [b, ...extra] = r.value.bodies;
+    if (!b || extra.length > 0) {
+      return {
+        ok: false,
+        error: kerr('OPERATION_FAILED', `Body ${i + 1} of the file did not import as one solid`),
+      };
+    }
+    return {
+      ok: true,
+      value: { naming: b.naming, fingerprints: await core.fingerprints(b.shape) },
+    };
+  } finally {
+    for (const b of r.value.bodies) await core.releaseHandle(b.shape);
+  }
 }

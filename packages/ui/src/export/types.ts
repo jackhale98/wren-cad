@@ -56,6 +56,21 @@ export const EXPORT_TARGETS: ReadonlyArray<{
   { id: 'wren', label: 'Wren project', ext: '.wrencad', blurb: 'Everything, with history' },
 ];
 
+/**
+ * M5a (ADR-100): what the export form says about the part's annotations, for the STEP option
+ * "AP242 with model dimensions and tolerances (PMI)". On by default when there are any.
+ */
+export interface ExportPmi {
+  /** How many annotations the part has (the option starts on when > 0). */
+  annotations: number;
+}
+
+/** The STEP PMI choices: semantic PMI (AP242) and, with it, presentation PMI. */
+export interface StepPmiChoice {
+  pmi: boolean;
+  presentation: boolean;
+}
+
 /** Builds the `ExportRequest` for a set of form choices. */
 export function buildExportRequest(c: {
   target: ExportTarget;
@@ -65,13 +80,18 @@ export function buildExportRequest(c: {
   bodies?: readonly string[];
   allBodies?: number;
   configurations?: 'active' | 'all';
+  /** STEP only: AP242 with PMI (default: AP214, no PMI). */
+  stepPmi?: StepPmiChoice;
 }): ExportRequest {
   const q = QUALITY_PRESETS[c.quality];
   const options: ExportOptions = {};
   if (c.bodies && c.allBodies !== undefined && c.bodies.length !== c.allBodies) {
     options.bodies = [...c.bodies];
   }
-  if (c.target === 'step') options.stepSchema = 'AP214';
+  if (c.target === 'step' && c.stepPmi?.pmi) {
+    options.stepSchema = 'AP242';
+    options.pmi = c.stepPmi.presentation ? {} : { presentation: false };
+  } else if (c.target === 'step') options.stepSchema = 'AP214';
   if (c.target === 'stl') {
     options.stlBinary = c.stlBinary;
     options.stlPerBody = c.stlPerBody;
