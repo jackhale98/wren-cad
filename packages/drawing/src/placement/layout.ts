@@ -755,7 +755,11 @@ function leaderGeometry(
         l = flipDimensionLineEnd(l, other.line);
         drawn = l;
       }
-      attach = lerp2(other.line[0], other.line[1], l.attach.kind === 'dimensionLine' ? l.attach.t : 0);
+      attach = lerp2(
+        other.line[0],
+        other.line[1],
+        l.attach.kind === 'dimensionLine' ? l.attach.t : 0,
+      );
     } else {
       // Not a dimension (a leader's own `line` is one point): nothing to sit in line with.
       b.issues.push({ kind: 'attachTargetMissing', placementId: l.attach.placementId });
@@ -843,8 +847,7 @@ function leaderGeometry(
     const pts = [apex, ...corners, ...bendPts, textAt];
     if (held) geometry.axis = axis;
     geometry.path = pts;
-    if (dist2(apex, textAt) > 1e-9 || pts.length > 2)
-      prims.push({ kind: 'polyline', points: pts });
+    if (dist2(apex, textAt) > 1e-9 || pts.length > 2) prims.push({ kind: 'polyline', points: pts });
     const prev = pts[pts.length - 2] ?? apex;
     const d = sub2(textAt, prev);
     const box = content.box;

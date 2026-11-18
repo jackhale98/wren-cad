@@ -51,8 +51,8 @@ import {
   toOffsetSection,
 } from './cutline';
 import { exportDrawing } from './exports';
-import { drawnLeaderLayout, inspectorLeaderEdit } from './interact-leader';
 import { host } from './host';
+import { drawnLeaderLayout, inspectorLeaderEdit } from './interact-leader';
 import { ratioExpr, scaleFromInput, scaleLabel, viewName } from './model';
 import {
   commitImport,

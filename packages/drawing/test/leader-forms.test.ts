@@ -124,7 +124,7 @@ const close = (a: Vec2, b: Vec2, eps = 1e-6) =>
   expect(Math.hypot(a[0] - b[0], a[1] - b[1])).toBeLessThan(eps);
 const closeAll = (a: readonly Vec2[], b: readonly Vec2[]) => {
   expect(a).toHaveLength(b.length);
-  a.forEach((q, i) => close(q, b[i] as Vec2));
+  for (const [i, q] of a.entries()) close(q, b[i] as Vec2);
 };
 
 /** The datum triangle's three corners: two on the base, then the apex. */

@@ -104,7 +104,10 @@ const round3 = (x: number) => Math.round(x * 1000) / 1000;
  * mirrored along the line, so the datum keeps pointing out of the dimension. Other attaches are
  * returned as they are.
  */
-export function flipDimensionLineEnd(layout: LeaderLayout, line: readonly [Vec2, Vec2]): LeaderLayout {
+export function flipDimensionLineEnd(
+  layout: LeaderLayout,
+  line: readonly [Vec2, Vec2],
+): LeaderLayout {
   const a = layout.attach;
   if (a.kind !== 'dimensionLine') return layout;
   const d: Vec2 = [line[1][0] - line[0][0], line[1][1] - line[0][1]];
