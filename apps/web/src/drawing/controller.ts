@@ -32,6 +32,26 @@ const REFINE_DELAY_MS = 400;
 
 const NO_TRANSIENT: SheetTransient = { update() {}, end() {} };
 
+/**
+ * What a drawing reads from a regen view: where it came from, the model it is of (drawings
+ * aside), whether it failed, and the part's mass (the title block shows it). Two views with the
+ * same key build the same drawing. Exported for tests.
+ */
+export function regenInputKey(
+  view: Workbench['regen'] extends Observable<infer V> ? V : never,
+): string {
+  if (!view) return 'none';
+  const mass = host.summarizeMass(view.result.bodies)?.mass;
+  return [
+    view.source,
+    modelKey(view.doc),
+    view.result.partId,
+    view.result.bodies.length,
+    view.result.features.filter((f) => f.state !== 'ok').length,
+    mass === undefined ? '' : String(mass),
+  ].join('|');
+}
+
 export class DrawingController {
   readonly ui: Observable<DrawingUiState> = observable(initialDrawingUi);
   kernel: DrawingKernel;
@@ -56,6 +76,8 @@ export class DrawingController {
   /** A drag is on: builds wait until it ends, so the sheet under the preview does not change. */
   private held = false;
   private deferred = false;
+  /** What the drawing last read from the regen (`regenInputKey`). */
+  private regenKey: string | undefined;
 
   constructor(
     readonly wb: Workbench,
@@ -83,7 +105,19 @@ export class DrawingController {
         this.schedule();
       }),
     );
-    this.unsub.push(this.wb.regen.subscribe(() => this.schedule()));
+    // Only a regen that changes what the drawing reads rebuilds it. The regen view is set again
+    // for every pass of the same model (coarse, fine, the deferred mass fetch, a drawing-only edit
+    // regenerated with all cache hits); rebuilding on each one delivered a needless draft, and on
+    // a slow machine one landed between a test's count and its press (CI, ADR-094 amendment
+    // 2026-11-18).
+    this.unsub.push(
+      this.wb.regen.subscribe(() => {
+        const key = regenInputKey(this.wb.regen.get());
+        if (key === this.regenKey) return;
+        this.regenKey = key;
+        this.schedule();
+      }),
+    );
   }
 
   dispose(): void {
@@ -291,7 +325,16 @@ export class DrawingController {
       const b = this.ui.get().built;
       // Exact, of the model as it is and of the drawing as it is (an undo of a drawing edit
       // leaves the model's key alone but needs a build of its own).
-      return b?.quality === 'exact' && this.isCurrent() && b.drawing === this.drawing();
+      // Nothing queued either: a build already scheduled would replace it with a draft.
+      return (
+        b?.quality === 'exact' &&
+        this.isCurrent() &&
+        b.drawing === this.drawing() &&
+        !this.timer &&
+        !this.building &&
+        !this.again &&
+        !this.deferred
+      );
     };
     if (have()) return;
     this.exactRequested = true;
