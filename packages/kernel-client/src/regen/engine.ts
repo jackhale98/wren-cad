@@ -49,6 +49,7 @@ import type {
   MeasureTarget,
   MeshBuffers,
   MeshQuality,
+  PmiImportResult,
   RegenRequest,
   RegenSlot,
   Result,
@@ -75,6 +76,7 @@ import { planSolid, planSweepLoft } from './exec-solids';
 import { hashKey } from './hash';
 import { allBodiesFor, copiedFeatures, kerr, meshOnlyError } from './helpers';
 import { bodyResult, densityOf, referenceResults, sketchResult } from './outputs';
+import type { ImportedPmi } from './pmi';
 import { absorbedInto, fingerprintOf, rememberAbsorbed } from './refs';
 import {
   capitalise,
@@ -132,8 +134,13 @@ export class RegenEngine {
   /** Serialises engine calls (Comlink may interleave async calls). */
   private queue: Promise<unknown> = Promise.resolve();
 
+  /** M5a: the drawing font's TTF bytes, for stroked text in presentation PMI. */
+  private readonly pmiFont: () => Promise<Uint8Array>;
+
   constructor(deps: RegenEngineDeps) {
     this.core = new EngineCore(deps);
+    this.pmiFont =
+      deps.pmiFont ?? (() => import('@wren-cad/drawing/font').then((m) => m.loadDrawingFont()));
     this.cache = new ResultCache(
       this.core,
       validSpare(deps.options?.maxSpareResults),
@@ -293,6 +300,45 @@ export class RegenEngine {
       }));
       const opts: ExportOptions = { ...options };
       delete opts.bodies;
+      if (format === 'step' && options.pmi) {
+        // M5a (ADR-100): AP242 with semantic (and presentation) PMI, one file.
+        if (options.stepSchema !== undefined && options.stepSchema !== 'AP242') {
+          return {
+            ok: false,
+            error: kerr('INVALID_INPUT', 'PMI is written in STEP AP242 only', {
+              hint: 'Choose AP242, or export without PMI.',
+            }),
+          };
+        }
+        const exportPmi = this.core.kernel.exportStepPmi;
+        if (!exportPmi) {
+          return {
+            ok: false,
+            error: kerr(
+              'UNSUPPORTED_FEATURE',
+              'This kernel build cannot write model dimensions and tolerances (PMI) yet',
+              { hint: 'Export without PMI, or update Wren.', detail: 'exportStepPmi' },
+            ),
+          };
+        }
+        const { planStepPmi } = await import('./pmi');
+        const plan = await planStepPmi(this.core, latest, bodies, options, this.pmiFont);
+        if (!plan.ok) return plan;
+        const w = await exportPmi.call(this.core.kernel, shapes, plan.value.items, {
+          ...opts,
+          stepSchema: 'AP242',
+        });
+        if (!w.ok) return w;
+        const file = w.value[0];
+        if (!file)
+          return { ok: false, error: kerr('OPERATION_FAILED', 'Writing the STEP file failed') };
+        return {
+          ok: true,
+          bytes: file.bytes,
+          pmi: plan.value.report,
+          ...(plan.value.notes.length > 0 ? { pmiNotes: plan.value.notes } : {}),
+        };
+      }
       if (format === 'step') opts.stepSchema = options.stepSchema ?? 'AP214';
       const r = await this.core.kernel.exportShapes(shapes, format, opts);
       if (!r.ok) return r;
@@ -430,25 +476,57 @@ export class RegenEngine {
     });
   }
 
+  /**
+   * M5a (ADR-100, proposed for the contract): the PMI of STEP import feature `featureId` in the
+   * latest regen of `slot`, its targets mapped to the feature's persistent names (with
+   * fingerprints), for the app to turn into part annotations. Reads the slot, never changes it.
+   */
+  importedPmi(partId: Id, featureId: Id, slot: RegenSlot = 'main'): Promise<Result<ImportedPmi>> {
+    return this.serial(async (): Promise<Result<ImportedPmi>> => {
+      const context = isSlot(slot)
+        ? this.cache.slotCache(partId, slot)?.latest?.context
+        : undefined;
+      if (!context) {
+        return {
+          ok: false,
+          error: kerr('INVALID_INPUT', 'This part has not been regenerated yet', {
+            hint: 'Regenerate the part first.',
+          }),
+        };
+      }
+      const { importedPmi } = await import('./pmi');
+      return importedPmi(this.core, context, featureId);
+    });
+  }
+
   importFile(bytes: Uint8Array, format: ExportFormat): Promise<ImportResult> {
     return this.serial(async () => {
-      const r = await this.core.kernel.importShapes(bytes, format);
+      const withPmi = format === 'step' ? this.core.kernel.importShapesWithPmi : undefined;
+      const r: Result<{ bodies: { shape: ShapeHandle; name?: string }[]; pmi?: PmiImportResult }> =
+        withPmi
+          ? await withPmi.call(this.core.kernel, bytes, format)
+          : await this.core.kernel
+              .importShapes(bytes, format)
+              .then((x) => (x.ok ? { ok: true as const, value: { bodies: x.value } } : x));
       if (!r.ok) return r;
       const out: { shape: ShapeHandle; mesh: MeshBuffers; name?: string }[] = [];
-      for (const b of r.value) {
+      for (const b of r.value.bodies) {
         const m = await this.core.kernel.mesh(b.shape, {
           ...this.core.quality.fine,
           relative: true,
         });
         if (!m.ok) {
-          for (const x of r.value) await this.core.kernel.release(x.shape);
+          for (const x of r.value.bodies) await this.core.kernel.release(x.shape);
           return m;
         }
         out.push(
-          b.name === undefined ? { shape: b.shape, mesh: m.value } : { ...b, mesh: m.value },
+          b.name === undefined
+            ? { shape: b.shape, mesh: m.value }
+            : { shape: b.shape, name: b.name, mesh: m.value },
         );
       }
-      return { ok: true, bodies: out };
+      // M5a: a STEP file's PMI on the returned bodies' indices (contract `importFile`).
+      return r.value.pmi ? { ok: true, bodies: out, pmi: r.value.pmi } : { ok: true, bodies: out };
     });
   }
 
@@ -721,6 +799,7 @@ export class RegenEngine {
       // For anchor queries against this final state (ADR-092 proposal 2); no attachment bytes.
       context: { ...ctx, attachments: {}, rec: null },
     };
+    if (annotations) pc.latest.annotations = annotations;
     if (density !== undefined) pc.latest.density = density;
     await this.cache.evict(pc);
     await this.cache.evictImports(pc, ctx.usedImports);

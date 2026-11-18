@@ -12,6 +12,8 @@
 import type {
   AnchorAnswer,
   AnchorQuery,
+  ExportFormat,
+  ExportOptions,
   Id,
   MeshQuality,
   ModelingApi,
@@ -30,6 +32,7 @@ import {
 import { meshListTransferables, regenTransferables } from './regen/buffers';
 import type { CompareOutput } from './regen/compare';
 import {
+  type ExportResult,
   RegenEngine,
   type RegenEngineOptions,
   type RegenOutput,
@@ -37,15 +40,24 @@ import {
 } from './regen/engine';
 import type { ReprojectLinked } from './regen/linked';
 import { reprojectLinkedSketch } from './regen/linked-sketch';
+import type { ImportedPmi } from './regen/pmi';
 
 /**
  * Everything the kernel worker exposes over Comlink (M1): the contracts' `ModelingApi` (a subtype
  * of it — `regenerate` resolves to `RegenOutput`, which adds per-feature `warnings` and `ghosts`,
  * proposed for the contract) plus the low-level `KernelLowLevelApi` calls.
  */
-export type ModelingWorkerApi = Omit<ModelingApi, 'regenerate' | 'compare'> &
+export type ModelingWorkerApi = Omit<ModelingApi, 'regenerate' | 'compare' | 'exportPart'> &
   KernelLowLevelApi & {
     regenerate(request: RegenRequest): Promise<RegenOutput>;
+    /** The contract's `exportPart` plus `pmiNotes` with PMI (proposed for the contract). */
+    exportPart(partId: Id, format: ExportFormat, options?: ExportOptions): Promise<ExportResult>;
+    /**
+     * M5a (ADR-100, proposed for the contract): the PMI of a STEP import feature in the latest
+     * regen of `slot` (default `'main'`), its targets mapped to the feature's face and edge names,
+     * for the app to make part annotations. `supported: false` when the kernel reads no PMI.
+     */
+    importedPmi(partId: Id, featureId: Id, slot?: RegenSlot): Promise<Result<ImportedPmi>>;
     /** `GeometricDiff` plus `warnings` for bodies left out (proposed for the contract). */
     compare(
       partId: Id,
@@ -85,6 +97,8 @@ export interface ModelingApiDeps extends KernelApiDeps {
    */
   reprojectLinked?: ReprojectLinked;
   regen?: RegenEngineOptions;
+  /** M5a: the drawing font's TTF bytes for presentation PMI (default: the bundled asset). */
+  pmiFont?: () => Promise<Uint8Array>;
 }
 
 /**
@@ -120,6 +134,7 @@ export function createModelingApi(deps: ModelingApiDeps): ModelingApiImpl {
     sketchSolver: deps.sketchSolver ?? (() => createSketchSolverCore(solverOptions)),
     reprojectLinked: deps.reprojectLinked ?? reprojectLinkedSketch,
     ...(deps.regen === undefined ? {} : { options: deps.regen }),
+    ...(deps.pmiFont === undefined ? {} : { pmiFont: deps.pmiFont }),
   });
   return {
     init: (options) => kernel.init(options),
@@ -158,6 +173,7 @@ export function createModelingApi(deps: ModelingApiDeps): ModelingApiImpl {
       const r = await engine.exportPart(partId, format, options);
       return r.ok ? transfer(r, [r.bytes.buffer as ArrayBuffer]) : r;
     },
+    importedPmi: (partId, featureId, slot) => engine.importedPmi(partId, featureId, slot),
     async importFile(bytes, format) {
       const r = await engine.importFile(bytes, format);
       return r.ok ? transfer(r, meshListTransferables(r.bodies.map((b) => b.mesh))) : r;

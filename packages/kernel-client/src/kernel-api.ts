@@ -28,6 +28,8 @@ import type {
   Measurement,
   MeshBuffers,
   MeshOptions,
+  PmiExportItem,
+  PmiImportResult,
   Result,
   ShapeFingerprints,
   ShapeHandle,
@@ -41,12 +43,18 @@ import {
   type KernelModuleOptions,
   type MeasureSubject,
   type RawExportResult,
-  type RawImportResult,
   type RawKernelInfo,
   type SubShapeGeometry,
   type WhittleKernelModule,
 } from '@wren-cad/kernel';
 import { transfer } from 'comlink';
+import {
+  callExportStepPmi,
+  canExportPmi,
+  importedPmiOf,
+  PMI_FACADE,
+  type RawImportWithPmi,
+} from './pmi-facade';
 import type { ProjectionApi } from './regen/linked';
 
 /** How to obtain one kernel variant. */
@@ -132,6 +140,25 @@ export interface KernelLowLevelApi extends Partial<ProjectionApi> {
    * surfaces are sewn, closed shells become solids and open shells stay shell bodies.
    */
   importShapes(bytes: Uint8Array, format: ShapeImportFormat): Promise<Result<ImportedBody[]>>;
+  /**
+   * M5a (ADR-100): `importShapes` plus, for STEP, the semantic and presentation PMI the façade
+   * read (`pmi-facade.ts`: the extended `importFile` result), on the returned bodies' indices.
+   * `pmi` is absent when the kernel build reads no PMI. Optional in engine fakes.
+   */
+  importShapesWithPmi?(
+    bytes: Uint8Array,
+    format: ShapeImportFormat,
+  ): Promise<Result<{ bodies: ImportedBody[]; pmi?: PmiImportResult }>>;
+  /**
+   * M5a (ADR-100): STEP AP242 with semantic and presentation PMI (`pmi-facade.ts`). Items target
+   * `shapes[body]` (0-based) by 1-based TopExp index. `UNSUPPORTED_FEATURE` on a kernel build
+   * without the entry point. Optional in engine fakes.
+   */
+  exportStepPmi?(
+    shapes: ExportShape[],
+    items: PmiExportItem[],
+    options: ExportOptions,
+  ): Promise<Result<ExportedFile[]>>;
   /** Threaded build: caps OCCT's thread pool (`init({ threads })` applies it automatically). */
   configureThreads(count: number): Promise<Result<{ threads: number; max: number }>>;
   /**
@@ -346,6 +373,67 @@ export function createKernelApi(
     }
     return fail(error('INTERNAL', `${operation} failed unexpectedly`, describe(e)));
   };
+
+  /** Runs a façade writer and moves its MEMFS files out (read once, unlinked, transferred). */
+  function writeFiles(
+    k: WhittleKernelModule,
+    operation: string,
+    write: () => string,
+  ): Result<ExportedFile[]> {
+    let paths: string[] = [];
+    try {
+      const written = parseResult<RawExportResult>(write(), operation);
+      if (!written.ok) return written;
+      paths = written.value.files.map((f) => f.path);
+      // MEMFS → JS once; the bytes are then transferred to the caller.
+      const files = written.value.files.map((f) => ({
+        name: f.name,
+        bytes: ownedBytes(k.FS.readFile(f.path, { encoding: 'binary' })),
+      }));
+      const result: Result<ExportedFile[]> = { ok: true, value: files };
+      return transfer(
+        result,
+        files.map((f) => f.bytes.buffer as ArrayBuffer),
+      );
+    } catch (e) {
+      return caught(operation, e);
+    } finally {
+      for (const path of paths) {
+        try {
+          k.FS.unlink(path);
+        } catch {
+          // Already gone (e.g. after a trap).
+        }
+      }
+    }
+  }
+
+  /** Writes `bytes` to MEMFS, runs the façade's `importFile` and unlinks the file. */
+  async function readFile(
+    bytes: Uint8Array,
+    format: ShapeImportFormat,
+  ): Promise<Result<RawImportWithPmi>> {
+    if (kernel === null) return notReady();
+    const k = kernel;
+    memfsCounter += 1;
+    const path = `/tmp/wren-import-${memfsCounter}.${format}`;
+    let written = false;
+    try {
+      k.FS.writeFile(path, bytes);
+      written = true;
+      return parseResult<RawImportWithPmi>(k.importFile(path, format), 'importFile');
+    } catch (e) {
+      return caught('importShapes', e);
+    } finally {
+      if (written) {
+        try {
+          k.FS.unlink(path);
+        } catch {
+          // Already gone.
+        }
+      }
+    }
+  }
 
   async function load(options: KernelInitOptions): Promise<Result<KernelInfo>> {
     const started = now();
@@ -600,63 +688,54 @@ export function createKernelApi(
     ): Promise<Result<ExportedFile[]>> {
       if (kernel === null) return notReady();
       const k = kernel;
-      let paths: string[] = [];
-      try {
-        const written = parseResult<RawExportResult>(
-          k.exportShapes(JSON.stringify(shapes), format, JSON.stringify(options)),
-          'exportShapes',
+      return writeFiles(k, 'exportShapes', () =>
+        k.exportShapes(JSON.stringify(shapes), format, JSON.stringify(options)),
+      );
+    },
+
+    async exportStepPmi(
+      shapes: ExportShape[],
+      items: PmiExportItem[],
+      options: ExportOptions,
+    ): Promise<Result<ExportedFile[]>> {
+      if (kernel === null) return notReady();
+      const k = kernel;
+      if (!canExportPmi(k)) {
+        return fail(
+          error(
+            'UNSUPPORTED_FEATURE',
+            'This kernel build cannot write model dimensions and tolerances (PMI) yet',
+            PMI_FACADE.exportFunction,
+            'Export without PMI, or update Wren.',
+          ),
         );
-        if (!written.ok) return written;
-        paths = written.value.files.map((f) => f.path);
-        // MEMFS → JS once; the bytes are then transferred to the caller.
-        const files = written.value.files.map((f) => ({
-          name: f.name,
-          bytes: ownedBytes(k.FS.readFile(f.path, { encoding: 'binary' })),
-        }));
-        const result: Result<ExportedFile[]> = { ok: true, value: files };
-        return transfer(
-          result,
-          files.map((f) => f.bytes.buffer as ArrayBuffer),
-        );
-      } catch (e) {
-        return caught('exportShapes', e);
-      } finally {
-        for (const path of paths) {
-          try {
-            k.FS.unlink(path);
-          } catch {
-            // Already gone (e.g. after a trap).
-          }
-        }
       }
+      return writeFiles(
+        k,
+        'exportStepPmi',
+        () => callExportStepPmi(k, shapes, items, options) as string,
+      );
     },
 
     async importShapes(
       bytes: Uint8Array,
       format: ShapeImportFormat,
     ): Promise<Result<ImportedBody[]>> {
-      if (kernel === null) return notReady();
-      const k = kernel;
-      memfsCounter += 1;
-      const path = `/tmp/wren-import-${memfsCounter}.${format}`;
-      let written = false;
-      try {
-        k.FS.writeFile(path, bytes);
-        written = true;
-        const read = parseResult<RawImportResult>(k.importFile(path, format), 'importFile');
-        if (!read.ok) return read;
-        return { ok: true, value: read.value.bodies };
-      } catch (e) {
-        return caught('importShapes', e);
-      } finally {
-        if (written) {
-          try {
-            k.FS.unlink(path);
-          } catch {
-            // Already gone.
-          }
-        }
-      }
+      const r = await readFile(bytes, format);
+      return r.ok ? { ok: true, value: r.value.bodies } : r;
+    },
+
+    async importShapesWithPmi(
+      bytes: Uint8Array,
+      format: ShapeImportFormat,
+    ): Promise<Result<{ bodies: ImportedBody[]; pmi?: PmiImportResult }>> {
+      const r = await readFile(bytes, format);
+      if (!r.ok) return r;
+      const pmi = format === 'step' ? importedPmiOf(r.value) : undefined;
+      return {
+        ok: true,
+        value: pmi ? { bodies: r.value.bodies, pmi } : { bodies: r.value.bodies },
+      };
     },
 
     async configureThreads(count: number): Promise<Result<{ threads: number; max: number }>> {

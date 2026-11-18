@@ -29,6 +29,7 @@ export type { KernelMemoryStats, ModelingWorkerApi, RegenWorkerOptions } from '.
 export { isStatusMessage, STATUS_MESSAGE_TAG, type StatusMessage } from './protocol';
 export type { CompareOutput } from './regen/compare';
 export type {
+  ExportResult,
   ReboundRef,
   RegenFeatureStatus,
   RegenMemoryStats,
@@ -36,3 +37,4 @@ export type {
   RegenSlotStats,
   RegenUnresolvedRef,
 } from './regen/engine';
+export type { ImportedPmi } from './regen/pmi';

@@ -23,7 +23,8 @@
     "@wren-cad/document": "workspace:*",
     "@wren-cad/sketch": "workspace:*",
     "fflate": "0.8.3",
-    "@wren-cad/io": "workspace:*"
+    "@wren-cad/io": "workspace:*",
+    "@wren-cad/drawing": "workspace:*"
   },
   "devDependencies": {
     "@wren-cad/test-fixtures": "workspace:*"
