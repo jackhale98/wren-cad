@@ -85,8 +85,23 @@ std::string bounds(ShapeHandle shape);
 std::string exportShapes(const std::string& shapesJson, const std::string& format,
                          const std::string& optionsJson);
 
+// M5 (ADR-100): STEP AP242 with semantic and presentation PMI. shapesJson as exportShapes;
+// pmiJson: contracts PmiExportItem[] whose targets are {"body": 0-based index into shapesJson,
+// "kind", "index": 1-based TopExp index}; optionsJson: contracts ExportOptions (stepSchema AP242
+// or absent; pmi.presentation false leaves the presentation out). Returns
+// Result<{"path","files":[{"path","name"}],"pmi":{"exported":int,"skipped":[{"annotationId",
+// "reason"}],"notes":[{"annotationId","note"}]}}>. Items that cannot be written are skipped with a
+// reason, never half-written; if OCCT's writer fails on the PMI the file holds the geometry only
+// and every item is reported skipped.
+std::string exportStepPmi(const std::string& shapesJson, const std::string& pmiJson,
+                          const std::string& optionsJson);
+
 // Reads a MEMFS file; returns Result<{"bodies":[{"shape":int,"name"?:string}]}> (one body per
 // solid; STEP assemblies are flattened with their placements; STL gives one mesh-only face).
+// M5: a STEP file with GD&T adds "pmi":{"items":PmiImportItem[] (targets: "body" 0-based into
+// "bodies", "index" 1-based TopExp; "name" = the presentation name, where Wren writes the
+// annotation id; no "annotationId"), "issues":[{"name"?,"reason"}], "counts":[{"faces","edges",
+// "vertices"}] per body}. Angles in radians, lengths in mm. Reading PMI never fails an import.
 std::string importFile(const std::string& path, const std::string& format);
 
 // Threaded build: re-initialises OCCT's default thread pool (OSD_ThreadPool) with
@@ -135,7 +150,6 @@ std::string projectFaceOutline(const std::string& queryJson);
 std::string subShapeGeometry(ShapeHandle shape, const std::string& kind, int32_t index);
 
 // M4: HLR runs in the separate drawing kernel (drawing/cpp/wren_drawing.h, ADR-090 amendment).
-// M5: exportStep with PMI — added by contract proposal.
 
 // Releases a handle. Unknown handles are ignored.
 void release(ShapeHandle shape);

@@ -3542,3 +3542,11 @@ CI on the orthographic view failed twice for one cause: an orthographic view str
 2. **Presentation** is generated in TS from the M4 layout code (lines + stroked text), never hand-built in C++.
 3. **MBD 3D display (M5b)** follows once exchange is validated: annotation planes, saved model views, viewport rendering and picking.
 4. **Validation:** Node round trips through the real kernel (counts, types, values, targets), NIST MBE PMI models imported with their issues listed, `docs/PMI_VALIDATION.md` for the NIST STEP File Analyzer and a third-party CAD check (owner's checklist).
+
+### ADR-100 amendment: what OCCT 8.0.1 does with AP242 PMI (2026-11-18, kernel workstream)
+
+- **Identity.** The writer hard-codes CAx-IF names for dimensions and writes empty names for tolerances and datums, so the annotation id travels in the presentation (`draughting_callout`) name and the `shape_aspect` name (`PMI <id>`). Without presentation PMI, ids do not survive a round trip. `PmiImportItem.annotationId` is therefore optional; `name` carries what the file holds.
+- **ISO 286 grade bug.** `STEPCAFControl_GDTProperty::GetLimitsAndFits` writes the grade +2 (IT7 → "9"); the façade rewrites grades after transfer, guarded by `OCC_VERSION_HEX <= 0x080001`.
+- **Angular deviations** come back in the file's angle unit; the import converts using the file's own unit.
+- **Reader limits:** datums are read only through tolerances that reference them (others are reported as issues); a lower deviation above nominal comes back negated (absolute value read).
+- **Report notes:** `PmiExportReport.notes` carries caveats (STEP holds one fit class per dimension: H8/f7 writes H8).

@@ -552,6 +552,22 @@ std::string exportShapes(const std::string& shapesJson, const std::string& forma
   });
 }
 
+std::string exportStepPmi(const std::string& shapesJson, const std::string& pmiJson,
+                          const std::string& optionsJson) {
+  return guarded("exportStepPmi", [&]() {
+    const std::vector<ExportItem> items = parseExportItems(shapesJson);
+    const JsonPtr pmi = JsonParser(pmiJson).parseDocument();
+    const JsonPtr options = JsonParser(optionsJson.empty() ? std::string("{}") : optionsJson)
+                                .parseDocument();
+    if (!options->isObject()) raiseError("INVALID_INPUT", "export options must be a JSON object");
+    const PmiExportOutcome out = exportStepWithPmi(items, *pmi, *options);
+    const std::string name = items.size() == 1 ? items[0].name : std::string();
+    return okJson("{\"path\":" + jsonString(out.path) + ",\"files\":[{\"path\":" +
+                  jsonString(out.path) + ",\"name\":" + jsonString(name) +
+                  "}],\"pmi\":" + pmiExportReportJson(out.report) + "}");
+  });
+}
+
 std::string importFile(const std::string& path, const std::string& format) {
   return guarded("importFile", [&]() {
     if (format == "step") return importStep(path);
