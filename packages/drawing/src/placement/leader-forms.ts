@@ -64,6 +64,93 @@ export function dimensionLineEnd(t: number): 0 | 1 {
 }
 
 /**
+ * The end of a dimension line that its own text sits beyond, or null: a radial diameter's text
+ * end (its line runs on out to the text there), or a linear dimension whose text was pushed past
+ * an extension line. A datum in line with the dimension line never goes there: its triangle would
+ * sit on the dimension's own leader and its letter box on the value (ADR-094 amendment,
+ * 2026-11-18).
+ */
+export function dimensionTextEnd(
+  line: readonly [Vec2, Vec2],
+  textBox: readonly Vec2[],
+): 0 | 1 | null {
+  if (textBox.length === 0) return null;
+  const c: Vec2 = [
+    textBox.reduce((s, p) => s + p[0], 0) / textBox.length,
+    textBox.reduce((s, p) => s + p[1], 0) / textBox.length,
+  ];
+  const t = lineParameter(line, c);
+  return t > 1 ? 1 : t < 0 ? 0 : null;
+}
+
+/**
+ * The end of a dimension line a datum goes to when `wanted` is asked for: that end, unless the
+ * dimension's text is beyond it (`dimensionTextEnd`), then the other one.
+ */
+export function freeDimensionLineEnd(
+  wanted: 0 | 1,
+  line: readonly [Vec2, Vec2],
+  textBox: readonly Vec2[],
+): 0 | 1 {
+  return dimensionTextEnd(line, textBox) === wanted ? ((1 - wanted) as 0 | 1) : wanted;
+}
+
+type LeaderLayout = Extract<AnnotationPlacement['layout'], { kind: 'leader' }>;
+
+const round3 = (x: number) => Math.round(x * 1000) / 1000;
+
+/**
+ * A leader on a dimension line moved to its other end: the text offset and the bends are
+ * mirrored along the line, so the datum keeps pointing out of the dimension. Other attaches are
+ * returned as they are.
+ */
+export function flipDimensionLineEnd(layout: LeaderLayout, line: readonly [Vec2, Vec2]): LeaderLayout {
+  const a = layout.attach;
+  if (a.kind !== 'dimensionLine') return layout;
+  const d: Vec2 = [line[1][0] - line[0][0], line[1][1] - line[0][1]];
+  const l = Math.hypot(d[0], d[1]) || 1;
+  const u: Vec2 = [d[0] / l, d[1] / l];
+  const mirror = (q: Vec2): Vec2 => {
+    const k = dot2(q, u);
+    return [round3(q[0] - 2 * k * u[0]), round3(q[1] - 2 * k * u[1])];
+  };
+  const end = dimensionLineEnd(a.t) === 0 ? 1 : 0;
+  return {
+    ...layout,
+    attach: { ...a, t: end },
+    text: mirror(layout.text),
+    ...(layout.bends ? { bends: layout.bends.map(mirror) } : {}),
+  };
+}
+
+/**
+ * The corner a leader turns at so that its first leg leaves `from` along `axis` (unit), or null
+ * when `toward` already lies on that axis, at least `stub` out. A datum's leader leaves its
+ * triangle across the surface (or in line with the dimension line), and a frame's arrow meets a
+ * surface square to it (ISO 5459, ISO 1101, ASME Y14.5): a box placed off that axis is reached
+ * through this corner, never by a slanted first leg.
+ */
+export function leaderElbow(from: Vec2, axis: Vec2, toward: Vec2, stub: number): Vec2 | null {
+  const d: Vec2 = [toward[0] - from[0], toward[1] - from[1]];
+  const along = dot2(d, axis);
+  const across = Math.abs(d[0] * axis[1] - d[1] * axis[0]);
+  if (across <= 1e-6 && along >= stub - 1e-9) return null;
+  const k = Math.max(stub, along);
+  return [from[0] + axis[0] * k, from[1] + axis[1] * k];
+}
+
+/**
+ * A text offset brought onto a leader's axis when it is within `snap` of it (sheet mm), so a
+ * letter box dragged near the in-line position lands exactly in line (no tiny jog in the leader).
+ */
+export function snapToAxis(text: Vec2, axis: Vec2, snap: number): Vec2 {
+  const k = dot2(text, axis);
+  const across: Vec2 = [text[0] - axis[0] * k, text[1] - axis[1] * k];
+  if (k <= 0 || Math.hypot(across[0], across[1]) > snap) return text;
+  return [round3(axis[0] * k), round3(axis[1] * k)];
+}
+
+/**
  * The faces an edge name says the edge lies between, from the naming rules (contracts
  * naming.ts): `edge(<A>|<B>)` and its split `#k`, the primitive form `F…:edge(<r>|<r>)` (faces
  * `F…:<r>`), a seam `edge(A|A)` (one face) and a free edge `edge(A)`. Anything else: none. A name
