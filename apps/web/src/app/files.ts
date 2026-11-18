@@ -323,9 +323,19 @@ export async function importFiles(
     wb.extra.set(made.path, f.bytes);
     if (
       !wb.apply({ kind: 'addFeature', partId: part.id, feature: made.feature }, `Import ${f.name}`)
-    )
+    ) {
       wb.extra.delete(made.path);
+      wb.commit();
+      continue;
+    }
     wb.commit();
+    // M5a: a STEP file's PMI becomes part annotations once the regen has the feature (lazy).
+    if (made.feature.source.format === 'step') {
+      const { feature } = made;
+      const pending = import('./pmi').then((m) => m.importStepPmi(wb, part.id, feature, f.bytes));
+      wb.actions.add(pending);
+      void pending.finally(() => wb.actions.delete(pending));
+    }
   }
   wb.fitPending = true;
   wb.fitOnFirstGeometry = true;
@@ -388,6 +398,18 @@ export async function exportDoc(wb: Workbench, request: ExportRequest): Promise<
     const ext = request.target === 'step' ? 'step' : request.target;
     await lib.saveFile(r.bytes, `${base}.${ext}`, lib.MIME[request.target]);
     wb.exports.set((n) => n + 1);
+    // M5a: the PMI summary (exported n, each one left out with its reason), non-modal.
+    if (r.pmi) {
+      const pmi = await import('./pmi');
+      wb.patchUi({
+        pmiReport: pmi.exportReportUi(
+          part.annotations ?? [],
+          r.pmi,
+          r.pmiNotes ?? [],
+          pmi.resolutionValues(view?.result),
+        ),
+      });
+    }
   } finally {
     wb.patchUi({ exporting: false });
   }

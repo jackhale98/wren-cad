@@ -49,6 +49,20 @@ export function testHooks(wb: Workbench) {
           }
         : null;
     },
+    /**
+     * M5a E2E: until the kernel façade writes PMI, the worker writes the geometry as AP242 in its
+     * place (`debugPmiFacade`), so the export's planning and report run for real. False when the
+     * engine has no such switch.
+     */
+    pmiFacadeFake: async (): Promise<boolean> => {
+      await wb.boot?.modeling;
+      const port = wb.modeling?.port;
+      if (!port?.debugPmiFacade) return false;
+      await port.debugPmiFacade('geometryOnly');
+      return true;
+    },
+    /** The PMI report on screen (M5a), or null. */
+    pmiReport: () => wb.ui.get().pmiReport,
     shownSketches: () => [...wb.shownSketches],
     /** Ids of the bodies the viewport holds (what is on screen). */
     shownBodies: () => [...wb.shownBodies],

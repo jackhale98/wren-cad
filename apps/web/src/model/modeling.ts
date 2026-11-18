@@ -23,6 +23,7 @@ import type {
   ShapeHandle,
   WrenDoc,
 } from '@wren-cad/contracts';
+import type { ExportResult, ImportedPmi } from '@wren-cad/kernel-client';
 
 /** The calls the app needs. `Remote<ModelingApi>` (Comlink) and the fake both satisfy it. */
 export type ModelingPort = Pick<
@@ -40,7 +41,15 @@ export type ModelingPort = Pick<
       | 'shapeForDrawing'
       | 'annotationAnchors'
     >
-  >;
+  > & {
+    /**
+     * M5a (ADR-100, proposed for the contract): a STEP import feature's PMI on its face and edge
+     * names (`ModelingWorkerApi.importedPmi`). Absent on the main-thread fake.
+     */
+    importedPmi?(partId: Id, featureId: Id): Promise<Result<ImportedPmi>>;
+    /** E2E only: stand in for the façade's PMI writer (`KernelLowLevelApi.debugPmiFacade`). */
+    debugPmiFacade?(mode: 'off' | 'geometryOnly'): Promise<void>;
+  };
 
 export interface RegenOutcome {
   result: RegenResult;
@@ -403,11 +412,8 @@ export function createRegenLoop(options: RegenLoopOptions): RegenLoop {
 export interface Modeling {
   readonly port: ModelingPort;
   refFor(partId: Id, query: EntityQuery): Promise<EntityRef | null>;
-  exportPart(
-    partId: Id,
-    format: ExportFormat,
-    options?: ExportOptions,
-  ): Promise<{ ok: true; bytes: Uint8Array } | { ok: false; error: KernelError }>;
+  /** With `options.pmi`: the PMI report too, and `pmiNotes` from the kernel worker (M5a). */
+  exportPart(partId: Id, format: ExportFormat, options?: ExportOptions): Promise<ExportResult>;
   closePart(partId: Id): Promise<void>;
   /** Exact measurement on the latest regen (M2). */
   measure(partId: Id, a: MeasureTarget, b?: MeasureTarget): Promise<Result<Measurement>>;
@@ -437,7 +443,8 @@ export function createModeling(port: ModelingPort): Modeling {
     },
     async exportPart(partId, format, options) {
       try {
-        return await port.exportPart(partId, format, options);
+        // The worker's result carries `pmiNotes` beside the contract's fields (proposed).
+        return (await port.exportPart(partId, format, options)) as ExportResult;
       } catch (err) {
         return { ok: false, error: asKernelError(err) };
       }

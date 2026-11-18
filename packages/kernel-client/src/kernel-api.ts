@@ -159,6 +159,12 @@ export interface KernelLowLevelApi extends Partial<ProjectionApi> {
     items: PmiExportItem[],
     options: ExportOptions,
   ): Promise<Result<ExportedFile[]>>;
+  /**
+   * E2E only, until the façade has `exportStepPmi`: `geometryOnly` makes `exportStepPmi` write
+   * the shapes as AP242 without the items, so the app's PMI export path (planning, presentation,
+   * report) runs end to end. Never used by the app's own UI.
+   */
+  debugPmiFacade?(mode: 'off' | 'geometryOnly'): Promise<void>;
   /** Threaded build: caps OCCT's thread pool (`init({ threads })` applies it automatically). */
   configureThreads(count: number): Promise<Result<{ threads: number; max: number }>>;
   /**
@@ -330,7 +336,10 @@ function withProgress(
 
 export function createKernelApi(
   deps: KernelApiDeps,
-): KernelProjectionApi & KernelWorkerApi & KernelApiInternals {
+): KernelProjectionApi &
+  KernelWorkerApi &
+  KernelApiInternals &
+  Required<Pick<KernelLowLevelApi, 'exportStepPmi' | 'importShapesWithPmi' | 'debugPmiFacade'>> {
   const now = deps.now ?? (() => performance.now());
   const emit = (status: KernelStatus) => {
     try {
@@ -345,6 +354,8 @@ export function createKernelApi(
   let pending: Promise<Result<KernelInfo>> | null = null;
   /** Set after a Wasm trap: the instance may be inconsistent, so require a fresh init(). */
   let poisoned: KernelError | null = null;
+  /** E2E: stand in for the façade's `exportStepPmi` until the kernel build has it. */
+  let pmiFacadeFake = false;
 
   const notReady = <T>(): Result<T> =>
     fail(
@@ -549,7 +560,7 @@ export function createKernelApi(
     }
   }
 
-  const api: KernelProjectionApi & KernelWorkerApi & KernelApiInternals = {
+  const api: ReturnType<typeof createKernelApi> = {
     init(options: KernelInitOptions = {}): Promise<Result<KernelInfo>> {
       if (kernel !== null && info !== null) {
         const sameVariant = options.variant === undefined || options.variant === info.variant;
@@ -701,6 +712,12 @@ export function createKernelApi(
       if (kernel === null) return notReady();
       const k = kernel;
       if (!canExportPmi(k)) {
+        // E2E only (`debugPmiFacade`): the geometry as AP242, the items not written.
+        if (pmiFacadeFake) {
+          return writeFiles(k, 'exportStepPmi', () =>
+            k.exportShapes(JSON.stringify(shapes), 'step', JSON.stringify({ stepSchema: 'AP242' })),
+          );
+        }
         return fail(
           error(
             'UNSUPPORTED_FEATURE',
@@ -715,6 +732,10 @@ export function createKernelApi(
         'exportStepPmi',
         () => callExportStepPmi(k, shapes, items, options) as string,
       );
+    },
+
+    async debugPmiFacade(mode: 'off' | 'geometryOnly'): Promise<void> {
+      pmiFacadeFake = mode === 'geometryOnly';
     },
 
     async importShapes(

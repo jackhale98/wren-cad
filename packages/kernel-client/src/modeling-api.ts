@@ -58,6 +58,8 @@ export type ModelingWorkerApi = Omit<ModelingApi, 'regenerate' | 'compare' | 'ex
      * for the app to make part annotations. `supported: false` when the kernel reads no PMI.
      */
     importedPmi(partId: Id, featureId: Id, slot?: RegenSlot): Promise<Result<ImportedPmi>>;
+    /** E2E only: see `KernelLowLevelApi.debugPmiFacade`. */
+    debugPmiFacade(mode: 'off' | 'geometryOnly'): Promise<void>;
     /** `GeometricDiff` plus `warnings` for bodies left out (proposed for the contract). */
     compare(
       partId: Id,
@@ -151,6 +153,7 @@ export function createModelingApi(deps: ModelingApiDeps): ModelingApiImpl {
     exportShapes: (shapes, format, options) => kernel.exportShapes(shapes, format, options),
     importShapes: (bytes, format) => kernel.importShapes(bytes, format),
     configureThreads: (count) => kernel.configureThreads(count),
+    debugPmiFacade: (mode) => kernel.debugPmiFacade(mode),
     measureShapes: (a, b) => kernel.measureShapes(a, b),
     subShapeGeometry: (shape, kind, index) => kernel.subShapeGeometry(shape, kind, index),
     projectEdges: (shape, edges, plane) => kernel.projectEdges(shape, edges, plane),
