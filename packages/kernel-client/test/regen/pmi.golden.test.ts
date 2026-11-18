@@ -28,6 +28,7 @@ import type {
   Command,
   Drawing,
   DrawingView,
+  ExportOptions,
   Expr,
   Id,
   ImportFeature,
@@ -59,6 +60,16 @@ import { reprojectLinkedSketch } from '../../src/regen/linked-sketch';
 import { B, bracketDoc } from './bracket';
 import { built, edgeName, fid, part, side, skipNote, variants } from './helpers';
 
+/** Does the kernel build have the M5a façade (`exportStepPmi`)? */
+async function probeFacade(): Promise<boolean> {
+  if (!built) return false;
+  const k = createKernelApi({ variants, canUseThreads: () => false });
+  if (!(await k.init({ variant: 'single' })).ok) return false;
+  const r = await k.exportStepPmi([], [], { stepSchema: 'AP242', pmi: {} });
+  return !(r.ok === false && r.error.code === 'UNSUPPORTED_FEATURE');
+}
+const facadeReady = await probeFacade();
+
 const TTF = new Uint8Array(
   readFileSync(
     fileURLToPath(new URL('../../../drawing/assets/fonts/osifont-lgpl3fe.ttf', import.meta.url)),
@@ -85,27 +96,41 @@ const centroidKey = (c: Vec3) => c.map((x) => Math.round(x * 1e4) / 1e4).join(',
  * bytes back gives them as `PmiImportItem`s named by annotation id, with each target found on the
  * re-read body by its geometry (what `STEPCAFControl_Reader` gets from the file's references).
  */
-function fakeFacade(kernel: KernelWorkerApi) {
+function fakeFacade(
+  kernel: ReturnType<typeof createKernelApi>,
+  mode: 'simulated' | 'real' = 'simulated',
+) {
   const written: Written[] = [];
+  const record = async (
+    shapes: ExportShape[],
+    items: PmiExportItem[],
+    options: object,
+    bytes: Uint8Array,
+  ) => {
+    const fingerprints: ShapeFingerprints[] = [];
+    for (const s of shapes) {
+      const fp = await kernel.fingerprints(s.shape);
+      if (fp.ok) fingerprints.push(fp.value);
+    }
+    written.push({ items: structuredClone(items), options, bytes, fingerprints });
+  };
   const api = {
-    async exportStepPmi(shapes: ExportShape[], items: PmiExportItem[], options: object) {
+    async exportStepPmi(shapes: ExportShape[], items: PmiExportItem[], options: ExportOptions) {
+      if (mode === 'real') {
+        const r = await kernel.exportStepPmi(shapes, items, options);
+        if (r.ok) await record(shapes, items, options, r.value.files[0]?.bytes as Uint8Array);
+        return r;
+      }
       const r = await kernel.exportShapes(shapes, 'step', { stepSchema: 'AP242' });
       if (!r.ok) return r;
-      const fingerprints: ShapeFingerprints[] = [];
-      for (const s of shapes) {
-        const fp = await kernel.fingerprints(s.shape);
-        if (!fp.ok) return fp;
-        fingerprints.push(fp.value);
-      }
-      written.push({
-        items: structuredClone(items),
-        options,
-        bytes: r.value[0]?.bytes as Uint8Array,
-        fingerprints,
-      });
-      return r;
+      await record(shapes, items, options, r.value[0]?.bytes as Uint8Array);
+      return {
+        ok: true as const,
+        value: { files: r.value, report: { exported: items.length, skipped: [], notes: [] } },
+      };
     },
     async importShapesWithPmi(bytes: Uint8Array, format: 'step') {
+      if (mode === 'real') return kernel.importShapesWithPmi(bytes, format);
       const r = await kernel.importShapes(bytes, format);
       if (!r.ok) return r;
       const w = written.find(
@@ -126,9 +151,10 @@ function fakeFacade(kernel: KernelWorkerApi) {
         const j = now.faces.findIndex((f) => centroidKey(f.centroid) === centroidKey(c));
         return { ...t, index: j + 1 };
       };
+      // As the real reader returns them: named by annotation id, no `annotationId`.
       const items: PmiImportItem[] = w.items.map((i) => {
-        const { presentation: _p, ...rest } = i;
-        return { ...rest, name: i.annotationId, targets: i.targets.map(map) } as PmiImportItem;
+        const { presentation: _p, annotationId, ...rest } = i;
+        return { ...rest, name: annotationId, targets: i.targets.map(map) } as PmiImportItem;
       });
       return { ok: true as const, value: { bodies: r.value, pmi: { items, issues: [] } } };
     },
@@ -570,7 +596,7 @@ describe.skipIf(!built)(`STEP AP242 PMI export of the M4 bracket${skipNote}`, ()
         }
       }
     }
-    expect(exported.pmiNotes ?? []).toEqual([]);
+    expect(exported.pmi?.notes ?? []).toEqual([]);
   });
 
   it('is deterministic, and the presentation can be left out', async () => {
@@ -582,7 +608,7 @@ describe.skipIf(!built)(`STEP AP242 PMI export of the M4 bracket${skipNote}`, ()
     const last = facade.written[facade.written.length - 1];
     expect(last?.items.every((i) => i.presentation === undefined)).toBe(true);
     expect(last?.items.length).toBe(facade.written[0]?.items.length);
-    expect((last?.options as { stepSchema?: string }).stepSchema).toBe('AP242');
+    expect((last?.options as { stepSchema?: string } | undefined)?.stepSchema).toBe('AP242');
   });
 
   it('refuses PMI in AP214', async () => {
@@ -590,12 +616,22 @@ describe.skipIf(!built)(`STEP AP242 PMI export of the M4 bracket${skipNote}`, ()
     expect(r.ok).toBe(false);
   });
 
-  it('round trip: items → STEP → import → annotations → items is lossless', async () => {
-    const first = facade.written[0] as Written;
+  /**
+   * items → STEP → import feature → `importedPmi` → annotations → regen → items again, through
+   * `rec` (the simulated façade or the recording real one). `lost`: annotation ids the reader is
+   * known to drop (OCCT reads a datum only through a frame that references it; ADR-100 amendment).
+   */
+  async function roundTrip(
+    eng: RegenEngine,
+    rec: ReturnType<typeof fakeFacade>,
+    first: Written,
+    tag: string,
+    lost: ReadonlySet<Id> = new Set(),
+  ) {
     const bytes = first.bytes;
     const sha = await sha256Hex(bytes);
-    const partB = fid('PARTB');
-    const imp = fid('IMPB');
+    const partB = fid(`PRT${tag}`);
+    const imp = fid(`IMP${tag}`);
     const feature: ImportFeature = {
       id: imp,
       type: 'import',
@@ -612,41 +648,36 @@ describe.skipIf(!built)(`STEP AP242 PMI export of the M4 bracket${skipNote}`, ()
     const docB = structuredClone(bracketDoc());
     docB.parts = [{ id: partB, name: 'Imported', features: [feature], rollbackIndex: 1 }];
     const attachments = { 'imports/bracket.step': bytes };
-    const r1 = await engine.regenerate({
-      doc: docB,
-      partId: partB,
-      quality: 'coarse',
-      attachments,
-    });
+    const r1 = await eng.regenerate({ doc: docB, partId: partB, quality: 'coarse', attachments });
     expect(r1.features[0]?.state).toBe('ok');
-    const pmi = await engine.importedPmi(partB, imp);
+    const pmi = await eng.importedPmi(partB, imp);
     if (!pmi.ok) throw new Error(pmi.error.message);
     expect(pmi.value.supported).toBe(true);
-    expect(pmi.value.entries.length).toBe(first.items.length);
     let k = 0;
     const { annotations: back, report } = annotationsFromPmi({
       entries: pmi.value.entries,
       issues: pmi.value.issues,
       origin: { kind: 'import', file: pmi.value.file },
       existing: [],
-      newId: () => fid(`NEWB${++k}`),
+      newId: () => fid(`NEW${tag}${++k}`),
     });
-    expect(report.skipped).toEqual([]);
     expect(report.notes).toEqual([]);
-    expect(back.map((a) => a.id).sort()).toEqual(first.items.map((i) => i.annotationId).sort());
+    const kept = first.items.filter((i) => !lost.has(i.annotationId));
+    expect(back.map((a) => a.id).sort()).toEqual(kept.map((i) => i.annotationId).sort());
+    expect(report.skipped.length).toBe(first.items.length - kept.length);
 
     const pb = docB.parts[0] as WrenDoc['parts'][0];
     pb.annotations = back;
-    const r2 = await engine.regenerate({
+    const r2 = await eng.regenerate({
       doc: docB,
       partId: partB,
       quality: 'coarse',
       annotations: true,
     });
     for (const r of r2.annotations ?? []) expect(r.state, r.annotationId).toBe('ok');
-    const again = await engine.exportPart(partB, 'step', { pmi: { presentation: false } });
+    const again = await eng.exportPart(partB, 'step', { pmi: {} });
     if (!again.ok) throw new Error(again.error.message);
-    const second = facade.written[facade.written.length - 1] as Written;
+    const second = rec.written[rec.written.length - 1] as Written;
     expect(again.pmi?.skipped).toEqual([]);
 
     // Same faces: compare targets by the geometry they name in each export.
@@ -654,8 +685,8 @@ describe.skipIf(!built)(`STEP AP242 PMI export of the M4 bracket${skipNote}`, ()
       t.kind === 'face'
         ? centroidKey(w.fingerprints[t.body]?.faces[t.index - 1]?.centroid as Vec3)
         : `${t.kind}${t.index}`;
-    const norm = (w: Written) =>
-      w.items.map((i) => {
+    const norm = (w: Written, items: PmiExportItem[]) =>
+      items.map((i) => {
         const { presentation: _p, ...rest } = i;
         const r = { ...rest, targets: i.targets.map((t) => where(w, t)) } as Record<
           string,
@@ -671,26 +702,36 @@ describe.skipIf(!built)(`STEP AP242 PMI export of the M4 bracket${skipNote}`, ()
         }
         return r;
       });
-    expect(norm(second)).toEqual(norm(first));
-    await engine.closePart(partB);
+    expect(norm(second, second.items)).toEqual(norm(first, kept));
+    await eng.closePart(partB);
+  }
+
+  it('round trip (simulated façade): items → STEP → import → annotations → items is lossless', async () => {
+    await roundTrip(engine, facade, facade.written[0] as Written, 'SIM');
   });
 
-  // FACADE-PMI-PENDING: the end-to-end round trip through the real façade (STEPCAFControl_Writer
-  // and Reader). Unskip once `exportStepPmi` is in the kernel build (pmi-facade.ts).
-  it.skip('FACADE-PMI-PENDING: Wasm round trip through exportStepPmi and STEPCAFControl_Reader', async () => {
-    const api = createKernelApi({ variants, canUseThreads: () => false });
-    await api.init({ variant: 'single' });
-    const real = new RegenEngine({
-      kernel: api,
-      sketchSolver: () => createSketchSolverCore(),
-      reprojectLinked: reprojectLinkedSketch,
-      pmiFont: async () => TTF,
-    });
-    await real.regenerate({ doc, partId, quality: 'coarse', annotations: true });
-    const r = await real.exportPart(partId, 'step', { pmi: {} });
-    expect(r.ok).toBe(true);
-    if (!r.ok) return;
-    const read = await real.importFile(r.bytes, 'step');
-    expect(read.ok && read.pmi?.items.length).toBe(r.pmi?.exported);
-  });
+  // The end-to-end round trip through the real façade (STEPCAFControl_Writer and Reader). Runs
+  // when the kernel build has `exportStepPmi` (CI's Wasm since the M5a façade; a local dist from
+  // before it skips, marker FACADE-PMI-PENDING).
+  it.skipIf(!facadeReady)(
+    `Wasm round trip through exportStepPmi and STEPCAFControl_Reader${facadeReady ? '' : ' — SKIPPED: FACADE-PMI-PENDING (kernel dist without exportStepPmi)'}`,
+    async () => {
+      const real = fakeFacade(kernel, 'real');
+      const eng = new RegenEngine({
+        kernel: { ...kernel, ...real.api } as unknown as KernelWorkerApi,
+        sketchSolver: () => createSketchSolverCore(),
+        reprojectLinked: reprojectLinkedSketch,
+        pmiFont: async () => TTF,
+      });
+      await eng.regenerate({ doc, partId, quality: 'coarse', annotations: true });
+      const r = await eng.exportPart(partId, 'step', { pmi: {} });
+      if (!r.ok) throw new Error(r.error.message);
+      const first = real.written[0] as Written;
+      expect(r.pmi?.exported).toBe(first.items.length);
+      // Datum C is referenced by no frame: OCCT 8.0.1 does not read it back (ADR-100 amendment).
+      await roundTrip(eng, real, first, 'WASM', new Set([NEW(103)]));
+      await eng.closePart(partId);
+    },
+    120_000,
+  );
 });

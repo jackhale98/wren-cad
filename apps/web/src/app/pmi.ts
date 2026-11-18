@@ -65,12 +65,17 @@ export function exportReportUi(
   report: PmiExportReport,
   notes: readonly { annotationId: Id; note: string }[] = [],
   values: ReadonlyMap<Id, number> = new Map(),
+  /** False: written without presentation PMI, so annotation ids do not travel (ADR-100 amendment). */
+  presentation = true,
 ): PmiReportUi {
   const byId = new Map(annotations.map((a) => [a.id, a]));
   const label = (id: Id) => annotationLabel(byId.get(id), id, values.get(id));
   const parts = [
     report.skipped.length > 0 ? `${report.skipped.length} not included` : null,
     notes.length > 0 ? `${plural(notes.length, 'note')}` : null,
+    presentation
+      ? null
+      : 'Without presentation: viewers show no annotations, and re-importing makes new annotations (ids are kept only with presentation)',
   ].filter((x): x is string => x !== null);
   return {
     id: ++seq,

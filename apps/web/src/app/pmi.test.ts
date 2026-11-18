@@ -73,6 +73,9 @@ describe('report labels', () => {
         { label: 'Diameter dimension Ø6', reason: 'Written without a tolerance', tone: 'note' },
       ],
     });
+    expect(
+      exportReportUi([dia], { exported: 1, skipped: [] }, [], new Map(), false).summary,
+    ).toMatch(/Without presentation.*ids are kept only with presentation/);
     expect(exportReportUi([], { exported: 0, skipped: [] }).title).toBe(
       'No annotations were exported as PMI',
     );

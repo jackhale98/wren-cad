@@ -412,7 +412,7 @@ export function createRegenLoop(options: RegenLoopOptions): RegenLoop {
 export interface Modeling {
   readonly port: ModelingPort;
   refFor(partId: Id, query: EntityQuery): Promise<EntityRef | null>;
-  /** With `options.pmi`: the PMI report too, and `pmiNotes` from the kernel worker (M5a). */
+  /** With `options.pmi`: the PMI report too (M5a). */
   exportPart(partId: Id, format: ExportFormat, options?: ExportOptions): Promise<ExportResult>;
   closePart(partId: Id): Promise<void>;
   /** Exact measurement on the latest regen (M2). */
@@ -443,8 +443,7 @@ export function createModeling(port: ModelingPort): Modeling {
     },
     async exportPart(partId, format, options) {
       try {
-        // The worker's result carries `pmiNotes` beside the contract's fields (proposed).
-        return (await port.exportPart(partId, format, options)) as ExportResult;
+        return await port.exportPart(partId, format, options);
       } catch (err) {
         return { ok: false, error: asKernelError(err) };
       }

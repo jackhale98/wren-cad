@@ -12,8 +12,6 @@
 import type {
   AnchorAnswer,
   AnchorQuery,
-  ExportFormat,
-  ExportOptions,
   Id,
   MeshQuality,
   ModelingApi,
@@ -32,7 +30,6 @@ import {
 import { meshListTransferables, regenTransferables } from './regen/buffers';
 import type { CompareOutput } from './regen/compare';
 import {
-  type ExportResult,
   RegenEngine,
   type RegenEngineOptions,
   type RegenOutput,
@@ -47,11 +44,9 @@ import type { ImportedPmi } from './regen/pmi';
  * of it — `regenerate` resolves to `RegenOutput`, which adds per-feature `warnings` and `ghosts`,
  * proposed for the contract) plus the low-level `KernelLowLevelApi` calls.
  */
-export type ModelingWorkerApi = Omit<ModelingApi, 'regenerate' | 'compare' | 'exportPart'> &
+export type ModelingWorkerApi = Omit<ModelingApi, 'regenerate' | 'compare'> &
   KernelLowLevelApi & {
     regenerate(request: RegenRequest): Promise<RegenOutput>;
-    /** The contract's `exportPart` plus `pmiNotes` with PMI (proposed for the contract). */
-    exportPart(partId: Id, format: ExportFormat, options?: ExportOptions): Promise<ExportResult>;
     /**
      * M5a (ADR-100, proposed for the contract): the PMI of a STEP import feature in the latest
      * regen of `slot` (default `'main'`), its targets mapped to the feature's face and edge names,

@@ -8,7 +8,6 @@ import type {
   BodyResult,
   FeatureStatus,
   Fingerprint,
-  Id,
   KernelError,
   MergedRef,
   MeshBuffers,
@@ -131,18 +130,9 @@ export type ImportResult =
     }
   | { ok: false; error: KernelError };
 
-/**
- * `exportPart`'s result. M5a: with `ExportOptions.pmi`, the export report, and `pmiNotes`
- * (proposed for the contract): exported items with something only the presentation carries, or
- * with semantic PMI only.
- */
+/** `exportPart`'s result; with `ExportOptions.pmi`, the PMI report (notes included). */
 export type ExportResult =
-  | {
-      ok: true;
-      bytes: Uint8Array;
-      pmi?: PmiExportReport;
-      pmiNotes?: { annotationId: Id; note: string }[];
-    }
+  | { ok: true; bytes: Uint8Array; pmi?: PmiExportReport }
   | { ok: false; error: KernelError };
 
 // Memory guard types live in the contracts (H1); re-exported here for existing importers.

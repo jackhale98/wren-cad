@@ -51,7 +51,9 @@ import { transfer } from 'comlink';
 import {
   callExportStepPmi,
   canExportPmi,
+  exportReportOf,
   importedPmiOf,
+  type KernelPmiExportReport,
   PMI_FACADE,
   type RawImportWithPmi,
 } from './pmi-facade';
@@ -158,7 +160,7 @@ export interface KernelLowLevelApi extends Partial<ProjectionApi> {
     shapes: ExportShape[],
     items: PmiExportItem[],
     options: ExportOptions,
-  ): Promise<Result<ExportedFile[]>>;
+  ): Promise<Result<{ files: ExportedFile[]; report: KernelPmiExportReport }>>;
   /**
    * E2E only, until the façade has `exportStepPmi`: `geometryOnly` makes `exportStepPmi` write
    * the shapes as AP242 without the items, so the app's PMI export path (planning, presentation,
@@ -390,12 +392,16 @@ export function createKernelApi(
     k: WhittleKernelModule,
     operation: string,
     write: () => string,
+    /** Checks the rest of the written value first (the PMI report); an error writes nothing. */
+    check?: (value: RawExportResult) => KernelError | null,
   ): Result<ExportedFile[]> {
     let paths: string[] = [];
     try {
       const written = parseResult<RawExportResult>(write(), operation);
       if (!written.ok) return written;
       paths = written.value.files.map((f) => f.path);
+      const bad = check?.(written.value);
+      if (bad) return fail(bad);
       // MEMFS → JS once; the bytes are then transferred to the caller.
       const files = written.value.files.map((f) => ({
         name: f.name,
@@ -708,15 +714,25 @@ export function createKernelApi(
       shapes: ExportShape[],
       items: PmiExportItem[],
       options: ExportOptions,
-    ): Promise<Result<ExportedFile[]>> {
+    ): Promise<Result<{ files: ExportedFile[]; report: KernelPmiExportReport }>> {
       if (kernel === null) return notReady();
       const k = kernel;
       if (!canExportPmi(k)) {
-        // E2E only (`debugPmiFacade`): the geometry as AP242, the items not written.
+        // E2E only (`debugPmiFacade`), for kernel builds before the façade: the geometry as
+        // AP242, the items reported as written though they are not.
         if (pmiFacadeFake) {
-          return writeFiles(k, 'exportStepPmi', () =>
+          const w = writeFiles(k, 'exportStepPmi', () =>
             k.exportShapes(JSON.stringify(shapes), 'step', JSON.stringify({ stepSchema: 'AP242' })),
           );
+          return w.ok
+            ? {
+                ok: true,
+                value: {
+                  files: w.value,
+                  report: { exported: items.length, skipped: [], notes: [] },
+                },
+              }
+            : w;
         }
         return fail(
           error(
@@ -727,11 +743,23 @@ export function createKernelApi(
           ),
         );
       }
-      return writeFiles(
+      let report: KernelPmiExportReport | undefined;
+      const w = writeFiles(
         k,
         'exportStepPmi',
         () => callExportStepPmi(k, shapes, items, options) as string,
+        (value) => {
+          const r = exportReportOf(value);
+          if (!r.ok) return r.error;
+          report = r.value;
+          return null;
+        },
       );
+      if (!w.ok) return w;
+      return {
+        ok: true,
+        value: { files: w.value, report: report ?? { exported: 0, skipped: [], notes: [] } },
+      };
     },
 
     async debugPmiFacade(mode: 'off' | 'geometryOnly'): Promise<void> {

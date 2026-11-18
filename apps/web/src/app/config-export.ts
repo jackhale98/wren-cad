@@ -171,7 +171,7 @@ export async function exportAll(wb: Workbench, request: ExportRequest): Promise<
               pmiReports.push({
                 name: nameOf(f.configurationId),
                 report: r.pmi,
-                notes: r.pmiNotes ?? [],
+                notes: r.pmi.notes ?? [],
               });
             }
           } else {
@@ -212,7 +212,13 @@ export async function exportAll(wb: Workbench, request: ExportRequest): Promise<
     const pmi = await import('./pmi');
     const ui = pmiReports.map((p) => ({
       name: p.name,
-      ui: pmi.exportReportUi(part.annotations ?? [], p.report, p.notes),
+      ui: pmi.exportReportUi(
+        part.annotations ?? [],
+        p.report,
+        p.notes,
+        new Map(),
+        request.options.pmi?.presentation !== false,
+      ),
     }));
     const exported = pmiReports.reduce((n, p) => n + p.report.exported, 0);
     wb.patchUi({

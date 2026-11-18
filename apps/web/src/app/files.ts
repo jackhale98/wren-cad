@@ -405,8 +405,9 @@ export async function exportDoc(wb: Workbench, request: ExportRequest): Promise<
         pmiReport: pmi.exportReportUi(
           part.annotations ?? [],
           r.pmi,
-          r.pmiNotes ?? [],
+          r.pmi.notes ?? [],
           pmi.resolutionValues(view?.result),
+          request.options.pmi?.presentation !== false,
         ),
       });
     }

@@ -329,14 +329,20 @@ export class RegenEngine {
           stepSchema: 'AP242',
         });
         if (!w.ok) return w;
-        const file = w.value[0];
+        const file = w.value.files[0];
         if (!file)
           return { ok: false, error: kerr('OPERATION_FAILED', 'Writing the STEP file failed') };
+        // One report: what the worker left out, then what the façade left out or noted.
+        const k = w.value.report;
+        const notes = [...plan.value.notes, ...k.notes];
         return {
           ok: true,
           bytes: file.bytes,
-          pmi: plan.value.report,
-          ...(plan.value.notes.length > 0 ? { pmiNotes: plan.value.notes } : {}),
+          pmi: {
+            exported: k.exported,
+            skipped: [...plan.value.report.skipped, ...k.skipped],
+            ...(notes.length > 0 ? { notes } : {}),
+          },
         };
       }
       if (format === 'step') opts.stepSchema = options.stepSchema ?? 'AP214';
