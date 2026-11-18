@@ -53,6 +53,14 @@ test('sketch a rectangle, dimension it, extrude by width/2, edit history, reload
   ] as const) {
     await clickAt(page, x, y);
   }
+  // Wait for the closing line itself: the open three-line chain already has DOF 2, so a DOF poll
+  // alone can pass before the last click is committed (CI lost that race).
+  await expect
+    .poll(async () => {
+      const f = (await a.doc()).parts[0]?.features[0];
+      return f?.type === 'sketch' ? f.entities.filter((e) => e.kind === 'line').length : 0;
+    })
+    .toBe(4);
   await expect.poll(async () => (await a.sketch())?.dof).toBe(2);
   const sketch = (await a.doc()).parts[0]?.features[0];
   expect(sketch?.type).toBe('sketch');
