@@ -698,7 +698,56 @@ struct PmiImportContext {
   std::vector<std::unique_ptr<Topo>> topo;
   std::vector<std::string> items;   // PmiImportItem JSON
   std::vector<std::string> issues;  // {name?, reason} JSON
+  // Radians per plane-angle unit of the file. OCCT 8.0.1 converts angular nominal values and
+  // limits to degrees but leaves plus/minus deviations in the file's unit (their
+  // measure_with_unit is not a plane_angle_measure_with_unit, and the unit context it builds for
+  // them has a zero length factor), so the import converts them itself.
+  double angleUnitRad = 1.0;
+  bool angleUnitKnown = false;
 };
+
+// The file's plane-angle unit: a conversion-based one (degree, grad) when the file declares one,
+// else the SI radian (with its prefix). False when conversion-based units disagree.
+bool stepPlaneAngleUnit(STEPCAFControl_Reader& reader, double& radPerUnit) {
+  const occ::handle<Interface_InterfaceModel> model = reader.ChangeReader().Model();
+  if (model.IsNull()) return false;
+  bool haveConversion = false;
+  bool haveSi = false;
+  double conversion = 0.0;
+  double si = 0.0;
+  for (int i = 1; i <= model->NbEntities(); ++i) {
+    const occ::handle<Standard_Transient> entity = model->Value(i);
+    if (entity.IsNull()) continue;
+    const bool isConversion =
+        entity->IsKind(STANDARD_TYPE(StepBasic_ConversionBasedUnitAndPlaneAngleUnit));
+    const bool isSi = entity->IsKind(STANDARD_TYPE(StepBasic_SiUnitAndPlaneAngleUnit));
+    if (!isConversion && !isSi) continue;
+    STEPConstruct_UnitContext units;
+    if (units.ComputeFactors(occ::down_cast<StepBasic_NamedUnit>(entity)) != 0 ||
+        !units.PlaneAngleDone()) {
+      continue;
+    }
+    const double factor = units.PlaneAngleFactor();
+    if (!(factor > 0)) continue;
+    if (isConversion) {
+      if (haveConversion && std::fabs(conversion - factor) > 1e-12 * factor) return false;
+      conversion = factor;
+      haveConversion = true;
+    } else if (!haveSi) {
+      si = factor;
+      haveSi = true;
+    }
+  }
+  if (haveConversion) {
+    radPerUnit = conversion;
+    return true;
+  }
+  if (haveSi) {
+    radPerUnit = si;
+    return true;
+  }
+  return false;
+}
 
 void pmiIssue(PmiImportContext& ctx, const std::string& name, const std::string& reason) {
   std::string json = "{";
@@ -1010,9 +1059,18 @@ void importPmiDimension(PmiImportContext& ctx, const TDF_Label& label) {
     tolerance = ",\"tolerance\":{\"kind\":\"deviation\",\"upper\":" + jsonNumber(hi - value) +
                 ",\"lower\":" + jsonNumber(lo - value) + "}";
   } else if (object->IsDimWithPlusMinusTolerance()) {
+    // Deviations stay in the file's unit for angles (see PmiImportContext::angleUnitRad).
+    double deviationScale = 1.0;
+    if (angular) {
+      if (ctx.angleUnitKnown) {
+        deviationScale = ctx.angleUnitRad;
+      } else {
+        pmiIssue(ctx, name, "the file's angle unit is unclear; angular deviations read as radians");
+      }
+    }
     tolerance = ",\"tolerance\":{\"kind\":\"deviation\",\"upper\":" +
-                jsonNumber(object->GetUpperTolValue() * scale) +
-                ",\"lower\":" + jsonNumber(-object->GetLowerTolValue() * scale) + "}";
+                jsonNumber(object->GetUpperTolValue() * deviationScale) +
+                ",\"lower\":" + jsonNumber(-object->GetLowerTolValue() * deviationScale) + "}";
   }
   bool hole = false;
   XCAFDimTolObjects_DimensionFormVariance variance = XCAFDimTolObjects_DimensionFormVariance_None;
@@ -1285,6 +1343,7 @@ std::string stepPmiJson(STEPCAFControl_Reader& reader, const occ::handle<TDocStd
   std::set<std::string> datums;
   try {
     const occ::handle<XCAFDoc_DimTolTool> dimTol = XCAFDoc_DocumentTool::DimTolTool(doc->Main());
+    ctx.angleUnitKnown = stepPlaneAngleUnit(reader, ctx.angleUnitRad);
     importPmiDatums(ctx, dimTol, datums);
     NCollection_Sequence<TDF_Label> labels;
     dimTol->GetDimensionLabels(labels);

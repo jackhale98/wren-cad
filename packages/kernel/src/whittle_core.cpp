@@ -130,7 +130,11 @@
 // M5 STEP AP242 PMI (whittle_pmi.cpp)
 #include <Interface_InterfaceModel.hxx>
 #include <NCollection_HArray1.hxx>
+#include <STEPConstruct_UnitContext.hxx>
 #include <STEPControl_Reader.hxx>
+#include <StepBasic_ConversionBasedUnitAndPlaneAngleUnit.hxx>
+#include <StepBasic_NamedUnit.hxx>
+#include <StepBasic_SiUnitAndPlaneAngleUnit.hxx>
 #include <StepDimTol_Datum.hxx>
 #include <StepDimTol_GeometricTolerance.hxx>
 #include <StepShape_DimensionalLocation.hxx>
