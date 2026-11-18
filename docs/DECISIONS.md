@@ -3371,6 +3371,47 @@ Follow-up round on the drawing workstream, after the lead accepted proposals 1 a
   - `ensureExact` now also requires the build's drawing to be the document's.
   - `resume()` rebuilds held-back work at the quality it was asked for, so a refinement to exact edges does not fall back to the draft because a press came in meanwhile.
 
+### ADR-094 amendment: datums and frames as drawn and moved (owner report, 2026-11-18)
+
+Owner: "the datums are not moved correctly or correctly shown with leaders to surfaces or features of size". The bug was reproduced in the built app on the demo bracket: top and front views, mouse and touch, with screenshots before and after.
+
+**Defects found.**
+1. A datum on a surface turned its triangle to the side the leader left on, so dragging the letter box onto the part drew the triangle inside the material (golden "turns to whichever side").
+2. Leaders left the triangle or arrow at whatever angle the box was at. A datum's first leg was slanted off the surface's normal or off the dimension line. A frame's arrow lay almost along the surface: dragged into the part, it pointed along the face line.
+3. A datum on a radial diameter took the end nearer the pick. The pick is the value, so the datum took the end where the dimension's leader runs out to its text: the triangle sat on that leader and the letter box covered "Ø6". A linear dimension with its text pushed past an extension line had the same fault.
+4. While a selected leader's text was dragged, its handles stayed where they were (the overlay was not hidden or redrawn). Handle previews also looked different from the overlay's handles.
+5. The inspector's "End of the dimension line" switched the end without mirroring the text, so the leader crossed the whole dimension. "Triangle along the line" was still clamped to [0, 1] after the extension landed.
+6. Every release rebuilt at draft quality: arcs became polylines and centre marks disappeared until the exact edges came back, about a second later.
+
+Nothing was wrong with the following: one undo step per drag, Escape, the attach point staying on its line (including the extension), and the preview matching the commit up to that layout. A frame bound to a size (under its text) was already correct.
+
+**Rules** (packages/drawing, `leader-forms.ts`, `layoutPlacement`'s leaders):
+- **Triangle side.** On a plane seen edge-on, the triangle's axis is the face's outward normal as seen in the view (`outwardOffset`), whatever side the box is on. This follows ISO 5459 §5 and ASME Y14.5 §6.3: the base is on the outline or its extension, and the triangle is outside the material. On another line (an edge, an axis), it is still the leader's side. In line with a dimension line, it points out of that end.
+- **Square first leg.** `leaderCorners(from, axis, toward, stub)` gives the leader's corners:
+  - no corner when the box (or the first user bend) is on the axis;
+  - one corner when it is off the axis ahead: out to its level, then across;
+  - two corners when it is behind or closer than `stub`: out a stub, across, back.
+  - The stub is one text height for datums and max(h, 2 arrow lengths) for frames.
+  - This applies to datums on a line (both forms) and to frames on a plane seen edge-on. ISO 1101 takes the zone's width from the arrow's direction, so the arrow meets the surface square.
+  - Corners are not stored. They follow from the layout, so a moved box never leaves a stale corner. User bends are kept after them.
+  - `LeaderGeometry` gained `axis`, `path` (the leader as drawn) and `layout`. "Add a bend" sits on the last leg as drawn.
+- **Free end.** `dimensionTextEnd(line, textBox)` is the end its text's centre lies beyond; `freeDimensionLineEnd` avoids it. Several places use it:
+  - The datum tool picks the free end.
+  - The attach drag refuses the taken end (no edit).
+  - The inspector's end switch refuses it with a toast. Otherwise it mirrors the text like a drag does (`flipDimensionLineEnd`, shared with the drag).
+  - The layout draws a datum *stored* at the taken end at the free one, mirrored, and reports that layout as `leader.layout`. Drags, arrow keys and the inspector start from it (`drawnLeaderLayout`), so the next edit stores what is on the sheet. Existing drawings are therefore corrected without a migration. Nothing topological is guessed: `t` is presentation.
+- **Snap.** A letter box or frame released within 6 px of its leader's axis (and with no bends) lands on it (`snapToAxis`), so the leader is straight rather than jogged by a fraction of a millimetre.
+
+**App** (apps/web): a text drag of a selected leader hides `overlay:leader:<id>` and draws the handles at their new places. Preview handles use the overlay's look (filled attach, dashed "add a bend"). The drawing kernel client answers a draft request with the cached exact projection of the same view when it has one. A placement-only edit then rebuilds with the same arcs and centre marks. The build is still marked draft, and the refinement that follows is a cache hit.
+
+**Not changed.** The R12 profile still writes the filled triangle as an outline (ADR-091). A datum on a linear dimension whose arrows are outside overlaps the outside arrowhead at that end. ISO 5459 allows the triangle to replace that arrow, but the dimension is laid out before the datum and does not know about it. This is a known limit.
+
+**Tests.**
+- Goldens (`leader-forms.test.ts`): the triangle out of the material with the box inside the part, replacing the old "turns to the leader's side" golden, which pinned defect 1; corners ahead, behind and after a user bend; a datum stored at a radial diameter's text end drawn at the free end with its layout reported and its box clear of the value; in line then a corner on a lane dimension; a frame's arrow square to the surface; and the helpers.
+- Web units: the taken end refused by the drag, the drawn layout, "add a bend" on the drawn last leg, and the inspector's end switch; the kernel client's exact-for-draft cache.
+- E2E (m4-drawings): every move of a surface datum, a datum on a width, a datum on a Ø6 and a frame on a surface, with the mouse. Each drag stores nothing until release and is one step with its label; the preview's shapes equal the committed ones (`drawnShapes`/`sameShapes`, 0.01 mm); Escape leaves nothing; undo and redo work.
+- E2E (m4-touch): the same for a finger, for the letter box and for the triangle onto the extension.
+
 ## ADR-095: M4.1 drawing pick gaps: construction refs, named section edges, extremes, torus radii (2026-11-12)
 
 **Context.** The M4 certification suite placed 78 of 94 specified dimensions; 16 are named gaps (`apps/web/e2e/support/reference-drawing-gaps.ts`, PLAN M4.1). The owner asked for all 16.

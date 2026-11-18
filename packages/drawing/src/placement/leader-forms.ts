@@ -3,9 +3,11 @@
  * drawing route's tools and drags, and the import planner.
  *
  * - On a surface: the datum triangle's base sits on the line the surface is seen as (or on an
- *   extension of it, `t` outside [0, 1]); a frame's leader ends there in an arrow.
+ *   extension of it, `t` outside [0, 1]), the triangle outside the material; a frame's leader ends
+ *   there in an arrow square to it. Either leader leaves along that axis (`leaderCorners`).
  * - On a feature of size: the datum triangle sits at an end of the size dimension's line, in line
- *   with it (`dimensionLine`, `t` 0 or 1); a frame sits with the dimension's text (`placement`).
+ *   with it (`dimensionLine`, `t` 0 or 1, never the end its text is beyond); a frame sits with the
+ *   dimension's text (`placement`).
  *
  * ISO 5459:2011 §5 and ASME Y14.5-2018 §6.3 both allow a filled or an open datum triangle; Wren
  * draws it filled for every standard it supports (`datumTriangleFilled`), the form both show
