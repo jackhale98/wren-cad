@@ -207,7 +207,8 @@ last resort is an empty string (the worker reports it as a malformed result).
 | `fingerprints(shape)`                      | `ShapeFingerprints` (TopExp order)                              |
 | `bounds(shape)`                            | `{bbox, faceCount, edgeCount, vertexCount}`, no integration     |
 | `exportShapes(shapes, format, options)`    | `{path, files:[{path,name}]}` in MEMFS (`step`, `stl`, `brep`)  |
-| `importFile(path, format)`                 | `{bodies:[{shape,name?}]}` (`step`, `iges`, `brep`, `stl`)      |
+| `exportStepPmi(shapes, pmiItems, options)` | M5: `{path, files, pmi: {exported, skipped, notes}}`, STEP AP242 with GD&T (below) |
+| `importFile(path, format)`                 | `{bodies:[{shape,name?}], pmi?}` (`step`, `iges`, `brep`, `stl`); `pmi` for STEP GD&T (M5) |
 | `measure(query)`                           | `Measurement` (M2; `{a, b?}`, see below)                        |
 | `subShapeGeometry(shape, kind, index)`     | M4: exact plane/cylinder/cone/sphere/torus, line/circle/ellipse or point of one sub-shape (`SubShapeGeometry`, whittle_kernel.h) |
 | `projectEdges(query)`                      | M3: `ProjectedEdge[]` (`{shape, edges, plane, exact?}`, below)  |
@@ -508,6 +509,87 @@ meshes a copy (`BRepBuilderAPI_Copy`), so export quality never changes the viewp
   conformal across shared edges. Import uses `RWStl::ReadFile` into one triangulation-only face.
 - **BREP**: `BRepTools::Write`/`Read` (exact).
 - **IGES** (M3, import only): see Features (M3).
+
+### STEP AP242 PMI (M5, ADR-100)
+
+Source: [`src/whittle_pmi.cpp`](src/whittle_pmi.cpp); TS side: [`src/pmi.ts`](src/pmi.ts)
+(`encodePmiExportItems`, `decodePmiExportReport`, `decodePmiImport`, `withAnnotationIds`).
+
+**Indices.** A `PmiTarget` is `{body, kind, index}`: `body` is 0-based (into the exported
+`shapes`, or into the returned `bodies`), `index` is 1-based in `TopExp::MapShapes` order (the
+`NamingEntry.index` + 1).
+
+**`exportStepPmi(shapesJson, pmiJson, optionsJson)`.** `shapesJson` as `exportShapes`;
+`pmiJson` is a contracts `PmiExportItem[]`; `optionsJson` an `ExportOptions` with `stepSchema`
+`AP242` or absent (anything else is `INVALID_INPUT`). `pmi.presentation: false` leaves the
+presentation (and the annotation planes) out; `pmi.annotations` filtering is the caller's.
+
+- The XCAF document holds the bodies (names, colours, mm), and each item becomes an
+  `XCAFDoc_DimTolTool` label on sub-shape labels (`XCAFDoc_ShapeTool::AddSubShape`; a located body
+  is a reference, so its sub-shapes go on the referred definition). Datums are added first, then
+  dimensions, then tolerances, whatever the input order.
+- **Dimensions** (`XCAFDimTolObjects_DimensionObject`): `linearDistance` (exactly two targets) →
+  `Location_LinearDistance`; `angular` → `Location_Angular` (two targets) or `Size_Angular`;
+  `linearDiameter` → `Size_Diameter`; `linearRadius` → `Size_Radius`; `size` → `Size_Thickness`;
+  `curveLength` → `Size_CurveLength`; `other` is skipped. Deviations: `SetUpperTolValue(upper)`,
+  `SetLowerTolValue(−lower)` (XCAF keeps the lower one as a magnitude). Fits: ISO 286 class
+  (`H7`, `js6`, …) → `SetClassOfTolerance(hole, variance, grade)`. XCAF holds one class per
+  dimension: given both a hole and a shaft class, the one of the target cylinder (concave = hole)
+  is written and `notes` says so.
+- **Tolerances** (`XCAFDimTolObjects_GeomToleranceObject`): the 15 contract types; `diameter` →
+  `TypeOfValue_Diameter`; `material` → `MatReqModif_M/L`. Each datum reference is its own datum
+  label (`SetDatumToGeomTol`) with its precedence (`SetPosition` 1–3) and `M`/`L` as
+  `DatumSingleModif_Maximum/LeastMaterialRequirement`. A reference to a datum that is not in the
+  same export skips the tolerance.
+- **Datums** (`XCAFDimTolObjects_DatumObject`): one per label; a second datum with the same label
+  is skipped.
+- **Presentation**: each polyline becomes one edge on a degree-1 B-spline in a compound, set with
+  `SetPresentation(shape, annotationId)` together with `SetPlane` and the text point (= plane
+  origin, where OCCT's writer puts the annotation plane origin). OCCT writes it as a
+  `tessellated_curve_set` (the poles, exactly) in a `draughting_callout` linked by
+  `draughting_model_item_association` "PMI representation to presentation link", plus an
+  `annotation_plane`. `XCAFDoc_DimTolTool::SetGDTPresentations` also exists in OCCT 8.0.1 but only swaps the shape
+  (it keeps the object's presentation name), so the façade sets it on the object directly.
+- **Identity**: OCCT writes the CAx-IF names for dimensions (`'linear distance'`, `'diameter'`) and
+  empty names for tolerances and datums. The annotation id is written as the
+  `draughting_callout` name (read back as the presentation name) and as the `shape_aspect` name of
+  dimensions and tolerances (from the GD&T label name `PMI <id>`; OCCT's reader ignores it).
+  Without presentation the ids do not survive OCCT's reader.
+- **Schema**: `DESTEP_Parameters::WriteSchema = WriteMode_StepSchema_AP242DIS` passed to
+  `STEPCAFControl_Writer::Transfer(doc, params, …)`; OCCT 8.0.1 writes AP242 GD&T
+  (`writeDGTsAP242`) only for that schema.
+- **Report**: `{exported, skipped:[{annotationId, reason}], notes:[{annotationId, note}]}`.
+  Everything is validated before a label is created, so a skipped item leaves nothing behind.
+  Reasons: unresolved target (body, kind or index out of range), unsupported kind or type,
+  missing datum, malformed value or presentation. If OCCT's writer throws with the GD&T in the
+  document, the file is written again with the geometry only and every item is reported skipped.
+  A missing `annotationId` or a non-array `pmiJson` is `INVALID_INPUT`.
+- Angles are radians in and out: OCCT's STEP context unit is the radian; its reader converts
+  angular values to degrees, which the import converts back.
+
+**Import** (`importFile(path, "step")`, `STEPCAFControl_Reader` with GDT mode on). When the file
+has GD&T, the value adds `pmi: {items, issues, counts}`:
+
+- `items`: contracts `PmiImportItem`s without `annotationId` (`KernelPmiImportItem`); `name` is the
+  presentation name (the annotation id for a Wren file) or a user-facing label name. Datums are
+  grouped by label (OCCT creates one datum label per tolerance reference). Presentation-only
+  annotations (`DimensionPresentation`, `CommonLabel`) become `presentationOnly` with polylines
+  (tessellated strips as written; curve presentations sampled).
+- Targets map exact sub-shapes of the returned bodies (same TShape and location), then by TShape
+  alone for instanced parts (first instance, with an issue). An item with any unmapped target is
+  not imported; it becomes an issue.
+- `issues`: whatever is not read, with what is known: unmapped targets, datum targets, modifiers
+  and qualifiers that the contract cannot hold, filled presentation areas, presentations without a
+  plane, deviations plus a class on one dimension, and, from a scan of the STEP model, semantic
+  entities that OCCT attached to no geometry and datums no readable tolerance references (OCCT
+  8.0.1 reads datums only through tolerances).
+- `counts`: faces, edges and vertices per returned body. `decodePmiImport(pmi, bodies.length)`
+  checks every target against them; an index past range is an `INTERNAL` error.
+- Known OCCT reader limits: it reads the lower deviation as a magnitude (`std::abs`), so a lower
+  deviation above the nominal comes back negated; spherical sizes and zones come back as plain
+  ones (with an issue).
+- Reading PMI never fails an import: an OCCT exception while reading becomes an issue and the
+  bodies are returned.
 
 ## Licensing
 
