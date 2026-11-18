@@ -99,6 +99,29 @@ StepDocument buildStepDocument(const std::vector<ExportItem>& items) {
   return out;
 }
 
+// OCCT 8.0.1 bug: STEPCAFControl_GDTProperty::GetLimitsAndFits writes the ISO 286 grade as
+// `(int)XCAFDimTolObjects_DimensionGrade + 1`, i.e. IT7 (enum 8) as "9", while its reader maps a
+// grade "n" back to ITn (enum n + 1). Every limits_and_fits in a model written by OCCT therefore
+// carries n + 2; this puts the ISO number back ("01" is written correctly). Version-guarded so a
+// fixed OCCT is not corrected twice.
+void fixWrittenFitGrades(const occ::handle<StepData_StepModel>& model) {
+#if OCC_VERSION_HEX <= 0x080001
+  if (model.IsNull()) return;
+  for (int i = 1; i <= model->NbEntities(); ++i) {
+    const occ::handle<StepShape_LimitsAndFits> fit =
+        occ::down_cast<StepShape_LimitsAndFits>(model->Value(i));
+    if (fit.IsNull()) continue;
+    const occ::handle<TCollection_HAsciiString> grade = fit->Grade();
+    if (grade.IsNull() || grade->String().IsEqual("01") || !grade->IsIntegerValue()) continue;
+    const int written = grade->IntegerValue();
+    if (written < 2) continue;
+    fit->SetGrade(new TCollection_HAsciiString(written - 2));
+  }
+#else
+  (void)model;
+#endif
+}
+
 // Transfers the document (GD&T included: the writer's DimTol mode is on by default and acts on
 // AP242 only) and writes it to a fresh MEMFS path.
 std::string writeStepDocument(const occ::handle<TDocStd_Document>& doc,
@@ -110,6 +133,7 @@ std::string writeStepDocument(const occ::handle<TDocStd_Document>& doc,
   if (!writer.Transfer(doc, params, STEPControl_AsIs)) {
     raiseError("OPERATION_FAILED", "The bodies could not be converted to STEP");
   }
+  fixWrittenFitGrades(writer.ChangeWriter().Model());
   const std::string path = nextMemfsPath("export", "step");
   if (writer.Write(path.c_str()) != IFSelect_RetDone) {
     raiseError("OPERATION_FAILED", "Writing the STEP file failed");

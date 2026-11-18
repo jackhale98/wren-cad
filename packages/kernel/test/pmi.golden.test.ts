@@ -298,7 +298,8 @@ for (const { variant } of VARIANTS) {
       expect(text).toMatch(/DIMENSIONAL_SIZE\(#\d+,'diameter'\)/);
       expect(text).toMatch(/POSITION_TOLERANCE/);
       expect(text).toMatch(/DATUM_FEATURE/);
-      expect(text).toMatch(/LIMITS_AND_FITS/);
+      // ISO grade 7 as such (OCCT 8.0.1 alone would write '9', see fixWrittenFitGrades).
+      expect(text).toMatch(/LIMITS_AND_FITS\('H','hole','7',''\)/);
       expect(text).toMatch(/PLUS_MINUS_TOLERANCE/);
       expect(text).toMatch(/TESSELLATED_CURVE_SET/);
       expect(text).toMatch(/ANNOTATION_PLANE/);
@@ -378,7 +379,7 @@ for (const { variant } of VARIANTS) {
       expectSamePresentation(pos?.presentation, sc.prs.position);
     });
 
-    it('angular values travel in radians; presentation can be left out', () => {
+    it('angles in radians, shaft and hole+shaft fits, presentation left out', () => {
       const ss = session();
       const sc = scenario(ss);
       const top = faceWhere(
@@ -403,17 +404,49 @@ for (const { variant } of VARIANTS) {
           value: 0.05,
           presentation: sc.prs.position,
         },
+        {
+          annotationId: '01JANNSHAFT00000000000PMIC',
+          kind: 'dimension',
+          type: 'linearDiameter',
+          targets: [sc.bore],
+          value: 10,
+          tolerance: { kind: 'fit', shaft: 'js6' },
+        },
+        {
+          annotationId: '01JANNBOTH000000000000PMID',
+          kind: 'dimension',
+          type: 'linearDiameter',
+          targets: [sc.bore],
+          value: 10,
+          tolerance: { kind: 'fit', hole: 'H8', shaft: 'f7' },
+        },
       ];
       const { result, text } = exportPmi([{ shape: sc.body.shape, name: 'Plate' }], items, {
         stepSchema: 'AP242',
         pmi: { presentation: false },
       });
       const report = decodePmiExportReport(result.pmi);
-      expect(report.ok && report.value.exported).toBe(2);
+      expect(report.ok && report.value.exported).toBe(4);
+      // STEP holds one class per dimension: the bore is a hole, so H8 is kept and that is noted.
+      expect(report.ok && report.value.notes).toEqual([
+        {
+          annotationId: '01JANNBOTH000000000000PMID',
+          note: 'STEP holds one class of tolerance per dimension: wrote H8, not f7',
+        },
+      ]);
       expect(text).not.toMatch(/TESSELLATED_CURVE_SET/);
       expect(text).toMatch(/FLATNESS_TOLERANCE/);
+      expect(text).toMatch(/LIMITS_AND_FITS\('js','shaft','6',''\)/);
+      expect(text).toMatch(/LIMITS_AND_FITS\('H','hole','8',''\)/);
       const pmi = decodeImport(importStep(new TextEncoder().encode(text)));
-      const angle = byKind(pmi.items, 'dimension')[0];
+      const fits = byKind(pmi.items, 'dimension')
+        .filter((d) => d.type === 'linearDiameter')
+        .map((d) => d.tolerance);
+      expect(fits).toEqual([
+        { kind: 'fit', shaft: 'js6' },
+        { kind: 'fit', hole: 'H8' },
+      ]);
+      const angle = byKind(pmi.items, 'dimension').find((d) => d.type === 'angular');
       expect(angle?.type).toBe('angular');
       expect(angle?.value).toBeCloseTo(Math.PI / 2, 9);
       if (angle?.tolerance?.kind === 'deviation') {

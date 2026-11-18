@@ -139,6 +139,8 @@
 #include <StepDimTol_GeometricTolerance.hxx>
 #include <StepShape_DimensionalLocation.hxx>
 #include <StepShape_DimensionalSize.hxx>
+#include <StepShape_LimitsAndFits.hxx>
+#include <StepData_StepModel.hxx>
 #include <TCollection_HAsciiString.hxx>
 #include <XCAFDimTolObjects_DatumObject.hxx>
 #include <XCAFDimTolObjects_DimensionObject.hxx>
