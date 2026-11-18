@@ -120,7 +120,15 @@ export interface PlacementInfo {
     on: [[number, number], [number, number]] | null;
     bends: [number, number][];
     text: [number, number];
+    /** The direction the first leg leaves along (across a surface, in line with a dimension). */
+    axis: [number, number] | null;
+    /** The leader as drawn, from the triangle's apex (or arrow tip) to the text point. */
+    path: [number, number][] | null;
+    /** The layout as drawn, when the layout moved it (a datum off a dimension's text end). */
+    layout: PlacementInfo['layout'] | null;
   } | null;
+  /** Its filled shapes (a datum triangle, arrowheads): each one's first loop, sheet mm. */
+  fills: [number, number][][];
   /** A dimension's line between its arrow tips. */
   line: [[number, number], [number, number]] | null;
   /** The kinds of display items drawn (a datum triangle or an arrowhead is a `fill`). */
@@ -298,4 +306,57 @@ export async function cornerEdges(page: Page, viewId: string) {
       if (shared && cross > 0.9 && l1 > 20 && l2 > 20) return [e, f] as const;
     }
   throw new Error('no two edges meet at a corner');
+}
+
+/** One drawn element: its tag, every number in its coordinates (sheet mm), and its text. */
+export interface DrawnShape {
+  tag: string;
+  nums: number[];
+  text: string;
+}
+
+/**
+ * What is drawn under `selector` (sheet mm), element by element, in a stable order: a drag's
+ * preview (`[data-transient="model"]`) is compared with what its release committed
+ * (`[data-sheet-model] [data-source="placement:<id>"]`) by `sameShapes`.
+ */
+export function drawnShapes(page: Page, selector: string): Promise<DrawnShape[]> {
+  return page.evaluate((sel) => {
+    const keys = ['x1', 'y1', 'x2', 'y2', 'points', 'd', 'cx', 'cy', 'r', 'x', 'y', 'transform'];
+    const out: { tag: string; nums: number[]; text: string; key: string }[] = [];
+    for (const root of document.querySelectorAll(sel))
+      for (const el of root.querySelectorAll('*')) {
+        if (el.tagName === 'g') continue;
+        const nums = keys.flatMap(
+          (k) => (el.getAttribute(k) ?? '').match(/-?\d+(\.\d+)?(e-?\d+)?/g)?.map(Number) ?? [],
+        );
+        const text = el.tagName === 'text' ? (el.textContent ?? '') : '';
+        out.push({
+          tag: el.tagName,
+          nums,
+          text,
+          key: `${el.tagName} ${text} ${nums.map((x) => Math.round(x)).join(',')}`,
+        });
+      }
+    return out
+      .sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0))
+      .map(({ tag, nums, text }) => ({ tag, nums, text }));
+  }, selector);
+}
+
+/** Whether two drawings are the same shapes (in any order), within `tol` sheet mm. */
+export function sameShapes(a: DrawnShape[], b: DrawnShape[], tol = 0.01): boolean {
+  if (a.length !== b.length) return false;
+  const used = new Set<number>();
+  const same = (s: DrawnShape, t: DrawnShape) =>
+    s.tag === t.tag &&
+    s.text === t.text &&
+    s.nums.length === t.nums.length &&
+    s.nums.every((x, k) => Math.abs(x - (t.nums[k] ?? Number.NaN)) <= tol);
+  return a.every((s) => {
+    const j = b.findIndex((t, k) => !used.has(k) && same(s, t));
+    if (j < 0) return false;
+    used.add(j);
+    return true;
+  });
 }

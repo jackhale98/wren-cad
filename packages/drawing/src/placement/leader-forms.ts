@@ -3,9 +3,11 @@
  * drawing route's tools and drags, and the import planner.
  *
  * - On a surface: the datum triangle's base sits on the line the surface is seen as (or on an
- *   extension of it, `t` outside [0, 1]); a frame's leader ends there in an arrow.
+ *   extension of it, `t` outside [0, 1]), the triangle outside the material; a frame's leader ends
+ *   there in an arrow square to it. Either leader leaves along that axis (`leaderCorners`).
  * - On a feature of size: the datum triangle sits at an end of the size dimension's line, in line
- *   with it (`dimensionLine`, `t` 0 or 1); a frame sits with the dimension's text (`placement`).
+ *   with it (`dimensionLine`, `t` 0 or 1, never the end its text is beyond); a frame sits with the
+ *   dimension's text (`placement`).
  *
  * ISO 5459:2011 §5 and ASME Y14.5-2018 §6.3 both allow a filled or an open datum triangle; Wren
  * draws it filled for every standard it supports (`datumTriangleFilled`), the form both show
@@ -61,6 +63,100 @@ export function storableAttachT(t: number): number {
 /** The end of a dimension line a feature-of-size datum snaps to: the nearer one. */
 export function dimensionLineEnd(t: number): 0 | 1 {
   return t < 0.5 ? 0 : 1;
+}
+
+/**
+ * The end of a dimension line that its own text sits beyond, or null: a radial diameter's text
+ * end (its line runs on out to the text there), or a linear dimension whose text was pushed past
+ * an extension line. A datum in line with the dimension line never goes there: its triangle would
+ * sit on the dimension's own leader and its letter box on the value (ADR-094 amendment,
+ * 2026-11-18).
+ */
+export function dimensionTextEnd(
+  line: readonly [Vec2, Vec2],
+  textBox: readonly Vec2[],
+): 0 | 1 | null {
+  if (textBox.length === 0) return null;
+  const c: Vec2 = [
+    textBox.reduce((s, p) => s + p[0], 0) / textBox.length,
+    textBox.reduce((s, p) => s + p[1], 0) / textBox.length,
+  ];
+  const t = lineParameter(line, c);
+  return t > 1 ? 1 : t < 0 ? 0 : null;
+}
+
+/**
+ * The end of a dimension line a datum goes to when `wanted` is asked for: that end, unless the
+ * dimension's text is beyond it (`dimensionTextEnd`), then the other one.
+ */
+export function freeDimensionLineEnd(
+  wanted: 0 | 1,
+  line: readonly [Vec2, Vec2],
+  textBox: readonly Vec2[],
+): 0 | 1 {
+  return dimensionTextEnd(line, textBox) === wanted ? ((1 - wanted) as 0 | 1) : wanted;
+}
+
+type LeaderLayout = Extract<AnnotationPlacement['layout'], { kind: 'leader' }>;
+
+const round3 = (x: number) => Math.round(x * 1000) / 1000;
+
+/**
+ * A leader on a dimension line moved to its other end: the text offset and the bends are
+ * mirrored along the line, so the datum keeps pointing out of the dimension. Other attaches are
+ * returned as they are.
+ */
+export function flipDimensionLineEnd(
+  layout: LeaderLayout,
+  line: readonly [Vec2, Vec2],
+): LeaderLayout {
+  const a = layout.attach;
+  if (a.kind !== 'dimensionLine') return layout;
+  const d: Vec2 = [line[1][0] - line[0][0], line[1][1] - line[0][1]];
+  const l = Math.hypot(d[0], d[1]) || 1;
+  const u: Vec2 = [d[0] / l, d[1] / l];
+  const mirror = (q: Vec2): Vec2 => {
+    const k = dot2(q, u);
+    return [round3(q[0] - 2 * k * u[0]), round3(q[1] - 2 * k * u[1])];
+  };
+  const end = dimensionLineEnd(a.t) === 0 ? 1 : 0;
+  return {
+    ...layout,
+    attach: { ...a, t: end },
+    text: mirror(layout.text),
+    ...(layout.bends ? { bends: layout.bends.map(mirror) } : {}),
+  };
+}
+
+/**
+ * The corners a leader turns at so that its first leg leaves `from` along `axis` (unit), at least
+ * `stub` out: none when `toward` already lies on that axis; one when it is off the axis ahead
+ * (square off the axis to its level, then across); two when it is behind or too close (out a
+ * stub, across to it, then back). A datum's leader leaves its triangle across the surface (or in
+ * line with the dimension line), and a frame's arrow meets a surface square to it (ISO 5459,
+ * ISO 1101, ASME Y14.5): a box placed off that axis is reached through these corners, never by a
+ * slanted first leg.
+ */
+export function leaderCorners(from: Vec2, axis: Vec2, toward: Vec2, stub: number): Vec2[] {
+  const d: Vec2 = [toward[0] - from[0], toward[1] - from[1]];
+  const along = dot2(d, axis);
+  const side: Vec2 = [d[0] - axis[0] * along, d[1] - axis[1] * along];
+  const off = Math.hypot(side[0], side[1]) > 1e-6;
+  if (along >= stub - 1e-9)
+    return off ? [[from[0] + axis[0] * along, from[1] + axis[1] * along]] : [];
+  const out: Vec2 = [from[0] + axis[0] * stub, from[1] + axis[1] * stub];
+  return off ? [out, [out[0] + side[0], out[1] + side[1]]] : [out];
+}
+
+/**
+ * A text offset brought onto a leader's axis when it is within `snap` of it (sheet mm), so a
+ * letter box dragged near the in-line position lands exactly in line (no tiny jog in the leader).
+ */
+export function snapToAxis(text: Vec2, axis: Vec2, snap: number): Vec2 {
+  const k = dot2(text, axis);
+  const across: Vec2 = [text[0] - axis[0] * k, text[1] - axis[1] * k];
+  if (k <= 0 || Math.hypot(across[0], across[1]) > snap) return text;
+  return [round3(axis[0] * k), round3(axis[1] * k)];
 }
 
 /**

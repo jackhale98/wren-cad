@@ -64,7 +64,13 @@ export function drawingKernelOver(
   return {
     async project(shape, request) {
       const key = JSON.stringify(request);
-      const hit = cache.get(key);
+      // A draft asked for after the exact edges of the same view were made (an edit that moved
+      // an annotation, not the model) gets those: the sheet keeps its arcs and centre marks on
+      // release instead of dropping to polylines until the refinement lands.
+      const hit =
+        (request.quality === 'draft'
+          ? cache.get(JSON.stringify({ ...request, quality: 'exact' }))
+          : undefined) ?? cache.get(key);
       if (hit) return { ok: true, value: hit };
       const l = await load(shape);
       if (!l.ok) return l;

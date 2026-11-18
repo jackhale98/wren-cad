@@ -293,11 +293,15 @@ function layoutFields(
             ? num(
                 datum ? 'Triangle along the line (mm)' : 'Arrow along the line (mm)',
                 (at.t ?? 0.5) * L,
-                // On the line: a stored `t` is in [0, 1].
+                // Below 0 or past the line's length it is on the line's extension (ADR-094); the
+                // document stores ten line lengths out (`ATTACH_T_RANGE` in packages/drawing).
                 (mm) =>
                   set({
                     ...layout,
-                    attach: { ...at, t: Math.round(Math.max(0, Math.min(1, mm / L)) * 1e6) / 1e6 },
+                    attach: {
+                      ...at,
+                      t: Math.round(Math.max(-10, Math.min(11, mm / L)) * 1e6) / 1e6,
+                    },
                   }),
                 0.5,
               )

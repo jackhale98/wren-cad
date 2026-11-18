@@ -73,7 +73,15 @@ export interface DrawingHooks {
       on: [[number, number], [number, number]] | null;
       bends: [number, number][];
       text: [number, number];
+      /** The direction the first leg leaves along (across a surface, in line with a dimension). */
+      axis: [number, number] | null;
+      /** The leader as drawn, from the triangle's apex (or arrow tip) to the text point. */
+      path: [number, number][] | null;
+      /** The layout as drawn, when the layout moved it (a datum off a dimension's text end). */
+      layout: unknown;
     } | null;
+    /** Its filled shapes (a datum triangle, arrowheads): each one's first loop, sheet mm. */
+    fills: [number, number][][];
     /** A dimension's line between its arrow tips. */
     line: [[number, number], [number, number]] | null;
     /** The kinds of display items it drew (a datum triangle is a `fill`). */
@@ -280,8 +288,14 @@ export function installDrawingHooks(c: DrawingController): void {
                 on: placed.leader.on ?? null,
                 bends: placed.leader.bends,
                 text: placed.leader.text,
+                axis: placed.leader.axis ?? null,
+                path: placed.leader.path ?? null,
+                layout: placed.leader.layout ?? null,
               }
             : null,
+          fills: (placed?.items ?? []).flatMap((i) =>
+            i.kind === 'fill' && i.loops[0] ? [i.loops[0] as [number, number][]] : [],
+          ),
           line: placed?.line ?? null,
           items: (placed?.items ?? []).map((i) => i.kind),
           textPlacement: p.text ?? null,

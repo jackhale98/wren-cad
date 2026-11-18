@@ -10,10 +10,12 @@ import {
   cornerEdges,
   drag,
   drawing,
+  drawnShapes,
   type Edge,
   newDrawing,
   openDemo,
   panelTab,
+  sameShapes,
   sheetToPage,
   viewOf,
 } from './support/drawing-ui';
@@ -2592,6 +2594,255 @@ test.describe('datums and frames on surfaces and features of size (ADR-094)', ()
     const dimBox = (await drawing(page).placements()).find((p) => p.id === dp.id)?.box;
     expect(fp?.box?.max[1] ?? 0).toBeLessThan(dimBox?.min[1] ?? 0);
     await undoRedo(page, count(page, 'geometricTolerance'), 1);
+    await a11y(page);
+  });
+
+  const committed = (page: Page, id: string) =>
+    drawnShapes(page, `[data-sheet-model] [data-source="placement:${id}"]`);
+  const preview = (page: Page) => drawnShapes(page, '[data-transient="model"]');
+  type P2 = [number, number];
+  const pressDrag = async (page: Page, from: P2, to: P2) => {
+    const a = await sheetToPage(page, from);
+    const b = await sheetToPage(page, to);
+    await page.mouse.move(a.x, a.y);
+    await page.mouse.down();
+    for (let i = 1; i <= 10; i++)
+      await page.mouse.move(a.x + ((b.x - a.x) * i) / 10, a.y + ((b.y - a.y) * i) / 10);
+  };
+  /**
+   * A drag from `from` to `to` that is checked on the way: mid-drag nothing is stored and nothing
+   * is in history; the release is one step labelled `label`; and what the rebuilt sheet draws is
+   * exactly the preview drawn just before the release.
+   */
+  const checkedDrag = async (page: Page, id: string, from: P2, to: P2, label: string) => {
+    const stored = JSON.stringify(await placementOf(page, id));
+    const before = await historyLen(page);
+    await pressDrag(page, from, to);
+    await expect.poll(async () => (await preview(page)).length).toBeGreaterThan(0);
+    const shown = await preview(page);
+    expect(JSON.stringify(await placementOf(page, id))).toBe(stored);
+    expect(await historyLen(page)).toBe(before);
+    await page.mouse.up();
+    await expect.poll(() => historyLen(page)).toBe(before + 1);
+    expect(await lastLabel(page)).toBe(label);
+    await built(page);
+    await expect.poll(async () => sameShapes(await committed(page, id), shown)).toBe(true);
+    return stored;
+  };
+  /** Escape in the middle of a drag leaves the placement and history as they were. */
+  const escapeDrag = async (page: Page, id: string, from: P2, to: P2) => {
+    const stored = JSON.stringify(await placementOf(page, id));
+    const before = await historyLen(page);
+    await pressDrag(page, from, to);
+    await page.keyboard.press('Escape');
+    await page.mouse.up();
+    expect(JSON.stringify(await placementOf(page, id))).toBe(stored);
+    expect(await historyLen(page)).toBe(before);
+    await expect.poll(async () => (await preview(page)).length).toBe(0);
+  };
+  const placedOf = async (page: Page, id: string) => {
+    const p = (await drawing(page).placements()).find((x) => x.id === id);
+    if (!p?.leader || !p.box) throw new Error(`no leader ${id}`);
+    return p as typeof p & { leader: NonNullable<typeof p.leader>; box: NonNullable<typeof p.box> };
+  };
+  const centre = (box: { min: P2; max: P2 }): P2 => [
+    (box.min[0] + box.max[0]) / 2,
+    (box.min[1] + box.max[1]) / 2,
+  ];
+  const select = async (page: Page, id: string) => {
+    await page.locator('[data-tool="select"]').click();
+    await click(page, centre((await placedOf(page, id)).box));
+    await expect
+      .poll(async () => (await drawing(page).state()).selected)
+      .toMatchObject({ kind: 'placement', id });
+  };
+  const axisIs = (l: { axis: P2 | null }, want: P2) => {
+    expect(l.axis?.[0]).toBeCloseTo(want[0], 9);
+    expect(l.axis?.[1]).toBeCloseTo(want[1], 9);
+  };
+  /** The first leg of a leader leaves along its axis (square to a surface, in line with a dimension). */
+  const firstLegAlongAxis = (l: { axis: P2 | null; path: P2[] | null }) => {
+    const [p0, p1] = l.path ?? [];
+    if (!l.axis || !p0 || !p1) throw new Error('no held leader');
+    const d: P2 = [p1[0] - p0[0], p1[1] - p0[1]];
+    const len = Math.hypot(...d);
+    expect(len).toBeGreaterThan(1);
+    expect(Math.abs(d[0] * l.axis[1] - d[1] * l.axis[0]) / len).toBeLessThan(1e-6);
+    expect(d[0] * l.axis[0] + d[1] * l.axis[1]).toBeGreaterThan(0);
+  };
+
+  test('moving datums and frames (owner report, 2026-11-18): the triangle stays on its line and out of the material, leaders leave square, the preview is what is committed, one step each, Escape leaves nothing', async ({
+    page,
+  }) => {
+    const { left, right, hole } = await setup(page);
+    // A Ø6 on the hole first (the datums and frames below sit near it).
+    await page.locator('[data-tool="dimension"]').click();
+    await click(page, hole.at);
+    await click(page, hole.at);
+    await expect.poll(count(page, 'diameter')).toBe(1);
+
+    // 1. A datum on the left side face. Its letter box is dragged into the part: the triangle
+    // stays on the face's line, out of the material (the left face's outside is -x), and the
+    // leader leaves it square to the line.
+    await page.locator('[data-tool="datum"]').click();
+    await click(page, [left.a[0], left.a[1] + (left.b[1] - left.a[1]) * 0.3]);
+    await expect.poll(count(page, 'datumFeature')).toBe(1);
+    await built(page);
+    const aId = (await annotations(page)).find((x) => x.kind === 'datumFeature')?.id;
+    const datumA = (await drawing(page).placements()).find((p) => p.annotationId === aId);
+    if (!datumA) throw new Error('no surface datum');
+    const a0 = await placedOf(page, datumA.id);
+    await select(page, datumA.id);
+    const grab = centre(a0.box);
+    await checkedDrag(page, datumA.id, grab, [left.a[0] + 12, grab[1] - 12], 'Move annotation');
+    const a1 = await placedOf(page, datumA.id);
+    // The box is inside the part now...
+    expect(a1.box.min[0]).toBeGreaterThan(left.a[0]);
+    // ...and the triangle is still outside it, base on the line, apex to -x.
+    const tri = a1.fills[0] ?? [];
+    expect(tri).toHaveLength(3);
+    for (const q of tri) expect(q[0]).toBeLessThanOrEqual(left.a[0] + 1e-6);
+    expect(tri.filter((q) => Math.abs(q[0] - left.a[0]) < 1e-6)).toHaveLength(2);
+    axisIs(a1.leader, [-1, 0]);
+    firstLegAlongAxis(a1.leader);
+    // The handles followed the box (no stale "add a bend" left on the old leg).
+    const addBend = page.locator('[data-testid="leader-handle"][data-kind="addBend"]');
+    if ((await addBend.count()) > 0) {
+      const path = a1.leader.path ?? [];
+      const [q0, q1] = [path.at(-2), path.at(-1)] as [P2, P2];
+      const mid = await sheetToPage(page, [(q0[0] + q1[0]) / 2, (q0[1] + q1[1]) / 2]);
+      const hb = await addBend.boundingBox();
+      expect(Math.abs((hb?.x ?? 0) + (hb?.width ?? 0) / 2 - mid.x)).toBeLessThan(2);
+    }
+    // One undo step back, and redo.
+    await page.getByTestId('drawing-undo').click();
+    await expect
+      .poll(async () => (await placementOf(page, datumA.id))?.layout)
+      .toEqual(datumA.layout);
+    await page.getByTestId('drawing-redo').click();
+    await built(page);
+    // Its triangle slides onto the line's extension: still on the line, still outside.
+    const a2 = await placedOf(page, datumA.id);
+    const [e0, e1] = a2.leader.on ?? [];
+    if (!e0 || !e1) throw new Error('no line');
+    await checkedDrag(
+      page,
+      datumA.id,
+      a2.leader.at,
+      [e0[0] + (e1[0] - e0[0]) * 1.15 + 3, e0[1] + (e1[1] - e0[1]) * 1.15],
+      'Move leader',
+    );
+    const a3 = await placedOf(page, datumA.id);
+    expect(Math.abs(a3.leader.at[0] - left.a[0])).toBeLessThan(1e-6);
+    for (const q of a3.fills[0] ?? []) expect(q[0]).toBeLessThanOrEqual(left.a[0] + 1e-6);
+    firstLegAlongAxis(a3.leader);
+    await escapeDrag(page, datumA.id, centre(a3.box), [centre(a3.box)[0] + 10, centre(a3.box)[1]]);
+
+    // 2. A width with a datum at its right end. Its box dragged off the line: the leader runs on
+    // in line with the dimension line first, then turns.
+    await page.locator('[data-tool="dimension"]').click();
+    await click(page, left.at);
+    await click(page, right.at);
+    await expect.poll(count(page, 'linear')).toBe(1);
+    await built(page);
+    const width = (await annotations(page)).find((x) => x.kind === 'linear') as Annotation;
+    const wp = (await drawing(page).placements()).find((p) => p.annotationId === width.id);
+    if (!wp?.line) throw new Error('no width');
+    const wEnd = wp.line[0][0] > wp.line[1][0] ? 0 : 1;
+    await page.locator('[data-tool="datum"]').click();
+    await click(page, wp.line[wEnd]);
+    await expect.poll(count(page, 'datumFeature')).toBe(2);
+    await built(page);
+    const datumB = (await drawing(page).placements()).find(
+      (p) => p.layout.attach?.kind === 'dimensionLine' && p.layout.attach.placementId === wp.id,
+    );
+    if (!datumB) throw new Error('no datum on the width');
+    expect(datumB.layout.attach?.t).toBe(wEnd);
+    await select(page, datumB.id);
+    const b0 = await placedOf(page, datumB.id);
+    await checkedDrag(
+      page,
+      datumB.id,
+      centre(b0.box),
+      [centre(b0.box)[0] + 8, centre(b0.box)[1] - 12],
+      'Move annotation',
+    );
+    const b1 = await placedOf(page, datumB.id);
+    axisIs(b1.leader, [1, 0]);
+    firstLegAlongAxis(b1.leader);
+    expect(b1.leader.path?.length).toBe(3);
+    // Its triangle taken to the other end of the dimension line: mirrored, still pointing out.
+    await checkedDrag(
+      page,
+      datumB.id,
+      b1.leader.at,
+      [wp.line[1 - wEnd]?.[0] ?? 0, wp.line[1 - wEnd]?.[1] ?? 0],
+      'Move leader',
+    );
+    const b2 = await placedOf(page, datumB.id);
+    expect((await placementOf(page, datumB.id))?.layout).toMatchObject({
+      attach: { kind: 'dimensionLine', t: 1 - wEnd },
+    });
+    axisIs(b2.leader, [-1, 0]);
+    expect(b2.box.max[0]).toBeLessThan(left.a[0]);
+    firstLegAlongAxis(b2.leader);
+    await escapeDrag(page, datumB.id, b2.leader.at, wp.line[wEnd] as P2);
+
+    // 3. A datum on the Ø6: picked by its value, it goes to the end of the diameter's line that
+    // its value is not beyond, never onto the dimension's own leader and value.
+    const dia = (await annotations(page)).find((x) => x.kind === 'diameter') as Annotation;
+    const dp = (await drawing(page).placements()).find((p) => p.annotationId === dia.id);
+    if (!dp?.text || !dp.line || !dp.box) throw new Error('no diameter');
+    await page.locator('[data-tool="datum"]').click();
+    await click(page, dp.text);
+    await expect.poll(count(page, 'datumFeature')).toBe(3);
+    await built(page);
+    const datumC = (await drawing(page).placements()).find(
+      (p) => p.layout.attach?.kind === 'dimensionLine' && p.layout.attach.placementId === dp.id,
+    );
+    if (!datumC?.box || !datumC.leader) throw new Error('no datum on the diameter');
+    // The value is past end 1 (the leader runs out to it): the datum takes end 0.
+    expect(datumC.layout.attach?.t).toBe(0);
+    const overlap =
+      datumC.box.min[0] < dp.box.max[0] &&
+      dp.box.min[0] < datumC.box.max[0] &&
+      datumC.box.min[1] < dp.box.max[1] &&
+      dp.box.min[1] < datumC.box.max[1];
+    expect(overlap).toBe(false);
+    // Dragging its triangle to the value's end does nothing (it stays where it is).
+    await select(page, datumC.id);
+    const c0 = await placedOf(page, datumC.id);
+    const hc = await historyLen(page);
+    await pressDrag(page, c0.leader.at, dp.line[1] as P2);
+    await page.mouse.up();
+    expect(await historyLen(page)).toBe(hc);
+
+    // 4. A frame on the right side face: its arrow meets the face square to it wherever the
+    // frame is dragged.
+    await page.locator('[data-tool="gdt"]').click();
+    await click(page, [right.a[0], right.a[1] + (right.b[1] - right.a[1]) * 0.6]);
+    await expect.poll(count(page, 'geometricTolerance')).toBe(1);
+    await built(page);
+    const fId = (await annotations(page)).find((x) => x.kind === 'geometricTolerance')?.id;
+    const frame = (await drawing(page).placements()).find((p) => p.annotationId === fId);
+    if (!frame) throw new Error('no frame');
+    await select(page, frame.id);
+    const f0 = await placedOf(page, frame.id);
+    await checkedDrag(
+      page,
+      frame.id,
+      centre(f0.box),
+      [centre(f0.box)[0] + 10, centre(f0.box)[1] + 15],
+      'Move annotation',
+    );
+    const f1 = await placedOf(page, frame.id);
+    axisIs(f1.leader, [1, 0]);
+    firstLegAlongAxis(f1.leader);
+    // The arrow's tip on the line, its body outside the part.
+    const arrow = f1.fills[0] ?? [];
+    expect(arrow.some((q) => Math.abs(q[0] - right.a[0]) < 1e-6)).toBe(true);
+    for (const q of arrow) expect(q[0]).toBeGreaterThanOrEqual(right.a[0] - 1e-6);
+    await escapeDrag(page, frame.id, centre(f1.box), [centre(f1.box)[0] - 10, centre(f1.box)[1]]);
     await a11y(page);
   });
 });

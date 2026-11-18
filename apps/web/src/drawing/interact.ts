@@ -21,6 +21,7 @@ import {
   SIDE_VECTORS,
   type SolvedView,
   sheetToView,
+  snapToAxis,
   type ViewSide,
   viewItems,
   viewOutline,
@@ -38,7 +39,7 @@ import {
 import type { DrawingController } from './controller';
 import { moveVertex } from './cutline';
 import { arcDrag, detailRadius, textDrag } from './drag-math';
-import { leaderHandleDrag } from './interact-leader';
+import { drawnLeaderLayout, handleNodes, leaderHandleDrag } from './interact-leader';
 import { pickTool, viewHit } from './interact-pick';
 import { dominantAxis, sideForDirection } from './model';
 import { updatePlacement } from './ops-annot';
@@ -528,7 +529,14 @@ function movePlacement(
       ? { centre: partToSheet(sv, anchor.center), r: anchor.radius * sv.scale }
       : undefined;
   const key = `drag:placement:${placementId}`;
-  const startLayout = pl.layout;
+  // A leader starts from its layout as drawn (a datum the layout moved off a dimension's text end).
+  const startLayout = drawnLeaderLayout(pl.layout, placed);
+  const axis = placed?.leader?.axis;
+  // A selected leader's handles are redrawn where they go (the overlay's own are hidden).
+  const handles =
+    placed?.leader !== undefined &&
+    c.ui.get().selected?.kind === 'placement' &&
+    (c.ui.get().selected as { id?: Id }).id === placementId;
   const h = b.drawing.style.text.dimension;
   const box = placed?.textBox ?? [];
   const boxCentre: Vec2 | null =
@@ -558,7 +566,11 @@ function movePlacement(
     return {
       frame: {
         nodes: [PREVIEW_NODE(svgItems(pv.items, b.drawing.style))],
-        overlay: [textBoxOutline(r.textBox, start.mm), ...hint],
+        overlay: [
+          textBoxOutline(r.textBox, start.mm),
+          ...hint,
+          ...(handles ? handleNodes(r.leader, start.mm, false) : []),
+        ],
       },
       commit: same
         ? null
@@ -576,6 +588,7 @@ function movePlacement(
   const hide = [placementId, ...followersOf(b, placementId).map((f) => f.id)].map(
     (id) => `placement:${id}`,
   );
+  if (handles) hide.push(`overlay:leader:${placementId}`);
   return previewDrag(c, { hide }, (p) => {
     if (linearText && placed?.line && boxCentre) {
       const t = textDrag(
@@ -608,13 +621,16 @@ function movePlacement(
       else delete next.text;
       return preview(next, []);
     }
-    const layout = dragLayout(startLayout, start.at, p.at, {
+    let layout = dragLayout(startLayout, start.at, p.at, {
       outline: viewOutline(sv),
       firstLane: b.drawing.style.dimension.firstLane,
       laneSpacing: b.drawing.style.dimension.laneSpacing,
       ...(placed?.line ? { line: placed.line } : {}),
       ...(circle ? { circle } : {}),
     });
+    // A letter box or frame let go near its leader's axis lands on it: a straight leader.
+    if (layout.kind === 'leader' && axis && !(layout.bends && layout.bends.length > 0))
+      layout = { ...layout, text: snapToAxis(layout.text, axis, 6 * p.mm) };
     return preview({ ...pl, layout } as AnnotationPlacement, []);
   });
 }
@@ -692,8 +708,9 @@ export function nudgeText(
     const radius = Math.max(2, pl.layout.radius + Math.sign(dot(arrow, radial)) * step);
     return put({ ...pl, layout: { ...pl.layout, radius } }, 'Move annotation');
   }
+  const from = drawnLeaderLayout(pl.layout, placed);
   const layout = dragLayout(
-    pl.layout,
+    from,
     centre,
     [centre[0] + arrow[0] * step, centre[1] + arrow[1] * step],
     {
@@ -703,7 +720,7 @@ export function nudgeText(
       ...(placed.line ? { line: placed.line } : {}),
     },
   );
-  if (JSON.stringify(layout) === JSON.stringify(pl.layout)) return false;
+  if (JSON.stringify(layout) === JSON.stringify(from)) return false;
   return put({ ...pl, layout } as AnnotationPlacement, 'Move annotation');
 }
 

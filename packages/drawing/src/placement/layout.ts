@@ -81,7 +81,15 @@ import {
   torusMeridian,
   viewDirection,
 } from './anchors';
-import { datumTriangleFilled, datumTriangleSize } from './leader-forms';
+import {
+  datumTriangleFilled,
+  datumTriangleSize,
+  dimensionLineEnd,
+  flipDimensionLineEnd,
+  freeDimensionLineEnd,
+  leaderCorners,
+  outwardOffset,
+} from './leader-forms';
 
 /** Placement-level problems (the drawing's needs-attention panel lists them). */
 export type PlacementIssue =
@@ -123,6 +131,19 @@ export interface LeaderGeometry {
   bends: Vec2[];
   /** The text point (`attach + layout.text`). */
   text: Vec2;
+  /**
+   * The direction the leader's first leg leaves along (unit): across a surface's line, out of the
+   * material, or in line with a dimension line. Absent when the leader is free.
+   */
+  axis?: Vec2;
+  /** The leader as drawn: from the triangle's apex (or the arrow's tip) to the text point. */
+  path?: Vec2[];
+  /**
+   * The layout as drawn, when it differs from the stored one: a datum stored at the end of a
+   * dimension line its text sits beyond is drawn at the other end (`freeDimensionLineEnd`).
+   * Drags and the inspector start from this one, so they edit what is on the sheet.
+   */
+  layout?: Extract<AnnotationPlacement['layout'], { kind: 'leader' }>;
 }
 
 /** Model data for callouts whose numbers come from a feature (hole, thread, chamfer). */
@@ -688,8 +709,9 @@ function leaderGeometry(
   ctx: PlacementContext,
   b: Builder,
 ): DimensionGeometry | null {
-  const l = placement.layout;
-  if (l.kind !== 'leader') return null;
+  const stored = placement.layout;
+  if (stored.kind !== 'leader') return null;
+  let l = stored;
   const v = ctx.view;
   const h = a.kind === 'note' ? ctx.style.text.note : ctx.style.text.dimension;
   const style = ctx.style.dimension;
@@ -699,6 +721,7 @@ function leaderGeometry(
   let anchor: AnnotationAnchor | null | undefined;
   let on: [Vec2, Vec2] | undefined;
   let below = false;
+  let drawn: typeof l | undefined;
   if (l.attach.kind === 'ref') {
     let anchors = anchorsOf(res);
     if (
@@ -725,7 +748,18 @@ function leaderGeometry(
       below = true;
     } else if (other.line && dist2(other.line[0], other.line[1]) > 1e-9) {
       on = other.line;
-      attach = lerp2(other.line[0], other.line[1], l.attach.t);
+      // Never at the end the dimension's own text is beyond (its leader and value are there):
+      // drawn at the other end, mirrored, so the datum still points out of the dimension.
+      const end = dimensionLineEnd(l.attach.t);
+      if (freeDimensionLineEnd(end, other.line, other.textBox) !== end) {
+        l = flipDimensionLineEnd(l, other.line);
+        drawn = l;
+      }
+      attach = lerp2(
+        other.line[0],
+        other.line[1],
+        l.attach.kind === 'dimensionLine' ? l.attach.t : 0,
+      );
     } else {
       // Not a dimension (a leader's own `line` is one point): nothing to sit in line with.
       b.issues.push({ kind: 'attachTargetMissing', placementId: l.attach.placementId });
@@ -745,13 +779,15 @@ function leaderGeometry(
   const prims: Primitive[] = [];
   let placeAt: Vec2;
   let side: 'left' | 'right' = 'right';
-  b.leader = {
+  const geometry: LeaderGeometry = {
     attach: l.attach.kind,
     at: attach,
     ...(on ? { on } : {}),
     bends: bendPts,
     text: textAt,
+    ...(drawn ? { layout: drawn } : {}),
   };
+  b.leader = geometry;
 
   if (below) {
     // A frame (or note) with another placement's text (under or beside it): no leader.
@@ -773,31 +809,45 @@ function leaderGeometry(
       b: add2(at0, scale2(out, reach + style.extensionOvershoot)),
     });
   };
+  // Across a surface's line, out of the material (the face's outward normal as seen in the view);
+  // null when the anchor is not a plane seen edge-on.
+  const across = (): Vec2 | null => {
+    if (!on || l.attach.kind !== 'ref') return null;
+    const out = outwardOffset(v, anchor, 1);
+    if (!out) return null;
+    const n = perp2(norm2(sub2(on[1], on[0])));
+    return dot2(out, n) < 0 ? scale2(n, -1) : n;
+  };
+  const toward = bendPts[0] ?? textAt;
 
   if (a.kind === 'datumFeature') {
     const tri = datumTriangleSize(h);
     const glyph = datumTriangleFilled(ctx.standard) ? 'datumTriangle' : 'datumTriangleOpen';
-    const toward = bendPts[0] ?? textAt;
-    // The triangle's axis: across the surface line, to the side the leader leaves on (ISO 5459,
-    // ASME Y14.5 §6.3); in line with a dimension line, pointing out of its end; else along the
-    // leader.
+    // The triangle's axis (ISO 5459, ASME Y14.5 §6.3): on a surface, across its line and out of
+    // the material, whichever side the letter box is dragged to; on another line (an edge, an
+    // axis), across it to the leader's side; in line with a dimension line, pointing out of its
+    // end; else along the leader. The leader leaves the apex along that axis (`leaderCorners`).
     let axis: Vec2;
+    let held = true;
     if (on && l.attach.kind === 'dimensionLine') {
       const u = norm2(sub2(on[1], on[0]));
       axis = l.attach.t < 0.5 ? scale2(u, -1) : u;
     } else if (on) {
       const n = perp2(norm2(sub2(on[1], on[0])));
-      axis = dot2(sub2(toward, attach), n) < 0 ? scale2(n, -1) : n;
+      axis = across() ?? (dot2(sub2(toward, attach), n) < 0 ? scale2(n, -1) : n);
       extension(tri.base / 2);
     } else {
+      held = false;
       const d = sub2(toward, attach);
       axis = Math.hypot(d[0], d[1]) < 1e-9 ? [0, 1] : norm2(d);
     }
     prims.push(...placeSymbol(glyph, attach, tri.base, angle2(axis) - Math.PI / 2));
     const apex = add2(attach, scale2(axis, tri.height));
-    const pts = [apex, ...bendPts, textAt];
-    if (dist2(apex, textAt) > 1e-9 || bendPts.length > 0)
-      prims.push({ kind: 'polyline', points: pts });
+    const corners = held ? leaderCorners(apex, axis, toward, h) : [];
+    const pts = [apex, ...corners, ...bendPts, textAt];
+    if (held) geometry.axis = axis;
+    geometry.path = pts;
+    if (dist2(apex, textAt) > 1e-9 || pts.length > 2) prims.push({ kind: 'polyline', points: pts });
     const prev = pts[pts.length - 2] ?? apex;
     const d = sub2(textAt, prev);
     const box = content.box;
@@ -835,9 +885,17 @@ function leaderGeometry(
 
   const terminator = anchor && isSurfaceFaceOn(v, anchor) ? 'dot' : 'arrow';
   extension(0);
+  // A frame's arrow meets a surface seen edge-on square to it, from outside the material
+  // (ISO 1101: the arrow gives the zone's width direction); the leader turns after that leg.
+  const normal = a.kind === 'geometricTolerance' ? across() : null;
+  const corners = normal
+    ? leaderCorners(attach, normal, toward, Math.max(h, 2 * style.arrow.length))
+    : [];
+  if (normal) geometry.axis = normal;
+  geometry.path = [attach, ...corners, ...bendPts, textAt];
   const lg = leaderLayout({
     attach,
-    bends: bendPts,
+    bends: [...corners, ...bendPts],
     text: textAt,
     ...(l.landing ? { landing: l.landing } : {}),
     contentWidth: content.width,

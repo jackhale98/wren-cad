@@ -7,9 +7,11 @@ import {
   built,
   cornerEdges,
   drawing,
+  drawnShapes,
   newDrawing,
   openDemo,
   panelTab,
+  sameShapes,
   sheetToPage,
   viewOf,
 } from './support/drawing-ui';
@@ -945,6 +947,77 @@ test.describe('tablet drags (ADR-094)', () => {
     const r1 =
       (await drawing(page).state()).views.find((v) => v.id === detail.id)?.clip?.radius ?? 0;
     expect(r1).toBeGreaterThan(r0 + 1);
+    await a11y(page);
+  });
+
+  test('a datum is moved with a finger: its letter box and its triangle, one step each, the preview is what is committed (owner report, 2026-11-18)', async ({
+    page,
+  }) => {
+    const s = await viewsOnTablet(page);
+    await drawing(page).exact();
+    await built(page);
+    const top = viewOf(s, 'projected', 'top');
+    if (!top) throw new Error('no top view');
+    type P2 = [number, number];
+    const left = (await drawing(page).edges(top.id))
+      .filter(
+        (e) =>
+          e.kind === 'line' &&
+          !!e.a &&
+          !!e.b &&
+          Math.abs(e.a[0] - e.b[0]) < 0.01 &&
+          Math.abs(e.a[1] - e.b[1]) > 30,
+      )
+      .sort((p, q) => p.at[0] - q.at[0])[0] as { a: P2; b: P2 } | undefined;
+    if (!left) throw new Error('no side face line');
+    const t = await touch(page);
+    await panelsOpen(page);
+    await page.locator('[data-tool="datum"]').tap();
+    await t.tap([await sheetToPage(page, [left.a[0], left.a[1] + (left.b[1] - left.a[1]) * 0.3])]);
+    const datum = async () => (await drawing(page).placements()).find((p) => p.leader?.on);
+    await expect.poll(async () => (await datum())?.id ?? null).not.toBeNull();
+    await built(page);
+    const d0 = await datum();
+    if (!d0?.box || !d0.leader) throw new Error('no datum');
+    const id = d0.id;
+    const preview = () => drawnShapes(page, '[data-transient="model"]');
+    const committed = () => drawnShapes(page, `[data-sheet-model] [data-source="placement:${id}"]`);
+    await page.locator('[data-tool="select"]').tap();
+    const mid: P2 = [(d0.box.min[0] + d0.box.max[0]) / 2, (d0.box.min[1] + d0.box.max[1]) / 2];
+    await t.tap([await sheetToPage(page, mid)]);
+    await expect
+      .poll(async () => (await drawing(page).state()).selected)
+      .toMatchObject({ kind: 'placement', id });
+    const fingerDrag = async (from: P2, to: P2, label: string) => {
+      const a = await sheetToPage(page, from);
+      const b = await sheetToPage(page, to);
+      const before = await historyLen(page);
+      await t.down([a]);
+      for (let i = 1; i <= 10; i++)
+        await t.move([{ x: a.x + ((b.x - a.x) * i) / 10, y: a.y + ((b.y - a.y) * i) / 10 }]);
+      await expect.poll(async () => (await preview()).length).toBeGreaterThan(0);
+      const shown = await preview();
+      expect(await historyLen(page)).toBe(before);
+      await t.up();
+      await expect.poll(() => historyLen(page)).toBe(before + 1);
+      expect((await app(page).history()).past.at(-1)?.label).toBe(label);
+      await built(page);
+      await expect.poll(async () => sameShapes(await committed(), shown)).toBe(true);
+    };
+    // The letter box, into the part with a finger: the triangle stays outside, on the line.
+    await fingerDrag(mid, [left.a[0] + 12, mid[1] - 12], 'Move annotation');
+    const d1 = await datum();
+    for (const q of d1?.fills[0] ?? []) expect(q[0]).toBeLessThanOrEqual(left.a[0] + 1e-6);
+    expect(d1?.leader?.axis?.[0]).toBeCloseTo(-1, 9);
+    // The triangle along its line, onto the extension below the face.
+    const on = d1?.leader?.on;
+    if (!on || !d1?.leader) throw new Error('no line');
+    const low = on[0][1] < on[1][1] ? on[0] : on[1];
+    await fingerDrag(d1.leader.at, [low[0] + 2, low[1] - 6], 'Move leader');
+    const d2 = await datum();
+    expect(Math.abs((d2?.leader?.at[0] ?? 0) - left.a[0])).toBeLessThan(1e-6);
+    expect(d2?.leader?.at[1] ?? 0).toBeLessThan(low[1] - 1);
+    for (const q of d2?.fills[0] ?? []) expect(q[0]).toBeLessThanOrEqual(left.a[0] + 1e-6);
     await a11y(page);
   });
 });

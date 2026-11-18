@@ -52,6 +52,7 @@ import {
 } from './cutline';
 import { exportDrawing } from './exports';
 import { host } from './host';
+import { drawnLeaderLayout, inspectorLeaderEdit } from './interact-leader';
 import { ratioExpr, scaleFromInput, scaleLabel, viewName } from './model';
 import {
   commitImport,
@@ -326,6 +327,9 @@ export function AnnotationPanelBody({
   const text = valueText(a, res);
   const src = sourceText(b.part, a);
   const leader = leaderInfo(b, placement.id);
+  // A leader is edited as drawn (a datum the layout moved off a dimension's text end).
+  const placed = b.build.placed.find((p) => p.placementId === placement.id);
+  const shown = { ...placement, layout: drawnLeaderLayout(placement.layout, placed) };
   const applies = appliesToInfo(b, a);
   // M4.1: a diameter's linear form, and an angle from its second face's normal.
   const form = 'source' in a && a.source ? undefined : diameterFormOf(b, a, placement);
@@ -349,7 +353,7 @@ export function AnnotationPanelBody({
           }
         : {})}
       annotation={a}
-      placement={placement}
+      placement={shown}
       valueText={text}
       state={state}
       problems={problems}
@@ -363,7 +367,11 @@ export function AnnotationPanelBody({
       datumLabelProblem={(l, own) => labelProblem(b, l, own)}
       {...(measured !== undefined ? { measured } : {})}
       onChange={(next) => updateAnnotation(c, next, 'Edit annotation')}
-      onPlacement={(p) => updatePlacement(c, p, 'Move annotation')}
+      onPlacement={(p) => {
+        const next = inspectorLeaderEdit(b, shown, p);
+        if (next) updatePlacement(c, next, 'Move annotation');
+        else c.toast('The dimension’s value is at that end: the datum stays at the other end.');
+      }}
       onRemoveFromView={() => removePlacement(c, placement.id)}
       onDelete={() => deleteAnnotation(c, a.id)}
       onReattach={() => startReattach(c, a.id)}

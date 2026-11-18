@@ -20,13 +20,18 @@ import {
   datumTriangleFilled,
   datumTriangleSize,
   dimensionLineEnd,
+  dimensionTextEnd,
   edgeFaceNames,
   faceAlongLine,
+  flipDimensionLineEnd,
+  freeDimensionLineEnd,
   layoutView,
+  leaderCorners,
   lineParameter,
   outwardOffset,
   type PlacedAnnotation,
   type PlacementContext,
+  snapToAxis,
 } from '../src/placement';
 import { type SolvedView, solveViews } from '../src/view';
 import { ANNOTATIONS, drawing, evalLength, evaluate, PART_BOUNDS, resolutions } from './fixtures';
@@ -117,6 +122,10 @@ const texts = (items: DisplayItem[]) =>
 
 const close = (a: Vec2, b: Vec2, eps = 1e-6) =>
   expect(Math.hypot(a[0] - b[0], a[1] - b[1])).toBeLessThan(eps);
+const closeAll = (a: readonly Vec2[], b: readonly Vec2[]) => {
+  expect(a).toHaveLength(b.length);
+  for (const [i, q] of a.entries()) close(q, b[i] as Vec2);
+};
 
 /** The datum triangle's three corners: two on the base, then the apex. */
 function triangle(p: PlacedAnnotation): Vec2[] {
@@ -195,16 +204,73 @@ describe('datum on a surface (ISO 5459, ASME Y14.5 §6.3)', () => {
     expect(ext?.b[0]).toBeCloseTo(260 + tri.base / 2 + style.extensionOvershoot, 9);
   });
 
-  it('golden: the triangle turns to whichever side the leader leaves on', () => {
+  it('golden: the triangle stays out of the material wherever the letter box is dragged', () => {
+    // The letter box dragged up, into the part (the bottom face's material is above its line).
     const p = one(
       front,
       [P('t', 'V1', 'A4', { kind: 'leader', attach: { kind: 'ref', index: 0 }, text: [8, 15] })],
       't',
     );
+    const [b0, b1, apex] = triangle(p) as [Vec2, Vec2, Vec2];
+    // Base on the line, apex below it: out of the material (the face's outward normal is -y), never
+    // turned into the part after the leader (owner report, 2026-11-18).
+    expect(b0[1]).toBeCloseTo(BOTTOM, 9);
+    expect(b1[1]).toBeCloseTo(BOTTOM, 9);
+    close(apex, [190, BOTTOM - tri.height]);
+    expect(p.leader?.axis?.[0]).toBeCloseTo(0, 12);
+    expect(p.leader?.axis?.[1]).toBeCloseTo(-1, 12);
+    // The leader leaves the apex along that axis (one text height), goes across to the box's side
+    // and back to it: square turns, never a slant through the triangle.
+    const leader = polylines(p.items).find((x) => !x.closed);
+    closeAll(leader?.points ?? [], [
+      apex,
+      [190, BOTTOM - tri.height - h],
+      [198, BOTTOM - tri.height - h],
+      [198, BOTTOM + 15],
+    ]);
+    expect(p.leader?.path).toEqual(leader?.points);
+  });
+
+  it('golden: a letter box off the triangle’s axis is reached through a corner, not a slant', () => {
+    const p = one(
+      front,
+      [P('t', 'V1', 'A4', { kind: 'leader', attach: { kind: 'ref', index: 0 }, text: [-12, -15] })],
+      't',
+    );
     const apex = triangle(p)[2] as Vec2;
-    // Text above the line: the apex points up (into the view here), across the line, never along
-    // the leader.
-    close(apex, [190, BOTTOM + tri.height]);
+    close(apex, [190, BOTTOM - tri.height]);
+    const leader = polylines(p.items).find((x) => !x.closed);
+    // Square off the line down to the box's level, then across to it.
+    closeAll(leader?.points ?? [], [
+      [190, BOTTOM - tri.height],
+      [190, BOTTOM - 15],
+      [178, BOTTOM - 15],
+    ]);
+    // In line already: no corner.
+    const straight = one(
+      front,
+      [P('t', 'V1', 'A4', { kind: 'leader', attach: { kind: 'ref', index: 0 }, text: [0, -15] })],
+      't',
+    );
+    expect(polylines(straight.items).find((x) => !x.closed)?.points).toHaveLength(2);
+    // A user's bend is kept; the corner is only before it, when it is off the axis.
+    const bent = one(
+      front,
+      [
+        P('t', 'V1', 'A4', {
+          kind: 'leader',
+          attach: { kind: 'ref', index: 0 },
+          bends: [[0, -10]],
+          text: [12, -10],
+        }),
+      ],
+      't',
+    );
+    closeAll(polylines(bent.items).find((x) => !x.closed)?.points ?? [], [
+      [190, BOTTOM - tri.height],
+      [190, BOTTOM - 10],
+      [202, BOTTOM - 10],
+    ]);
   });
 
   it('the triangle is filled for every supported standard; the open glyph is a closed outline', () => {
@@ -311,6 +377,66 @@ describe('datum on a feature of size (in line with the dimension line)', () => {
     expect(texts(t.items).map((x) => x.text)).toEqual(['B']);
   });
 
+  it('golden: a datum stored at a radial diameter’s text end is drawn at the free end', () => {
+    // The diameter's line runs on from t = 1 to its text: a datum there sat on the dimension's
+    // leader with its box over the value (owner report, 2026-11-18).
+    const dim = P('d', 'V2', 'A3', { kind: 'radial', angle: 30, distance: 8 });
+    const datum = P('t', 'V2', 'D2', {
+      kind: 'leader',
+      attach: { kind: 'dimensionLine', placementId: 'd', t: 1 },
+      text: [8, 5],
+    });
+    const out = layoutView([datum, dim], ctx(top));
+    const d = out.find((x) => x.placementId === 'd') as PlacedAnnotation;
+    const t = out.find((x) => x.placementId === 't') as PlacedAnnotation;
+    const [L0, L1] = d.line as [Vec2, Vec2];
+    expect(dimensionTextEnd(d.line as [Vec2, Vec2], d.textBox)).toBe(1);
+    const [b0, b1, apex] = triangle(t) as [Vec2, Vec2, Vec2];
+    // Base centred on the far end, apex out of it along the diameter line.
+    close([(b0[0] + b1[0]) / 2, (b0[1] + b1[1]) / 2], L0);
+    const u: Vec2 = [(L0[0] - L1[0]) / Math.hypot(L0[0] - L1[0], L0[1] - L1[1]), 0];
+    u[1] = (L0[1] - L1[1]) / Math.hypot(L0[0] - L1[0], L0[1] - L1[1]);
+    close(apex, [L0[0] + u[0] * tri.height, L0[1] + u[1] * tri.height]);
+    // The drawn layout is reported (drags and the inspector edit it): the other end, the text
+    // mirrored along the line.
+    expect(t.leader?.layout?.attach).toEqual({ kind: 'dimensionLine', placementId: 'd', t: 0 });
+    const k = 8 * u[0] + 5 * u[1];
+    close(t.leader?.layout?.text as Vec2, [8 - 2 * k * u[0], 5 - 2 * k * u[1]], 2e-3);
+    close(t.leader?.at as Vec2, L0);
+    // The letter box is clear of the diameter's value.
+    const xs = (q: Vec2[]) => [Math.min(...q.map((p) => p[0])), Math.max(...q.map((p) => p[0]))];
+    const ys = (q: Vec2[]) => [Math.min(...q.map((p) => p[1])), Math.max(...q.map((p) => p[1]))];
+    const [ax0, ax1] = xs(t.textBox) as [number, number];
+    const [bx0, bx1] = xs(d.textBox) as [number, number];
+    const [ay0, ay1] = ys(t.textBox) as [number, number];
+    const [by0, by1] = ys(d.textBox) as [number, number];
+    expect(ax1 < bx0 || bx1 < ax0 || ay1 < by0 || by1 < ay0).toBe(true);
+  });
+
+  it('golden: a letter box off the dimension line is reached in line first, then a corner', () => {
+    const dim = P('w', 'V1', 'A1', { kind: 'lane', side: 'bottom', lane: 0 });
+    const datum = P('t', 'V1', 'A4', {
+      kind: 'leader',
+      attach: { kind: 'dimensionLine', placementId: 'w', t: 1 },
+      text: [15, -9],
+    });
+    const out = layoutView([datum, dim], ctx(front));
+    const w = out.find((x) => x.placementId === 'w') as PlacedAnnotation;
+    const t = out.find((x) => x.placementId === 't') as PlacedAnnotation;
+    const line = w.line as [Vec2, Vec2];
+    const end = line[0][0] > line[1][0] ? line[0] : line[1];
+    const apex = triangle(t)[2] as Vec2;
+    close(apex, [end[0] + tri.height, end[1]]);
+    const leader = polylines(t.items).find((x) => !x.closed);
+    closeAll(leader?.points ?? [], [
+      [end[0] + tri.height, end[1]],
+      [end[0] + 15, end[1]],
+      [end[0] + 15, end[1] - 9],
+    ]);
+    close(t.leader?.axis as Vec2, [1, 0], 1e-12);
+    expect(t.leader?.layout).toBeUndefined();
+  });
+
   it('flags a dimension-line attach to something without a dimension line', () => {
     const note = P('f', 'V1', 'G1', {
       kind: 'leader',
@@ -351,6 +477,36 @@ describe('tolerance frames: the same two forms', () => {
     );
     expect(ext?.a[0]).toBeCloseTo(140 - drawing().style.dimension.extensionGap, 9);
     expect(texts(p.items).some((x) => x.text.includes('0.1'))).toBe(true);
+  });
+
+  it('golden: the arrow meets the surface square to it, whichever way the frame is dragged', () => {
+    const p = one(
+      front,
+      [
+        P('f', 'V1', 'G1', {
+          kind: 'leader',
+          attach: { kind: 'ref', index: 0, t: 0.5 },
+          text: [20, -12],
+        }),
+      ],
+      'f',
+    );
+    // The arrow's tip on the line, its body below it (out of the material), along the normal.
+    const arrow = fills(p.items)[0]?.loops[0] ?? [];
+    expect(arrow.some((q) => Math.abs(q[0] - 190) < 1e-9 && Math.abs(q[1] - BOTTOM) < 1e-9)).toBe(
+      true,
+    );
+    for (const q of arrow) expect(q[1]).toBeLessThanOrEqual(BOTTOM + 1e-9);
+    const body = arrow.reduce((s, q) => s + q[0], 0) / arrow.length;
+    expect(body).toBeCloseTo(190, 9);
+    // The leader: square down to the frame's level, then across, then the landing.
+    const leader = polylines(p.items).find((x) => !x.closed);
+    closeAll(leader?.points.slice(0, 3) ?? [], [
+      [190, BOTTOM],
+      [190, BOTTOM - 12],
+      [210, BOTTOM - 12],
+    ]);
+    close(p.leader?.axis as Vec2, [0, -1], 1e-12);
   });
 
   it('golden: on a feature of size, under the size dimension’s text, or beside it', () => {
@@ -441,6 +597,56 @@ describe('helpers', () => {
     ).toBeCloseTo(1.2, 12);
     expect(dimensionLineEnd(0.3)).toBe(0);
     expect(dimensionLineEnd(0.7)).toBe(1);
+  });
+
+  it('the free end of a dimension line, flipping ends, the leader’s corner and the axis snap', () => {
+    const line: [Vec2, Vec2] = [
+      [0, 0],
+      [10, 0],
+    ];
+    const box = (x: number): Vec2[] => [
+      [x - 1, 1],
+      [x + 1, 1],
+      [x + 1, 3],
+      [x - 1, 3],
+    ];
+    // Text in the middle: both ends free. Beyond an end: that end is taken.
+    expect(dimensionTextEnd(line, box(5))).toBeNull();
+    expect(dimensionTextEnd(line, box(14))).toBe(1);
+    expect(dimensionTextEnd(line, box(-4))).toBe(0);
+    expect(freeDimensionLineEnd(1, line, box(14))).toBe(0);
+    expect(freeDimensionLineEnd(0, line, box(14))).toBe(0);
+    expect(freeDimensionLineEnd(1, line, box(5))).toBe(1);
+    // Flipping mirrors the text and the bends along the line.
+    expect(
+      flipDimensionLineEnd(
+        {
+          kind: 'leader',
+          attach: { kind: 'dimensionLine', placementId: 'w', t: 1 },
+          text: [8, -3],
+          bends: [[4, 0]],
+        },
+        line,
+      ),
+    ).toEqual({
+      kind: 'leader',
+      attach: { kind: 'dimensionLine', placementId: 'w', t: 0 },
+      text: [-8, -3],
+      bends: [[-4, 0]],
+    });
+    // The corners: none in line; one square off the axis ahead; behind (or too close), out a
+    // stub, across, and back.
+    expect(leaderCorners([0, 0], [1, 0], [5, 0], 2)).toEqual([]);
+    expect(leaderCorners([0, 0], [1, 0], [5, 3], 2)).toEqual([[5, 0]]);
+    expect(leaderCorners([0, 0], [1, 0], [-5, 3], 2)).toEqual([
+      [2, 0],
+      [2, 3],
+    ]);
+    expect(leaderCorners([0, 0], [1, 0], [1, 0], 2)).toEqual([[2, 0]]);
+    // A box near the axis lands on it; far off, or behind, it stays where it is.
+    expect(snapToAxis([10, 0.4], [1, 0], 0.5)).toEqual([10, 0]);
+    expect(snapToAxis([10, 2], [1, 0], 0.5)).toEqual([10, 2]);
+    expect(snapToAxis([-10, 0.1], [1, 0], 0.5)).toEqual([-10, 0.1]);
   });
 });
 
