@@ -3404,6 +3404,15 @@ Nothing was wrong with the following: one undo step per drag, Escape, the attach
 
 **App** (apps/web): a text drag of a selected leader hides `overlay:leader:<id>` and draws the handles at their new places. Preview handles use the overlay's look (filled attach, dashed "add a bend"). The drawing kernel client answers a draft request with the cached exact projection of the same view when it has one. A placement-only edit then rebuilds with the same arcs and centre marks. The build is still marked draft, and the refinement that follows is a cache hit.
 
+**CI race: a build counted mid-drag (dev b217da9, the detail circle's radius drag, `builds` 9 for 8, on both tries).**
+- The hold itself was sound. The only place a build is delivered checks `held` after the pipeline returns, so a build that finishes under a drag is deferred. A unit test (`controller.test.ts`) forces exactly that and passes on the old code too.
+- The extra build came from upstream, between the test's count and its press. The controller rebuilt on *every* `wb.regen` notification. The regen view is set again for each pass of the same model: coarse, fine, the deferred mass fetch (`onMass` sets it even when nothing changed), and a drawing-only edit regenerated from the cache.
+- On a slow runner one of these landed after `exact()` had settled. It delivered a needless draft build (then a refinement), and the test counted it.
+- **Fixes.**
+  - The regen subscription rebuilds only when `regenInputKey` changes. The key covers the source, the model key (drawings aside), the part, the body count, the failed-feature count and the mass (shown in the title block).
+  - `ensureExact` is satisfied only when nothing is queued (no timer, no build in flight or held back). Before, it returned while a scheduled draft was about to replace the exact build. Exports and tests now wait for that build.
+- Unit tests fail on the old controller (same-input regens rebuilt; `ensureExact` returned early). The E2E assertion is unchanged.
+
 **Not changed.** The R12 profile still writes the filled triangle as an outline (ADR-091). A datum on a linear dimension whose arrows are outside overlaps the outside arrowhead at that end. ISO 5459 allows the triangle to replace that arrow, but the dimension is laid out before the datum and does not know about it. This is a known limit.
 
 **Tests.**
