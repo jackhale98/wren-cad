@@ -15,6 +15,7 @@
 //   fingerprints(shape: number): string
 //   bounds(shape: number): string
 //   exportShapes(shapesJson: string, format: string, optionsJson: string): string
+//   exportStepPmi(shapesJson: string, pmiJson: string, optionsJson: string): string
 //   importFile(path: string, format: string): string
 //   measure(queryJson: string): string
 //   subShapeGeometry(shape: number, kind: string, index: number): string
@@ -86,6 +87,7 @@ EMSCRIPTEN_BINDINGS(whittle_kernel) {
   emscripten::function("fingerprints", &whittle::fingerprints);
   emscripten::function("bounds", &whittle::bounds);
   emscripten::function("exportShapes", &whittle::exportShapes);
+  emscripten::function("exportStepPmi", &whittle::exportStepPmi);
   emscripten::function("importFile", &whittle::importFile);
   emscripten::function("measure", &whittle::measure);
   emscripten::function("subShapeGeometry", &whittle::subShapeGeometry);

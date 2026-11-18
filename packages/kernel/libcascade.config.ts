@@ -15,6 +15,7 @@ const facadeSymbols = [
   'fingerprints',
   'bounds',
   'exportShapes',
+  'exportStepPmi',
   'importFile',
   'measure',
   'subShapeGeometry',

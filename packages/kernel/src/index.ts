@@ -37,9 +37,22 @@ export type {
   RawExportResult,
   RawImportResult,
   RawKernelInfo,
+  RawPmiExportResult,
   SubShapeGeometry,
   WhittleKernelModule,
 } from './facade';
+export type {
+  KernelPmiExportReport,
+  KernelPmiImportItem,
+  KernelPmiImportResult,
+  PmiBodyCounts,
+} from './pmi';
+export {
+  decodePmiExportReport,
+  decodePmiImport,
+  encodePmiExportItems,
+  withAnnotationIds,
+} from './pmi';
 
 /** Toolchain variant name (libcascade.config.ts) for a contracts `KernelVariant`. */
 export const TOOLCHAIN_VARIANT = { single: 'single', threaded: 'multi' } as const satisfies Record<

@@ -51,6 +51,14 @@ export interface WhittleKernelModule {
    */
   exportShapes(shapesJson: string, format: string, optionsJson: string): string;
   /**
+   * M5 (ADR-100): STEP AP242 with semantic + presentation PMI. `shapesJson`: `ExportShape[]`;
+   * `pmiJson`: contracts `PmiExportItem[]` (`encodePmiExportItems`; target `body` = index into
+   * the shapes, `index` 1-based TopExp); `optionsJson`: `ExportOptions` (AP242 or no schema).
+   * Returns `Result<RawPmiExportResult>` JSON; decode `pmi` with `decodePmiExportReport`.
+   * Optional: kernel builds before M5 lack it.
+   */
+  exportStepPmi?(shapesJson: string, pmiJson: string, optionsJson: string): string;
+  /**
    * Reads a MEMFS file (`step` | `iges` | `stl` | `brep`). Returns `Result<RawImportResult>`
    * JSON.
    */
@@ -108,9 +116,19 @@ export interface RawExportResult {
   files: { path: string; name: string }[];
 }
 
+/** Value of `exportStepPmi()` on success: one STEP file plus the PMI report (raw, decode it). */
+export interface RawPmiExportResult extends RawExportResult {
+  pmi: unknown;
+}
+
 /** Value of `importFile()` on success. */
 export interface RawImportResult {
   bodies: { shape: number; name?: string }[];
+  /**
+   * M5, STEP with GD&T only: raw PMI on these bodies' sub-shapes. Validate with
+   * `decodePmiImport(pmi, bodies.length)` before use.
+   */
+  pmi?: unknown;
 }
 
 /**

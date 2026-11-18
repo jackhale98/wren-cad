@@ -6,7 +6,7 @@
 // scripts/amalgamate.mjs inlines, in this order:
 //   whittle_kernel.h, whittle_core.cpp, whittle_unify.cpp, whittle_modeling.cpp, whittle_pushpull.cpp,
 //   whittle_shape_ops.cpp, whittle_copies.cpp, whittle_reference.cpp, whittle_measure.cpp,
-//   whittle_io.cpp, whittle_kernel.cpp, whittle_bindings.cpp
+//   whittle_io.cpp, whittle_pmi.cpp, whittle_kernel.cpp, whittle_bindings.cpp
 // into .libcascade/whittle_facade.cpp, which is what libcascade.config.ts points at. The files
 // after this one share its anonymous namespace helpers and are not standalone TUs.
 
@@ -127,6 +127,29 @@
 #include <XCAFDoc_ColorType.hxx>
 #include <XCAFDoc_DocumentTool.hxx>
 #include <XCAFDoc_ShapeTool.hxx>
+// M5 STEP AP242 PMI (whittle_pmi.cpp)
+#include <Interface_InterfaceModel.hxx>
+#include <NCollection_HArray1.hxx>
+#include <STEPConstruct_UnitContext.hxx>
+#include <STEPControl_Reader.hxx>
+#include <StepBasic_ConversionBasedUnitAndPlaneAngleUnit.hxx>
+#include <StepBasic_NamedUnit.hxx>
+#include <StepBasic_SiUnitAndPlaneAngleUnit.hxx>
+#include <StepDimTol_Datum.hxx>
+#include <StepDimTol_GeometricTolerance.hxx>
+#include <StepShape_DimensionalLocation.hxx>
+#include <StepShape_DimensionalSize.hxx>
+#include <StepShape_LimitsAndFits.hxx>
+#include <StepData_StepModel.hxx>
+#include <TCollection_HAsciiString.hxx>
+#include <XCAFDimTolObjects_DatumObject.hxx>
+#include <XCAFDimTolObjects_DimensionObject.hxx>
+#include <XCAFDimTolObjects_GeomToleranceObject.hxx>
+#include <XCAFDoc_Datum.hxx>
+#include <XCAFDoc_Dimension.hxx>
+#include <XCAFDoc_DimTolTool.hxx>
+#include <XCAFDoc_GeomTolerance.hxx>
+#include <gp.hxx>
 #include <gp_Ax1.hxx>
 #include <gp_Ax2.hxx>
 #include <gp_Ax3.hxx>
