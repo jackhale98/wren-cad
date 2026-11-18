@@ -569,7 +569,7 @@ function movePlacement(
         overlay: [
           textBoxOutline(r.textBox, start.mm),
           ...hint,
-          ...(handles ? handleNodes(r.leader, start.mm) : []),
+          ...(handles ? handleNodes(r.leader, start.mm, false) : []),
         ],
       },
       commit: same

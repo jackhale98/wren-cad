@@ -131,11 +131,14 @@ function handlesOfLeader(g: NonNullable<PlacedAnnotation['leader']>): LeaderHand
   return out;
 }
 
-/** The handles drawn by the preview (the React overlay's are hidden while a drag stands in). */
-export function handleNodes(g: PlacedAnnotation['leader'], mm: number): SvgNode[] {
+/**
+ * The handles drawn by the preview (the React overlay's are hidden while a drag stands in), in
+ * the overlay's own look; with `guide`, the line the attach point slides on (a handle drag).
+ */
+export function handleNodes(g: PlacedAnnotation['leader'], mm: number, guide = true): SvgNode[] {
   if (!g) return [];
   const out: SvgNode[] = [];
-  if (g.on)
+  if (g.on && guide)
     out.push({
       tag: 'line',
       attrs: {
@@ -150,7 +153,14 @@ export function handleNodes(g: PlacedAnnotation['leader'], mm: number): SvgNode[
       },
     });
   for (const h of handlesOfLeader(g))
-    out.push(grip(h.at, mm, h.kind === 'addBend' ? 3.5 : 4.5, { 'data-leader-handle': h.kind }));
+    out.push(
+      grip(h.at, mm, h.kind === 'addBend' ? 3.5 : 4.5, {
+        'data-leader-handle': h.kind,
+        'stroke-width': String(1.3 * mm),
+        ...(h.kind === 'attach' ? { fill: ACCENT, 'fill-opacity': '0.35' } : {}),
+        ...(h.kind === 'addBend' ? { 'stroke-dasharray': `${2 * mm} ${1.5 * mm}` } : {}),
+      }),
+    );
   return out;
 }
 

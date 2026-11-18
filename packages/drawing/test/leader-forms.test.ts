@@ -26,7 +26,7 @@ import {
   flipDimensionLineEnd,
   freeDimensionLineEnd,
   layoutView,
-  leaderElbow,
+  leaderCorners,
   lineParameter,
   outwardOffset,
   type PlacedAnnotation,
@@ -219,12 +219,15 @@ describe('datum on a surface (ISO 5459, ASME Y14.5 §6.3)', () => {
     close(apex, [190, BOTTOM - tri.height]);
     expect(p.leader?.axis?.[0]).toBeCloseTo(0, 12);
     expect(p.leader?.axis?.[1]).toBeCloseTo(-1, 12);
-    // The leader leaves the apex along that axis (one text height), then turns to the box.
+    // The leader leaves the apex along that axis (one text height), goes across to the box's side
+    // and back to it: square turns, never a slant through the triangle.
     const leader = polylines(p.items).find((x) => !x.closed);
-    expect(leader?.points).toHaveLength(3);
-    close(leader?.points[0] as Vec2, apex);
-    close(leader?.points[1] as Vec2, [190, BOTTOM - tri.height - h]);
-    close(leader?.points[2] as Vec2, [198, BOTTOM + 15]);
+    closeAll(leader?.points ?? [], [
+      apex,
+      [190, BOTTOM - tri.height - h],
+      [198, BOTTOM - tri.height - h],
+      [198, BOTTOM + 15],
+    ]);
     expect(p.leader?.path).toEqual(leader?.points);
   });
 
@@ -631,11 +634,15 @@ describe('helpers', () => {
       text: [-8, -3],
       bends: [[-4, 0]],
     });
-    // The corner: none in line, square off the axis otherwise, at least a stub out.
-    expect(leaderElbow([0, 0], [1, 0], [5, 0], 2)).toBeNull();
-    expect(leaderElbow([0, 0], [1, 0], [5, 3], 2)).toEqual([5, 0]);
-    expect(leaderElbow([0, 0], [1, 0], [-5, 3], 2)).toEqual([2, 0]);
-    expect(leaderElbow([0, 0], [1, 0], [1, 0], 2)).toEqual([2, 0]);
+    // The corners: none in line; one square off the axis ahead; behind (or too close), out a
+    // stub, across, and back.
+    expect(leaderCorners([0, 0], [1, 0], [5, 0], 2)).toEqual([]);
+    expect(leaderCorners([0, 0], [1, 0], [5, 3], 2)).toEqual([[5, 0]]);
+    expect(leaderCorners([0, 0], [1, 0], [-5, 3], 2)).toEqual([
+      [2, 0],
+      [2, 3],
+    ]);
+    expect(leaderCorners([0, 0], [1, 0], [1, 0], 2)).toEqual([[2, 0]]);
     // A box near the axis lands on it; far off, or behind, it stays where it is.
     expect(snapToAxis([10, 0.4], [1, 0], 0.5)).toEqual([10, 0]);
     expect(snapToAxis([10, 2], [1, 0], 0.5)).toEqual([10, 2]);

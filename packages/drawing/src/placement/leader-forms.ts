@@ -124,19 +124,23 @@ export function flipDimensionLineEnd(layout: LeaderLayout, line: readonly [Vec2,
 }
 
 /**
- * The corner a leader turns at so that its first leg leaves `from` along `axis` (unit), or null
- * when `toward` already lies on that axis, at least `stub` out. A datum's leader leaves its
- * triangle across the surface (or in line with the dimension line), and a frame's arrow meets a
- * surface square to it (ISO 5459, ISO 1101, ASME Y14.5): a box placed off that axis is reached
- * through this corner, never by a slanted first leg.
+ * The corners a leader turns at so that its first leg leaves `from` along `axis` (unit), at least
+ * `stub` out: none when `toward` already lies on that axis; one when it is off the axis ahead
+ * (square off the axis to its level, then across); two when it is behind or too close (out a
+ * stub, across to it, then back). A datum's leader leaves its triangle across the surface (or in
+ * line with the dimension line), and a frame's arrow meets a surface square to it (ISO 5459,
+ * ISO 1101, ASME Y14.5): a box placed off that axis is reached through these corners, never by a
+ * slanted first leg.
  */
-export function leaderElbow(from: Vec2, axis: Vec2, toward: Vec2, stub: number): Vec2 | null {
+export function leaderCorners(from: Vec2, axis: Vec2, toward: Vec2, stub: number): Vec2[] {
   const d: Vec2 = [toward[0] - from[0], toward[1] - from[1]];
   const along = dot2(d, axis);
-  const across = Math.abs(d[0] * axis[1] - d[1] * axis[0]);
-  if (across <= 1e-6 && along >= stub - 1e-9) return null;
-  const k = Math.max(stub, along);
-  return [from[0] + axis[0] * k, from[1] + axis[1] * k];
+  const side: Vec2 = [d[0] - axis[0] * along, d[1] - axis[1] * along];
+  const off = Math.hypot(side[0], side[1]) > 1e-6;
+  if (along >= stub - 1e-9)
+    return off ? [[from[0] + axis[0] * along, from[1] + axis[1] * along]] : [];
+  const out: Vec2 = [from[0] + axis[0] * stub, from[1] + axis[1] * stub];
+  return off ? [out, [out[0] + side[0], out[1] + side[1]]] : [out];
 }
 
 /**

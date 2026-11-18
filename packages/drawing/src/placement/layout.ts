@@ -87,7 +87,7 @@ import {
   dimensionLineEnd,
   flipDimensionLineEnd,
   freeDimensionLineEnd,
-  leaderElbow,
+  leaderCorners,
   outwardOffset,
 } from './leader-forms';
 
@@ -822,7 +822,7 @@ function leaderGeometry(
     // The triangle's axis (ISO 5459, ASME Y14.5 §6.3): on a surface, across its line and out of
     // the material, whichever side the letter box is dragged to; on another line (an edge, an
     // axis), across it to the leader's side; in line with a dimension line, pointing out of its
-    // end; else along the leader. The leader leaves the apex along that axis (`leaderElbow`).
+    // end; else along the leader. The leader leaves the apex along that axis (`leaderCorners`).
     let axis: Vec2;
     let held = true;
     if (on && l.attach.kind === 'dimensionLine') {
@@ -839,8 +839,8 @@ function leaderGeometry(
     }
     prims.push(...placeSymbol(glyph, attach, tri.base, angle2(axis) - Math.PI / 2));
     const apex = add2(attach, scale2(axis, tri.height));
-    const elbow = held ? leaderElbow(apex, axis, toward, h) : null;
-    const pts = [apex, ...(elbow ? [elbow] : []), ...bendPts, textAt];
+    const corners = held ? leaderCorners(apex, axis, toward, h) : [];
+    const pts = [apex, ...corners, ...bendPts, textAt];
     if (held) geometry.axis = axis;
     geometry.path = pts;
     if (dist2(apex, textAt) > 1e-9 || pts.length > 2)
@@ -885,14 +885,14 @@ function leaderGeometry(
   // A frame's arrow meets a surface seen edge-on square to it, from outside the material
   // (ISO 1101: the arrow gives the zone's width direction); the leader turns after that leg.
   const normal = a.kind === 'geometricTolerance' ? across() : null;
-  const elbow = normal
-    ? leaderElbow(attach, normal, toward, Math.max(h, 2 * style.arrow.length))
-    : null;
+  const corners = normal
+    ? leaderCorners(attach, normal, toward, Math.max(h, 2 * style.arrow.length))
+    : [];
   if (normal) geometry.axis = normal;
-  geometry.path = [attach, ...(elbow ? [elbow] : []), ...bendPts, textAt];
+  geometry.path = [attach, ...corners, ...bendPts, textAt];
   const lg = leaderLayout({
     attach,
-    bends: elbow ? [elbow, ...bendPts] : bendPts,
+    bends: [...corners, ...bendPts],
     text: textAt,
     ...(l.landing ? { landing: l.landing } : {}),
     contentWidth: content.width,
