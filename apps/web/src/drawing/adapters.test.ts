@@ -119,6 +119,28 @@ describe('the drawing kernel wrapper', () => {
     expect(api.project).toHaveBeenCalledTimes(2); // the repeated request came from the cache
   });
 
+  it('a draft of a view whose exact edges are cached gets the exact ones (no polylines on release)', async () => {
+    const exact = { ...projection, key: 'exact' };
+    const api = {
+      loadShape: vi.fn(async () => ({ ok: true as const })),
+      project: vi.fn(async (r: ViewProjectionRequest) => ({
+        ok: true as const,
+        value: r.quality === 'exact' ? exact : projection,
+      })),
+    };
+    const k = drawingKernelOver(api, { dispose: () => {} });
+    // Before the exact edges exist, a draft is a draft.
+    expect(await k.project(shape, request())).toEqual({ ok: true, value: projection });
+    await k.project(shape, request({ quality: 'exact' }));
+    expect(await k.project(shape, request())).toEqual({ ok: true, value: exact });
+    // Another view (here: with hidden lines) is still drawn as asked.
+    expect(await k.project(shape, request({ hidden: true }))).toEqual({
+      ok: true,
+      value: projection,
+    });
+    expect(api.project).toHaveBeenCalledTimes(3);
+  });
+
   it('sends a transferred copy of the BREP and keeps its own, so an evicted shape can load again', async () => {
     const sent: Uint8Array[] = [];
     const api = {
