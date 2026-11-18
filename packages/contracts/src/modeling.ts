@@ -19,6 +19,7 @@ import type {
   ShapeFingerprints,
   ShapeHandle,
 } from './kernel';
+import type { PmiExportReport, PmiImportResult } from './pmi';
 import type { SketchEntity } from './sketch';
 import type { GeometricDiff, RegenSlot } from './sync';
 
@@ -307,6 +308,11 @@ export type ExportFormat = 'step' | 'stl' | 'brep';
 export interface ExportOptions {
   /** STEP schema; AP214 in M1, AP242 + PMI in M5. */
   stepSchema?: 'AP203' | 'AP214' | 'AP242';
+  /**
+   * M5 (ADR-100), AP242 only: write the part's annotations as semantic PMI, and presentation PMI
+   * too unless `presentation` is false. Default: no PMI. `annotations` limits it to those ids.
+   */
+  pmi?: { presentation?: boolean; annotations?: Id[] };
   /** Export only these bodies (BodyResult ids); default all visible bodies of the part. */
   bodies?: string[];
   /** STL: binary (default) or ASCII. Units are always millimetres. */
@@ -394,13 +400,22 @@ export interface ModelingApi extends KernelApi {
     partId: Id,
     format: ExportFormat,
     options?: ExportOptions,
-  ): Promise<{ ok: true; bytes: Uint8Array } | { ok: false; error: KernelError }>;
-  /** Imports a STEP/BREP/STL file as reference bodies (M1: STEP → solids). */
+  ): Promise<
+    { ok: true; bytes: Uint8Array; pmi?: PmiExportReport } | { ok: false; error: KernelError }
+  >;
+  /**
+   * Imports a STEP/BREP/STL file as reference bodies (M1: STEP → solids). M5: a STEP file's
+   * semantic and presentation PMI come back in `pmi`, on the returned bodies' sub-shape indices.
+   */
   importFile(
     bytes: Uint8Array,
     format: ExportFormat,
   ): Promise<
-    | { ok: true; bodies: { shape: ShapeHandle; mesh: MeshBuffers; name?: string }[] }
+    | {
+        ok: true;
+        bodies: { shape: ShapeHandle; mesh: MeshBuffers; name?: string }[];
+        pmi?: PmiImportResult;
+      }
     | { ok: false; error: KernelError }
   >;
   /** Drops cached results and shapes for a part (document closed); one slot, or all of them. */

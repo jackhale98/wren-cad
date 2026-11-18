@@ -3531,3 +3531,14 @@ CI on the orthographic view failed twice for one cause: an orthographic view str
 - **Overlay behaviour.** Below the threshold a panel slides over the view (the view does not resize), one at a time: opening one closes the other. It closes by its top-bar button, Escape (focus returns to the button), or a tap on the scrim outside. The scrim swallows that tap, so it never also selects. The inspector opens by itself while editing (a new feature, Measure, Section, a feature picked in the tree) and closes when that is done (`revealInspector(auto)` / `restoreSheet`); a feature picked in the tree hands the overlay from tree to inspector. The top bar drops labels to icons in overlay mode (`in-data-[narrow]`) so it fits 744.
 - **Frame insets.** The shell reports the covered width per animation frame (`onOverlayInsets`); `framing.ts` passes it to `setFrameInsets`, so the camera trucks the model into the free area (zoom and orientation untouched, no re-fit, ADR-086 amendment) and fits (`fitAll`) frame in the free area. Docked panels resize the canvas and send nothing. The command bar and chips follow the free area through `--cover-left/right`.
 - **State.** `ui.inspectorOpen` (desktop starts open, tablet closed) replaces the tablet's sheet snap and tab; `sheetSnap`, `sheetTab` and `onSheetHeight` are phone only.
+
+## ADR-100: M5 STEP AP242 PMI exchange first; 3D MBD display second (owner, 2026-11-18)
+
+**Context.** Owner: "Proceed with the STEP model dimensions and tolerancing." PLAN M5 has two halves: exchanging annotations in STEP AP242 (semantic + presentation PMI) and showing/editing them in 3D (MBD mode).
+
+**Decision.**
+
+1. **Exchange first (M5a).** Contract `packages/contracts/src/pmi.ts`: the worker resolves annotations to an index-based neutral description (`PmiExportItem`: dimension, datum, geometric tolerance; targets as body/kind/TopExp index; optional presentation polylines on an annotation plane); the kernel façade builds the XCAF document (`XCAFDoc_DimTolTool`) and writes AP242 with `STEPCAFControl_Writer`. `ExportOptions.pmi` turns it on; `exportPart` returns a `PmiExportReport` (exported count, skipped with reasons: needs attention, unsupported, unresolved). Import returns `PmiImportResult` (items + per-entity issues) on the imported bodies' indices; the app maps them to annotations on the import feature's face names. Annotation ids travel as PMI entity names so Wren round trips keep identity.
+2. **Presentation** is generated in TS from the M4 layout code (lines + stroked text), never hand-built in C++.
+3. **MBD 3D display (M5b)** follows once exchange is validated: annotation planes, saved model views, viewport rendering and picking.
+4. **Validation:** Node round trips through the real kernel (counts, types, values, targets), NIST MBE PMI models imported with their issues listed, `docs/PMI_VALIDATION.md` for the NIST STEP File Analyzer and a third-party CAD check (owner's checklist).

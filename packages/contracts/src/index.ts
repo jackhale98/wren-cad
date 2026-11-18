@@ -6,6 +6,7 @@ export * from './io';
 export * from './kernel';
 export * from './modeling';
 export * from './naming';
+export * from './pmi';
 export * from './runtime';
 export * from './sketch';
 export * from './standards';
