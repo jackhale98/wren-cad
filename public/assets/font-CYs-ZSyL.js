@@ -1,0 +1,1 @@
+import"./pmi-BPevbhNh.js";function e(){return new URL(`/assets/osifont-lgpl3fe-DEjATbbY.ttf`,``+import.meta.url).href}let t;function n(n=fetch){return t??=n(e()).then(async e=>{if(!e.ok)throw Error(`drawing font: HTTP ${e.status}`);return new Uint8Array(await e.arrayBuffer())}),t}export{n as loadDrawingFont};

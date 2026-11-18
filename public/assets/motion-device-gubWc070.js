@@ -1,0 +1,1 @@
+import{Tt as e}from"./index-BlT8Nc99.js";import{t}from"./src-K1ccxEKS.js";function n(n){if(n.deviceDispose)return;let r=t({settings:e,onSample:e=>n.viewport?.motion?.(e),onButton:()=>{}});n.deviceDispose=()=>r.dispose(),n.setMotionInput(r)}export{n as startMotionDevice};
