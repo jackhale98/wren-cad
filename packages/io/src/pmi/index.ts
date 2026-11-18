@@ -4,6 +4,7 @@
  * AP242 PMI exchange contract (`packages/contracts/src/pmi.ts`), both directions. Worker-safe and
  * lazy: nothing on the app's initial route imports it.
  */
+export { hasStepPmi, type StepPmiCensus, stepPmiCensus } from './census';
 export {
   annotationKindName,
   isPmiTarget,
