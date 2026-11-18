@@ -54,14 +54,14 @@ bool parseHexColor(const std::string& hex, Quantity_Color& out) {
   return true;
 }
 
-std::string exportStep(const std::vector<ExportItem>& items, const Json& options) {
-  const std::string schema = optString(options, "stepSchema", "AP214");
+DESTEP_Parameters stepWriteParameters(const std::string& schema) {
   DESTEP_Parameters params;
   if (schema == "AP214") {
     params.WriteSchema = DESTEP_Parameters::WriteMode_StepSchema_AP214IS;
   } else if (schema == "AP203") {
     params.WriteSchema = DESTEP_Parameters::WriteMode_StepSchema_AP203;
   } else if (schema == "AP242") {
+    // OCCT 8.0.1 writes AP242 GD&T (STEPCAFControl_Writer::writeDGTsAP242) only for this schema.
     params.WriteSchema = DESTEP_Parameters::WriteMode_StepSchema_AP242DIS;
   } else {
     raiseError("INVALID_INPUT", "Unknown STEP schema '" + schema + "'", "Use AP203, AP214 or AP242.");
@@ -69,23 +69,44 @@ std::string exportStep(const std::vector<ExportItem>& items, const Json& options
   params.WriteUnit = UnitsMethods_LengthUnit_Millimeter;
   params.WriteName = true;
   params.WriteColor = true;
+  return params;
+}
 
-  occ::handle<TDocStd_Document> doc = new TDocStd_Document("MDTV-XCAF");
-  XCAFDoc_DocumentTool::Set(doc->Main(), false);
-  XCAFDoc_DocumentTool::SetLengthUnit(doc, 0.001);  // document unit: mm (value in metres)
-  occ::handle<XCAFDoc_ShapeTool> shapes = XCAFDoc_DocumentTool::ShapeTool(doc->Main());
-  occ::handle<XCAFDoc_ColorTool> colors = XCAFDoc_DocumentTool::ColorTool(doc->Main());
+// XCAF document of the export bodies: one free shape label per body (in `items` order) with its
+// name and colour; document length unit mm.
+struct StepDocument {
+  occ::handle<TDocStd_Document> doc;
+  occ::handle<XCAFDoc_ShapeTool> shapes;
+  std::vector<TDF_Label> bodyLabels;
+};
+
+StepDocument buildStepDocument(const std::vector<ExportItem>& items) {
+  StepDocument out;
+  out.doc = new TDocStd_Document("MDTV-XCAF");
+  XCAFDoc_DocumentTool::Set(out.doc->Main(), false);
+  XCAFDoc_DocumentTool::SetLengthUnit(out.doc, 0.001);  // document unit: mm (value in metres)
+  out.shapes = XCAFDoc_DocumentTool::ShapeTool(out.doc->Main());
+  occ::handle<XCAFDoc_ColorTool> colors = XCAFDoc_DocumentTool::ColorTool(out.doc->Main());
   for (const ExportItem& item : items) {
-    const TDF_Label label = shapes->AddShape(item.record->shape, false);
+    const TDF_Label label = out.shapes->AddShape(item.record->shape, false);
     TDataStd_Name::Set(label, TCollection_ExtendedString(item.name.c_str(), true));
     Quantity_Color color;
     if (!item.color.empty() && parseHexColor(item.color, color)) {
       colors->SetColor(label, color, XCAFDoc_ColorGen);
     }
+    out.bodyLabels.push_back(label);
   }
+  return out;
+}
+
+// Transfers the document (GD&T included: the writer's DimTol mode is on by default and acts on
+// AP242 only) and writes it to a fresh MEMFS path.
+std::string writeStepDocument(const occ::handle<TDocStd_Document>& doc,
+                              const DESTEP_Parameters& params) {
   STEPCAFControl_Writer writer;
   writer.SetNameMode(true);
   writer.SetColorMode(true);
+  writer.SetDimTolMode(true);
   if (!writer.Transfer(doc, params, STEPControl_AsIs)) {
     raiseError("OPERATION_FAILED", "The bodies could not be converted to STEP");
   }
@@ -94,6 +115,12 @@ std::string exportStep(const std::vector<ExportItem>& items, const Json& options
     raiseError("OPERATION_FAILED", "Writing the STEP file failed");
   }
   return path;
+}
+
+std::string exportStep(const std::vector<ExportItem>& items, const Json& options) {
+  const DESTEP_Parameters params = stepWriteParameters(optString(options, "stepSchema", "AP214"));
+  const StepDocument doc = buildStepDocument(items);
+  return writeStepDocument(doc.doc, params);
 }
 
 std::string exportBrep(const std::vector<ExportItem>& items) {
@@ -298,8 +325,9 @@ void walkStepLabel(const TDF_Label& label, const TopLoc_Location& location, cons
   addBodies(shape, name.empty() ? labelName(label) : name, out);
 }
 
+// `extraJson`: further members of the value object (",\"pmi\":{…}"), or empty.
 std::string importBodiesJson(const std::vector<std::pair<TopoDS_Shape, std::string>>& bodies,
-                             bool meshOnly) {
+                             bool meshOnly, const std::string& extraJson = std::string()) {
   if (bodies.empty()) raiseError("INVALID_INPUT", "The file contains no shapes");
   std::vector<HandleGuard> guards(bodies.size());
   std::string json = "{\"bodies\":[";
@@ -313,16 +341,24 @@ std::string importBodiesJson(const std::vector<std::pair<TopoDS_Shape, std::stri
     if (!bodies[i].second.empty()) json += ",\"name\":" + jsonString(bodies[i].second);
     json += "}";
   }
-  json += "]}";
+  json += "]";
+  json += extraJson;
+  json += "}";
   std::string result = okJson(json);
   for (HandleGuard& g : guards) g.release();
   return result;
 }
 
+// M5 (whittle_pmi.cpp): the GD&T of a transferred STEP document as `,"pmi":{…}` on the imported
+// bodies' sub-shape indices, or empty when the file has none. Never throws.
+std::string stepPmiMember(STEPCAFControl_Reader& reader, const occ::handle<TDocStd_Document>& doc,
+                          const std::vector<std::pair<TopoDS_Shape, std::string>>& bodies) noexcept;
+
 std::string importStep(const std::string& path) {
   STEPCAFControl_Reader reader;
   reader.SetNameMode(true);
   reader.SetColorMode(true);
+  reader.SetGDTMode(true);  // M5: semantic + presentation PMI (OCCT's default, made explicit)
   if (reader.ReadFile(path.c_str()) != IFSelect_RetDone) {
     raiseError("INVALID_INPUT", "This file is not a readable STEP file");
   }
@@ -335,7 +371,8 @@ std::string importStep(const std::string& path) {
   shapes->GetFreeShapes(roots);
   std::vector<std::pair<TopoDS_Shape, std::string>> bodies;
   for (int i = 1; i <= roots.Length(); ++i) walkStepLabel(roots(i), TopLoc_Location(), "", bodies, 0);
-  return importBodiesJson(bodies, false);
+  if (bodies.empty()) raiseError("INVALID_INPUT", "The file contains no shapes");
+  return importBodiesJson(bodies, false, stepPmiMember(reader, doc, bodies));
 }
 
 std::string importBrep(const std::string& path) {
