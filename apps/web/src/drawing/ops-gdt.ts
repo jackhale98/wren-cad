@@ -7,8 +7,8 @@
  *   along the line in this view). The annotation refs that face; the triangle (or the frame's
  *   arrow) sits on its line, or on an extension of it.
  * - **On a feature of size.** The pick is a size dimension on the sheet. A datum sits in line with
- *   its dimension line (`dimensionLine`) and refs the feature (a cylinder's axis); a frame sits with
- *   its text (`placement`) and applies to it (`appliesTo`).
+ *   its dimension line (`dimensionLine`, at the end nearer the pick that its text is not beyond)
+ *   and applies to it (`appliesTo`); a frame sits with its text (`placement`) and applies to it.
  *
  * Nothing is attached to a guessed entity: a pick that maps to no face, or to two, is refused
  * with the reason. Every creation is one `addAnnotation` with its placement: one undo step.
@@ -30,6 +30,7 @@ import {
   dimensionLineEnd,
   edgeFaceNames,
   faceAlongLine,
+  freeDimensionLineEnd,
   lineParameter,
   outwardOffset,
   type PlacedAnnotation,
@@ -293,7 +294,13 @@ export async function addDatumOnSize(c: DrawingController, size: SizePick): Prom
     c.toast('That dimension has no dimension line to attach to.', 'error');
     return false;
   }
-  const t = dimensionLineEnd(lineParameter(line, size.at));
+  // The end nearer the pick, unless the dimension's text is beyond it (a diameter's leader and
+  // value): then the other end, so the triangle never sits on the dimension's own leader.
+  const t = freeDimensionLineEnd(
+    dimensionLineEnd(lineParameter(line, size.at)),
+    line,
+    size.placed.textBox,
+  );
   const from = t === 0 ? line[1] : line[0];
   const to = t === 0 ? line[0] : line[1];
   const l = Math.hypot(to[0] - from[0], to[1] - from[1]);

@@ -6,12 +6,18 @@
  * Snapping: the attach point stays on the line it is attached to. On a surface's line it slides
  * along the line and onto its extension past either end (snapping to the ends and the middle;
  * `storableAttachT` bounds it to what the document stores); on a size dimension it takes the
- * nearer end of the dimension line, so it stays in line with it.
+ * nearer end of the dimension line, so it stays in line with it, but never the end the
+ * dimension's own text is beyond (`dimensionTextEnd`).
+ *
+ * Every drag starts from the layout as drawn (`drawnLeaderLayout`), which differs from the stored
+ * one only when the layout moved a datum off a dimension's text end.
  */
 
 import type { AnnotationPlacement, Id, PlacementLayout, Vec2 } from '@wren-cad/contracts';
 import {
   dimensionLineEnd,
+  dimensionTextEnd,
+  flipDimensionLineEnd,
   lineParameter,
   type PlacedAnnotation,
   storableAttachT,
@@ -35,6 +41,26 @@ export type LeaderHandle =
 const sub = (a: Vec2, b: Vec2): Vec2 => [a[0] - b[0], a[1] - b[1]];
 const len = (a: Vec2) => Math.hypot(a[0], a[1]);
 const round3 = (x: number) => Math.round(x * 1000) / 1000;
+
+/**
+ * A leader placement's layout as it is drawn: the layout's own (`PlacedAnnotation.leader.layout`)
+ * when it moved a datum off a dimension's text end, else the stored one. Drags, arrow keys and the
+ * inspector edit this one, so what moves is what is on the sheet.
+ */
+export function drawnLeaderLayout<T extends PlacementLayout>(
+  layout: T,
+  placed: PlacedAnnotation | undefined,
+): T | Leader {
+  return layout.kind === 'leader' && placed?.leader?.layout ? placed.leader.layout : layout;
+}
+
+/** The end of the dimension line a leader on it cannot take (the dimension's text is there). */
+export function takenEnd(b: Built, layout: PlacementLayout): 0 | 1 | null {
+  if (layout.kind !== 'leader' || layout.attach.kind !== 'dimensionLine') return null;
+  const id = layout.attach.placementId;
+  const dim = b.build.placed.find((x) => x.placementId === id);
+  return dim?.line ? dimensionTextEnd(dim.line, dim.textBox) : null;
+}
 
 function placedOf(
   b: Built,
@@ -62,10 +88,17 @@ export function snapAlong(t: number, length: number, snap: number): number {
 
 /**
  * The layout after dragging the attach point to `p`. On a surface's line: along it (and its
- * extension). On a dimension line: the nearer end; flipping ends mirrors the text along the line,
- * so the datum keeps pointing out of the dimension. Exported for tests.
+ * extension). On a dimension line: the nearer end, unless the dimension's text is there (`taken`);
+ * flipping ends mirrors the text along the line, so the datum keeps pointing out of the
+ * dimension. Exported for tests.
  */
-export function dragAttach(layout: Leader, on: [Vec2, Vec2], p: Vec2, snap: number): Leader {
+export function dragAttach(
+  layout: Leader,
+  on: [Vec2, Vec2],
+  p: Vec2,
+  snap: number,
+  taken: 0 | 1 | null = null,
+): Leader {
   const t = lineParameter(on, p);
   const a = layout.attach;
   if (a.kind === 'ref') {
@@ -77,20 +110,8 @@ export function dragAttach(layout: Leader, on: [Vec2, Vec2], p: Vec2, snap: numb
   }
   if (a.kind === 'dimensionLine') {
     const end = dimensionLineEnd(t);
-    if (end === dimensionLineEnd(a.t)) return layout;
-    const d = sub(on[1], on[0]);
-    const l = len(d) || 1;
-    const u: Vec2 = [d[0] / l, d[1] / l];
-    const k = layout.text[0] * u[0] + layout.text[1] * u[1];
-    const text: Vec2 = [
-      round3(layout.text[0] - 2 * k * u[0]),
-      round3(layout.text[1] - 2 * k * u[1]),
-    ];
-    const bends = layout.bends?.map((q): Vec2 => {
-      const kb = q[0] * u[0] + q[1] * u[1];
-      return [round3(q[0] - 2 * kb * u[0]), round3(q[1] - 2 * kb * u[1])];
-    });
-    return { ...layout, attach: { ...a, t: end }, text, ...(bends ? { bends } : {}) };
+    if (end === dimensionLineEnd(a.t) || end === taken) return layout;
+    return flipDimensionLineEnd(layout, on);
   }
   return layout;
 }
@@ -103,14 +124,15 @@ function handlesOfLeader(g: NonNullable<PlacedAnnotation['leader']>): LeaderHand
   g.bends.forEach((at, index) => {
     out.push({ kind: 'bend', index, at });
   });
-  const last = g.bends.at(-1) ?? g.at;
+  // The last leg as drawn (after the corner a held leader turns at), else from the last bend.
+  const last = (g.path && g.path.length >= 2 ? g.path.at(-2) : undefined) ?? g.bends.at(-1) ?? g.at;
   if (len(sub(g.text, last)) > 6)
     out.push({ kind: 'addBend', at: [(last[0] + g.text[0]) / 2, (last[1] + g.text[1]) / 2] });
   return out;
 }
 
 /** The handles drawn by the preview (the React overlay's are hidden while a drag stands in). */
-function handleNodes(g: PlacedAnnotation['leader'], mm: number): SvgNode[] {
+export function handleNodes(g: PlacedAnnotation['leader'], mm: number): SvgNode[] {
   if (!g) return [];
   const out: SvgNode[] = [];
   if (g.on)
@@ -154,11 +176,12 @@ export function leaderHandleDrag(
   if (!handle || !found?.placed.leader) return null;
   const g = found.placed.leader;
   const pl = found.pl;
-  const start = pl.layout as Leader;
+  const start = drawnLeaderLayout(pl.layout, found.placed) as Leader;
+  const taken = takenEnd(b, start);
   const key = `drag:leader:${placementId}:${handle.kind}${handle.kind === 'bend' ? handle.index : ''}`;
   const rel = (q: Vec2): Vec2 => [round3(q[0] - g.at[0]), round3(q[1] - g.at[1])];
   const layoutAt = (q: Vec2, mm: number): Leader => {
-    if (handle.kind === 'attach' && g.on) return dragAttach(start, g.on, q, 6 * mm);
+    if (handle.kind === 'attach' && g.on) return dragAttach(start, g.on, q, 6 * mm, taken);
     if (handle.kind === 'bend') {
       const bends = [...(start.bends ?? [])];
       bends[handle.index] = rel(q);
@@ -198,4 +221,33 @@ export function leaderHandleDrag(
           },
     };
   });
+}
+
+/**
+ * A leader placement edited in the inspector, made consistent with the drag rules: a datum
+ * switched to the other end of its dimension line keeps pointing out of the dimension (the text
+ * and bends mirrored along the line, as a drag does), and the end the dimension's text is beyond
+ * is refused (null). `shown` is the placement as drawn (`drawnLeaderLayout`). Exported for tests.
+ */
+export function inspectorLeaderEdit(
+  b: Built,
+  shown: AnnotationPlacement,
+  next: AnnotationPlacement,
+): AnnotationPlacement | null {
+  const from = shown.layout;
+  const to = next.layout;
+  if (
+    from.kind !== 'leader' ||
+    to.kind !== 'leader' ||
+    from.attach.kind !== 'dimensionLine' ||
+    to.attach.kind !== 'dimensionLine'
+  )
+    return next;
+  const target = to.attach.placementId;
+  const end = dimensionLineEnd(to.attach.t);
+  if (end === dimensionLineEnd(from.attach.t)) return next;
+  if (end === takenEnd(b, from)) return null;
+  const dim = b.build.placed.find((x) => x.placementId === target);
+  if (!dim?.line) return next;
+  return { ...next, layout: flipDimensionLineEnd(from, dim.line) };
 }

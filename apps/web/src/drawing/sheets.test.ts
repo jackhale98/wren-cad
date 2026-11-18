@@ -9,7 +9,14 @@ import { solveViews } from '@wren-cad/drawing';
 import type { SheetPointer } from '@wren-cad/ui/drawing';
 import { describe, expect, it } from 'vitest';
 import type { DrawingController } from './controller';
-import { dragAttach, leaderHandleDrag, snapAlong } from './interact-leader';
+import {
+  dragAttach,
+  drawnLeaderLayout,
+  inspectorLeaderEdit,
+  leaderHandleDrag,
+  leaderHandlesOf,
+  snapAlong,
+} from './interact-leader';
 import { notASize } from './ops-gdt';
 import {
   addSheet,
@@ -277,6 +284,101 @@ describe('leader drags (ADR-094)', () => {
     const flipped = dragAttach(fos, line, [20, 3], 2);
     expect(flipped.attach).toEqual({ kind: 'dimensionLine', placementId: 'w', t: 0 });
     expect(flipped.text).toEqual([-8, 1]);
+    // Never the end the dimension's text is beyond: it stays where it is.
+    const at0 = { ...fos, attach: { kind: 'dimensionLine' as const, placementId: 'w', t: 0 } };
+    expect(dragAttach(at0, line, [95, 0], 2, 1)).toEqual(at0);
+    expect(dragAttach(at0, line, [95, 0], 2, 0).attach).toMatchObject({ t: 1 });
+  });
+});
+
+describe('a datum on a dimension line, as drawn (ADR-094 amendment, 2026-11-18)', () => {
+  const line: [[number, number], [number, number]] = [
+    [0, 0],
+    [10, 0],
+  ];
+  const stored: Drawing['placements'][number] = {
+    id: 'L',
+    viewId: 'V',
+    annotationId: 'A',
+    layout: {
+      kind: 'leader',
+      attach: { kind: 'dimensionLine', placementId: 'w', t: 1 },
+      text: [8, 2],
+    },
+  };
+  const drawn = {
+    kind: 'leader' as const,
+    attach: { kind: 'dimensionLine' as const, placementId: 'w', t: 0 },
+    text: [-8, 2] as [number, number],
+  };
+  /** The dimension's text is beyond `textAt` along the line (x = 14: past end 1). */
+  const built = (textAt: number) =>
+    ({
+      build: {
+        placed: [
+          {
+            placementId: 'w',
+            line,
+            textBox: [
+              [textAt - 1, 1],
+              [textAt + 1, 1],
+              [textAt + 1, 3],
+              [textAt - 1, 3],
+            ],
+          },
+          {
+            placementId: 'L',
+            leader: {
+              attach: 'dimensionLine',
+              at: [0, 0],
+              on: line,
+              bends: [],
+              text: [-20, 10],
+              axis: [-1, 0],
+              path: [
+                [-3, 0],
+                [-20, 0],
+                [-20, 10],
+              ],
+              layout: drawn,
+            },
+          },
+        ],
+      },
+    }) as unknown as Built;
+
+  it('drags and the inspector start from the layout the sheet shows', () => {
+    const b = built(14);
+    const placed = b.build.placed.find((p) => p.placementId === 'L');
+    expect(drawnLeaderLayout(stored.layout, placed)).toEqual(drawn);
+    expect(drawnLeaderLayout(stored.layout, undefined)).toEqual(stored.layout);
+    // "Add a bend" sits on the last leg as drawn (after the leader's corner), not on the straight
+    // line from the attach point to the text.
+    const handles = leaderHandlesOf(
+      { ...b, drawing: { placements: [stored] } } as unknown as Built,
+      'L',
+    );
+    expect(handles.find((h) => h.kind === 'addBend')?.at).toEqual([-20, 5]);
+    expect(handles.find((h) => h.kind === 'attach')?.at).toEqual([0, 0]);
+  });
+
+  it('the inspector’s end switch mirrors the text like a drag, and refuses the text’s end', () => {
+    const shown = { ...stored, layout: drawn };
+    const toEnd = {
+      ...shown,
+      layout: { ...drawn, attach: { ...drawn.attach, t: 1 } },
+    };
+    // The text is past end 1: refused.
+    expect(inspectorLeaderEdit(built(14), shown, toEnd)).toBeNull();
+    // The text in the middle: allowed, mirrored along the line.
+    expect(inspectorLeaderEdit(built(5), shown, toEnd)?.layout).toEqual({
+      ...drawn,
+      attach: { ...drawn.attach, t: 1 },
+      text: [8, 2],
+    });
+    // Anything else passes through.
+    const moved = { ...shown, layout: { ...drawn, text: [-9, 2] as [number, number] } };
+    expect(inspectorLeaderEdit(built(14), shown, moved)).toBe(moved);
   });
 });
 
