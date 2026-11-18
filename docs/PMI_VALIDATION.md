@@ -1,0 +1,80 @@
+# PMI validation (M5, STEP AP242)
+
+How Wren's STEP AP242 model dimensions and tolerances (PMI) are checked, and what has been found.
+PLAN §12 M5 "Validation" and ADR-100. The automated checks run in CI; the owner's checklist at the
+end is done by hand and recorded here.
+
+## What is exchanged
+
+| Wren annotation | AP242 / XCAF | Notes |
+| --- | --- | --- |
+| Linear, aligned, ordinate dimension | `linearDistance` | The measuring direction and the `at` point qualifiers (axis, centre, min/max) are not in the exchange contract yet: a re-import makes a plain linear dimension between the same faces. Aligned and ordinate come back as linear. |
+| Diameter, radius | `linearDiameter`, `linearRadius` | |
+| Angle | `angular` | |
+| Tolerance: ± and +/− deviations, limits | plus-minus deviation | Limits come back as deviations (noted in the report). |
+| Tolerance: ISO 286 fit | limits and fits | STEP holds one class per dimension: H8/f7 writes H8, with a note (kernel). |
+| Tolerance: basic, reference | none | Written without a tolerance, with a note: the contract has no basic or reference flag yet. |
+| Datum feature, also on a feature of size | datum on the faces (of the dimension) | Comes back bound to the dimension (`appliesTo`) when its faces are that dimension's. |
+| Feature control frame | geometric tolerance: type, zone, Ø, Ⓜ/Ⓛ, up to three datums with modifiers | Not exported (skipped with the reason): SØ zones, zone modifiers, projected, unequal, per-unit zones, all around, common datums (A–B). |
+| Chamfer and hole callouts, notes, surface finish | none yet | Skipped with the reason. |
+| Presentation | tessellated lines and stroked text from the M4 layout | On the plane of the view that places the annotation in a drawing, else a model view from its faces. Without presentation the annotation ids do not survive (OCCT 8.0.1, ADR-100 amendment). |
+
+Annotations that need attention, are suppressed in the exported configuration, or refer to sketch
+or construction geometry (a promoted sketch dimension between sketch points, an origin plane) are
+never exported; the summary after the export lists each with its reason.
+
+## Automated checks
+
+| Check | Where | Status |
+| --- | --- | --- |
+| Every mapping, both directions, and the export → import → export fixpoint | `packages/io/test/pmi.test.ts` | passing |
+| Presentation: text stroked where the PDF writer puts it, on the view's plane, model views | `packages/drawing/test/pmi-presentation.test.ts` | passing |
+| The M4 bracket: ≥ 15 items (23), each one of its drawing's annotations by id, kind and value; targets are the faces the refs resolve to; presentation from the drawing views; deterministic | `packages/kernel-client/test/regen/pmi.golden.test.ts` | passing (real kernel, simulated façade) |
+| Round trip through a real STEP file, the import feature's names and annotations, lossless | same file, "round trip (simulated façade)" | passing |
+| Round trip through the real façade (`STEPCAFControl_Writer` / `Reader`) | same file, "Wasm round trip" | runs when the kernel dist has `exportStepPmi`; datum C of the bracket (referenced by no frame) is expected lost (OCCT reads datums only through frames) |
+| Kernel façade: counts, types, values, deviations, fits, datums, faces, names, presentation | `packages/kernel/test/pmi.golden.test.ts` (kernel workstream) | CI |
+| NIST MBE PMI models are AP242 with semantic and presentation PMI | `packages/io/test/pmi-nist.test.ts` | passing |
+| Export option on by default, summary with every reason; import of a NIST model reports its PMI | `apps/web/e2e/m5-pmi.spec.ts` | passing (façade stand-in until the dist has it) |
+
+## NIST MBE PMI test models
+
+Fixtures: `packages/test-fixtures/step/nist/` (CTC 01, 03, 05 and STC 06; licence and hashes in
+its README). Entity census (STEP entities, `stepPmiCensus`):
+
+| Model | Dimensions | Tolerances | Datums | Imported annotations | Not read (OCCT) |
+| --- | --- | --- | --- | --- | --- |
+| CTC 01 (AP242 e1) | 12 | 6 | 3 | to record with the façade build | to record |
+| CTC 03 (AP242 e2) | 10 | 13 | 6 | to record | to record |
+| CTC 05 (AP242 e1) | 6 | 10 | 4 | to record | to record |
+| STC 06 (AP242 e3) | 17 | 25 | 6 | to record | to record |
+
+Known OCCT 8.0.1 reader limits (ADR-100 amendment): datums are read only through the tolerances
+that reference them; a lower deviation above nominal comes back negated. Record per model what
+fails, from the import report, when the façade build is in CI.
+
+## Owner checklist
+
+Export the bracket (the M4 drawing, with its datums and frames) as STEP AP242 with PMI and
+presentation, then:
+
+- [ ] **NIST STEP File Analyzer and Viewer** (<https://www.nist.gov/services-resources/software/step-file-analyzer-and-viewer>):
+  open the file with "Semantic PMI" and "Graphic PMI" reports and the syntax checker on.
+  - [ ] No structural errors in the PMI entities (PLAN M5 accept).
+  - [ ] The semantic PMI report lists every exported dimension and tolerance with its value,
+    tolerance or fit, datum frame and the faces it is on.
+  - [ ] The graphic PMI shows each annotation as in the drawing, on the right plane.
+  - [ ] Record the analyzer's version, warnings and the counts here.
+- [ ] **Third-party CAD** (at least one: FreeCAD 1.x with its STEP PMI import, or a commercial
+  system the owner has):
+  - [ ] The part opens with the right geometry.
+  - [ ] The PMI shows (presentation at least; semantic where the system reads it).
+  - [ ] Record the system, version and what showed or did not.
+- [ ] **Round trip in Wren:** import the exported file into a new document. Every annotation comes
+  back with the same id, kind, value and tolerance, nothing needs attention, and the report lists
+  nothing unexpected.
+- [ ] **NIST models in Wren:** import CTC 01, 03, 05 and STC 06; fill in the table above from the
+  import report.
+
+## Results
+
+None recorded yet.

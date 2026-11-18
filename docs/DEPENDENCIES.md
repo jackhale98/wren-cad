@@ -24,7 +24,7 @@ bundled package's licence text plus OCCT's LGPL-2.1 + exception (texts in `licen
 | `@salusoft89/planegcs` | 1.3.0 | LGPL-2.0-or-later | wasm 173 KB gzip + glue 9.5 KB (sketch worker, lazy) | sketch; kernel-client (lazy, for sketch re-solves in the kernel worker) | FreeCAD's PlaneGCS; outputs re-verified by our residual model |
 | `ulid` | 3.0.2 | MIT | < 1 KB | sketch | |
 | `fflate` | 0.8.3 | MIT | ≈ 8 KB | document, io, kernel-client, drawing (PDF export, lazy) | Zip for 3MF and `.wrencad`; Flate streams in drawing PDFs |
-| Osifont `osifont-lgpl3fe.ttf` (font file, not an npm package) | 0.1.20221020 (upstream build stamp 16-4-2026), SHA-256 `81880ba0…320b6`, fetched 2026-11-11 from github.com/hikikomori82/osifont | LGPL-3.0 with the GPL font exception (verified upstream: README and the font's own name table; text in `packages/drawing/assets/fonts/osifont-NOTICE.txt`, `licenses/LGPL-3.0.txt`) | 123.6 KB raw / 76.6 KB gzip, lazy (drawing route, PDF export); PDFs embed a gid-preserving subset of the glyphs used | drawing | ISO 3098 lookalike drawing lettering (owner D5, ADR-091). Self-hosted, never from a CDN. Layout uses generated advance metrics (`src/font/osifont-metrics.ts`, ≈ 7 KB), so workers never load the file. GD&T and hole symbols are vector glyphs, not font glyphs |
+| Osifont `osifont-lgpl3fe.ttf` (font file, not an npm package) | 0.1.20221020 (upstream build stamp 16-4-2026), SHA-256 `81880ba0…320b6`, fetched 2026-11-11 from github.com/hikikomori82/osifont | LGPL-3.0 with the GPL font exception (verified upstream: README and the font's own name table; text in `packages/drawing/assets/fonts/osifont-NOTICE.txt`, `licenses/LGPL-3.0.txt`) | 123.6 KB raw / 76.6 KB gzip, lazy (drawing route, PDF export); PDFs embed a gid-preserving subset of the glyphs used | drawing | ISO 3098 lookalike drawing lettering (owner D5, ADR-091). Self-hosted, never from a CDN. Layout uses generated advance metrics (`src/font/osifont-metrics.ts`, ≈ 7 KB), so layout never loads the file; the kernel worker fetches it once (lazy, the same hashed asset) only for a STEP export with presentation PMI, whose text is stroked from its glyph outlines (M5a, ADR-100). GD&T and hole symbols are vector glyphs, not font glyphs |
 | `idb` | 8.0.4 | ISC | ≈ 1.2 KB | io (browser), sync | IndexedDB wrapper for the local library; sync's credential vault, sync state and merge bases, folder handles |
 
 | `idb` | 8.0.4 | ISC | ≈ 1.2 KB | io (browser) | IndexedDB wrapper for the local library |
@@ -66,6 +66,12 @@ bundled package's licence text plus OCCT's LGPL-2.1 + exception (texts in `licen
 | `@types/three`, `@types/react`, `@types/react-dom` | 0.187.0, 19.3.0, 19.3.0 | MIT |
 | `@lhci/cli` (CI only; `npx`, not installed in the workspace) | 0.16.0 | Apache-2.0 |
 | `lighthouse` (via `@lhci/cli`) | 13.6.0 | Apache-2.0 |
+
+## Test fixtures (data, not shipped)
+
+| Fixture | Source | License | Size | Used by |
+|---|---|---|---|---|
+| NIST MBE PMI test models: `packages/test-fixtures/step/nist/nist_ctc_01`, `_03`, `_05` and `nist_stc_06` AP242 files (gzipped) | NIST "NIST PMI STEP Files" zip, 2024-06-19, SHA-256 `8fa78429…1c181911` (per-file hashes in the fixture README) | "Can be used without any restrictions" (NIST project page); US Government work, not subject to copyright in the US (17 U.S.C. §105). Acknowledgement given in the fixture README; no NIST logo used | 641 KB gzipped (4.0 MB raw) | M5a PMI import tests (`packages/io/test/pmi-nist.test.ts`, `apps/web/e2e/m5-pmi.spec.ts`) |
 
 ## CI-only tools (not shipped, not installed by `pnpm i`)
 
