@@ -1334,16 +1334,40 @@ void scanStepModelForPmi(PmiImportContext& ctx, STEPCAFControl_Reader& reader, i
   }
 }
 
+// Sub-shape counts per body, so the TS decoder can range-check every target.
+std::string pmiCountsJson(const std::vector<std::unique_ptr<Topo>>& topo) {
+  std::string json = "[";
+  for (size_t b = 0; b < topo.size(); ++b) {
+    if (b > 0) json.push_back(',');
+    json += "{\"faces\":" + std::to_string(topo[b]->faces.Extent()) +
+            ",\"edges\":" + std::to_string(topo[b]->edges.Extent()) +
+            ",\"vertices\":" + std::to_string(topo[b]->vertices.Extent()) + "}";
+  }
+  return json + "]";
+}
+
+// `,"pmi":{…}` holding one issue, when reading the PMI failed as a whole.
+std::string pmiFailureMember(const std::vector<std::pair<TopoDS_Shape, std::string>>& bodies,
+                             const std::string& reason) {
+  std::vector<std::unique_ptr<Topo>> topo;
+  for (const auto& body : bodies) topo.push_back(std::make_unique<Topo>(body.first));
+  return ",\"pmi\":{\"items\":[],\"issues\":[{\"reason\":" + jsonString(reason) +
+         "}],\"counts\":" + pmiCountsJson(topo) + "}";
+}
+
 std::string stepPmiJson(STEPCAFControl_Reader& reader, const occ::handle<TDocStd_Document>& doc,
                         const std::vector<std::pair<TopoDS_Shape, std::string>>& bodies) {
   PmiImportContext ctx{bodies, {}, {}, {}};
-  for (const auto& body : bodies) ctx.topo.push_back(std::make_unique<Topo>(body.first));
   int dimensions = 0;
   int tolerances = 0;
   std::set<std::string> datums;
   try {
     const occ::handle<XCAFDoc_DimTolTool> dimTol = XCAFDoc_DocumentTool::DimTolTool(doc->Main());
-    ctx.angleUnitKnown = stepPlaneAngleUnit(reader, ctx.angleUnitRad);
+    // The body maps are only needed when there is GD&T to place (most STEP files have none).
+    if (dimTol->BaseLabel().HasChild()) {
+      for (const auto& body : bodies) ctx.topo.push_back(std::make_unique<Topo>(body.first));
+      ctx.angleUnitKnown = stepPlaneAngleUnit(reader, ctx.angleUnitRad);
+    }
     importPmiDatums(ctx, dimTol, datums);
     NCollection_Sequence<TDF_Label> labels;
     dimTol->GetDimensionLabels(labels);
@@ -1372,6 +1396,10 @@ std::string stepPmiJson(STEPCAFControl_Reader& reader, const occ::handle<TDocStd
     pmiIssue(ctx, std::string(), std::string("reading the PMI stopped: ") + e.what());
   }
   if (ctx.items.empty() && ctx.issues.empty()) return std::string();
+  if (ctx.topo.size() != bodies.size()) {
+    ctx.topo.clear();
+    for (const auto& body : bodies) ctx.topo.push_back(std::make_unique<Topo>(body.first));
+  }
   std::string json = ",\"pmi\":{\"items\":[";
   for (size_t i = 0; i < ctx.items.size(); ++i) {
     if (i > 0) json.push_back(',');
@@ -1382,39 +1410,34 @@ std::string stepPmiJson(STEPCAFControl_Reader& reader, const occ::handle<TDocStd
     if (i > 0) json.push_back(',');
     json += ctx.issues[i];
   }
-  // Sub-shape counts per body, so the TS decoder can range-check every target.
-  json += "],\"counts\":[";
-  for (size_t b = 0; b < ctx.topo.size(); ++b) {
-    if (b > 0) json.push_back(',');
-    json += "{\"faces\":" + std::to_string(ctx.topo[b]->faces.Extent()) +
-            ",\"edges\":" + std::to_string(ctx.topo[b]->edges.Extent()) +
-            ",\"vertices\":" + std::to_string(ctx.topo[b]->vertices.Extent()) + "}";
-  }
-  json += "]}";
+  json += "],\"counts\":" + pmiCountsJson(ctx.topo) + "}";
   return json;
 }
 
 std::string stepPmiMember(STEPCAFControl_Reader& reader, const occ::handle<TDocStd_Document>& doc,
                           const std::vector<std::pair<TopoDS_Shape, std::string>>& bodies) noexcept {
   // PMI never fails an import: the bodies come back whatever happens here.
+  std::string reason;
   try {
     return stepPmiJson(reader, doc, bodies);
   } catch (const Standard_Failure& e) {
     try {
       const char* what = e.what();
-      return ",\"pmi\":{\"items\":[],\"issues\":[{\"reason\":" +
-             jsonString(std::string("the PMI could not be read: ") + e.ExceptionType() + " " +
-                        (what != nullptr ? what : "")) +
-             "}],\"counts\":[]}";
+      reason = std::string("the PMI could not be read: ") + e.ExceptionType() + " " +
+               (what != nullptr ? what : "");
     } catch (...) {
       return std::string();
     }
   } catch (...) {
     try {
-      return std::string(",\"pmi\":{\"items\":[],\"issues\":[{\"reason\":\"the PMI could not be "
-                         "read\"}],\"counts\":[]}");
+      reason = "the PMI could not be read";
     } catch (...) {
       return std::string();
     }
+  }
+  try {
+    return pmiFailureMember(bodies, reason);
+  } catch (...) {
+    return std::string();
   }
 }
