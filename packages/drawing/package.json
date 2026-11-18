@@ -13,7 +13,8 @@
     "./pdf": "./src/pdf/index.ts",
     "./dxf": "./src/dxf/index.ts",
     "./font": "./src/font/index.ts",
-    "./zip": "./src/zip/index.ts"
+    "./zip": "./src/zip/index.ts",
+    "./pmi": "./src/pmi/index.ts"
   },
   "scripts": {
     "typecheck": "tsc -p .",
