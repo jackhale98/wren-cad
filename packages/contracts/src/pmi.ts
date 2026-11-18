@@ -44,6 +44,7 @@ export type PmiToleranceType =
 
 /** A sub-shape of one exported/imported body, by its topological index (TopExp map order, 1-based). */
 export interface PmiTarget {
+  /** 0-based index into the exported/returned bodies. */
   body: number;
   kind: 'face' | 'edge' | 'vertex';
   index: number;
@@ -95,13 +96,22 @@ export interface PmiExportReport {
   exported: number;
   /** Not exported, with the reason (needs attention, unsupported kind, unresolved target). */
   skipped: { annotationId: Id; reason: string }[];
+  /** Exported with a caveat (STEP holds one fit class per dimension, so H8/f7 writes H8). */
+  notes?: { annotationId: Id; note: string }[];
 }
 
-/** One item read from a STEP file. `annotationId` is set when the file came from Wren. */
+/**
+ * One item read from a STEP file. OCCT cannot tell a Wren file from another: `name` is what the
+ * file holds, and `annotationId` is set only when that name carries a Wren id (ADR-100 amendment).
+ */
+type Imported<K> = Omit<Extract<PmiExportItem, { kind: K }>, 'annotationId'> & {
+  annotationId?: Id;
+  name?: string;
+};
 export type PmiImportItem =
-  | (Extract<PmiExportItem, { kind: 'dimension' }> & { name?: string })
-  | (Extract<PmiExportItem, { kind: 'datum' }> & { name?: string })
-  | (Extract<PmiExportItem, { kind: 'tolerance' }> & { name?: string })
+  | Imported<'dimension'>
+  | Imported<'datum'>
+  | Imported<'tolerance'>
   | { kind: 'presentationOnly'; name?: string; presentation: PmiPresentation };
 
 export interface PmiImportResult {

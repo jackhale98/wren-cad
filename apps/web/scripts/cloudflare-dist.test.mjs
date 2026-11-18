@@ -1,7 +1,7 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { afterAll, describe, expect, it } from 'vitest';
 import { ISOLATION_HEADERS } from '../src/platform/isolation-headers.ts';
 import {
   checkDist,
@@ -16,6 +16,7 @@ const manifest = JSON.stringify({ start_url: '/', scope: '/', id: '/' });
 
 function fixture(opts = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'wren-cf-'));
+  made.push(dir);
   writeFileSync(join(dir, 'index.html'), '<html></html>');
   writeFileSync(join(dir, '_headers'), '/*\n  X-A: 1\n');
   writeFileSync(join(dir, 'manifest.webmanifest'), opts.manifest ?? manifest);
@@ -23,6 +24,12 @@ function fixture(opts = {}) {
   if (opts.big) writeFileSync(join(dir, 'assets', 'big.wasm'), Buffer.alloc(opts.big));
   return dir;
 }
+
+/** Temporary fixtures (each about 26 MB with a fake 25 MiB kernel): removed after the run. */
+const made = [];
+afterAll(() => {
+  for (const d of made) rmSync(d, { recursive: true, force: true });
+});
 
 describe('checkDist', () => {
   it('accepts a root-base build with the kernel under the limit', () => {
@@ -81,7 +88,9 @@ describe('_headers parsing', () => {
 describe('Workers static-assets bundle (ADR-082 amendment)', () => {
   it('puts the site under public/ and an assets-only wrangler.jsonc beside it', () => {
     const dist = fixture();
-    const out = join(mkdtempSync(join(tmpdir(), 'wren-cfw-')), 'bundle');
+    const tmp = mkdtempSync(join(tmpdir(), 'wren-cfw-'));
+    made.push(tmp);
+    const out = join(tmp, 'bundle');
     writeWorkerBundle(dist, out, 'wren-cad');
     expect(existsSync(join(out, 'public', 'index.html'))).toBe(true);
     expect(existsSync(join(out, 'public', '_headers'))).toBe(true);
