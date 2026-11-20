@@ -43,14 +43,14 @@ its README). Entity census (STEP entities, `stepPmiCensus`):
 
 | Model | Dimensions | Tolerances | Datums | Imported annotations | Not read (OCCT) |
 | --- | --- | --- | --- | --- | --- |
-| CTC 01 (AP242 e1) | 12 | 6 | 3 | to record with the façade build | to record |
-| CTC 03 (AP242 e2) | 10 | 13 | 6 | to record | to record |
-| CTC 05 (AP242 e1) | 6 | 10 | 4 | to record | to record |
-| STC 06 (AP242 e3) | 17 | 25 | 6 | to record | to record |
+| CTC 01 (AP242 e1) | 12 | 6 | 3 | 8 dimensions, 6 tolerances, 1 datum (+9 presentation-only) | datums B, C (no geometry), 4 "other" dimensions without a value, 1 modifier; 26 filled presentation areas |
+| CTC 03 (AP242 e2) | 10 | 13 | 6 | 9 dimensions, 12 tolerances, 0 datums (+8 presentation-only) | datums A–E (no geometry), F (no readable tolerance), 1 "other" dimension without a value; 34 filled presentation areas |
+| CTC 05 (AP242 e1) | 6 | 10 | 4 | 2 dimensions, 9 tolerances, 2 datums (+22 presentation-only) | 4 dimensions and 1 straightness on edges not in the imported body, 2 datum targets, datums C, D |
+| STC 06 (AP242 e3) | 17 | 25 | 6 | 17 dimensions, 25 tolerances, 6 datums (+2 presentation-only) | none lost; 2 spherical sizes as plain diameters, 1 spherical zone as cylindrical |
 
 Known OCCT 8.0.1 reader limits (ADR-100 amendment): datums are read only through the tolerances
-that reference them; a lower deviation above nominal comes back negated. Record per model what
-fails, from the import report, when the façade build is in CI.
+that reference them; a lower deviation above nominal comes back negated. Recorded 2026-11-20 with
+the façade build (kernel-dist of CI #138) through `importShapesWithPmi`.
 
 ## Owner checklist
 
