@@ -5,6 +5,10 @@ Live: main `ff5fc3e` on wren-cad.app (datum fixes, STEP AP242 export with PMI).
 
 ## Proposed order
 
+0. **Nightly Soak workflow is failing** (owner, 2026-11-21; `.github/workflows/soak.yml`, 03:23 UTC
+   on main). First: list the recent Soak runs and which job fails (soak memory/handle/regen-drift
+   assertions, stress report, or the Firefox/WebKit shards), then fix the cause. A soak failure
+   usually means a real leak or slowdown; the browser shards may be test assumptions.
 1. **NIST import fixes** (kernel + `@wren-cad/io`; results in `PMI_VALIDATION.md`):
    - One summary line for filled presentation areas (60 of 86 report entries) and draw the fills.
    - Datums "attached to no geometry" (CTC 01 B, C; CTC 03 A–E): follow the datum feature's
