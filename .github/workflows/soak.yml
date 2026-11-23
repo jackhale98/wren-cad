@@ -27,6 +27,11 @@ jobs:
   kernel:
     name: Kernel
     uses: ./.github/workflows/kernel.yml
+    # kernel.yml's job asks for actions: read (artefact reuse, ADR-083). A caller that does not
+    # grant it fails at startup, before any job runs.
+    permissions:
+      contents: read
+      actions: read
 
   build:
     name: Build (web)
