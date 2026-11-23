@@ -55,6 +55,7 @@ import {
 import {
   clearHighlightObjects,
   getHandleScreenLength,
+  rebuildHighlights,
   removePreview,
   setHandle,
   setHighlights,
@@ -89,6 +90,15 @@ import {
 } from './camera';
 import type { CompareObjects } from './compare';
 import { setCompare } from './compareView';
+import {
+  clearRegionPrism,
+  type FeatureTint,
+  type RegionPrismEntry,
+  type RegionPrismSpec,
+  setFeatureTint,
+  setRegionPrism,
+  tintStats,
+} from './featureTint';
 import { GestureRecognizer } from './gestures';
 import { ContactShadow, Grid } from './ground';
 import type { ArrowHandle } from './handles';
@@ -260,6 +270,9 @@ export class ViewportImpl implements ViewportEngine {
     preselected: [],
   };
   readonly highlightGroup = new Group();
+  /** Change preview (ADR-103): the tinted faces and the region prism of the feature being edited. */
+  tint: FeatureTint | null = null;
+  regionPrism: RegionPrismEntry | null = null;
   highlightDots: Dot[] = [];
   readonly sketches = new Map<string, SketchEntry>();
   readonly ghosts = new Map<string, GhostEntry>();
@@ -539,6 +552,7 @@ export class ViewportImpl implements ViewportEngine {
     for (const id of [...this.ghosts.keys()]) this.setGhost(id, null);
     this.setCompare(null);
     for (const [id, p] of [...this.previews]) removePreview(this, id, p);
+    clearRegionPrism(this);
     for (const id of [...this.handles.keys()]) this.setHandle(id, null);
     for (const id of [...this.markerSets.keys()]) this.setMarkers(id, null);
     this.idTarget?.dispose();
@@ -561,6 +575,19 @@ export class ViewportImpl implements ViewportEngine {
 
   pick(x: number, y: number, options: PickOptions = {}): PickHit[] {
     return pick(this, x, y, options);
+  }
+
+  setFeatureTint(tint: FeatureTint | null): void {
+    setFeatureTint(this, tint);
+    rebuildHighlights(this);
+  }
+
+  setRegionPrism(spec: RegionPrismSpec | null): void {
+    setRegionPrism(this, spec);
+  }
+
+  getTintStats(): ReturnType<typeof tintStats> {
+    return tintStats(this);
   }
 
   setHighlights(highlights: { selected: HighlightItem[]; preselected: HighlightItem[] }): void {

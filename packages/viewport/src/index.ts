@@ -10,6 +10,13 @@ export {
   sideVisibility,
 } from './compare';
 export * as gestureConstants from './constants';
+export {
+  FEATURE_TINT_COLORS,
+  type FeatureEffect,
+  type FeatureTint,
+  mergedFaceRanges,
+  type RegionPrismSpec,
+} from './featureTint';
 export { edgesToSegments, meshBuffersToGeometry } from './geometry';
 export type { GestureOutput, PointerKind, PointerSample } from './gestures';
 export { GestureRecognizer } from './gestures';
@@ -55,7 +62,7 @@ export {
 export { closestOnPolyline, defaultTolerance, distPointSegment2D } from './pick';
 export type { PlaneFrame } from './plane';
 export { lookAtPlanePose, rayToPlane } from './plane';
-export { boundaryEdges, buildPrism } from './prism';
+export { boundaryEdges, buildPrism, buildRegionPrism } from './prism';
 export {
   axisEnds,
   dashDotSegments,

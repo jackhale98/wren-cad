@@ -94,6 +94,40 @@ export function boundaryEdges(
 /** Build the prism for `faces` of `mesh`. Returns null when no valid face has triangles. */
 export function buildPrism(mesh: MeshBuffers, faces: readonly number[]): PrismGeometry | null {
   const ranges = faceTriangleRanges(mesh.faceRanges, faces).filter(([, n]) => n > 0);
+  return buildPrismFromRanges(mesh, ranges);
+}
+
+/**
+ * The prism of whole triangle meshes (sketch regions, which are not faces of any body): every
+ * triangle is a cap triangle, and the boundary is the outline of their union, so a region with a
+ * hole gets walls on the outer loop and on the hole. Null when there is nothing to extrude.
+ */
+export function buildRegionPrism(meshes: readonly MeshBuffers[]): PrismGeometry | null {
+  let nv = 0;
+  let ni = 0;
+  for (const m of meshes) {
+    nv += m.positions.length;
+    ni += m.indices.length;
+  }
+  if (ni === 0) return null;
+  const positions = new Float32Array(nv);
+  const indices = new Uint32Array(ni);
+  let pv = 0;
+  let pi = 0;
+  for (const m of meshes) {
+    const base = pv / 3;
+    positions.set(m.positions, pv);
+    for (let k = 0; k < m.indices.length; k++) indices[pi + k] = (m.indices[k] as number) + base;
+    pv += m.positions.length;
+    pi += m.indices.length;
+  }
+  return buildPrismFromRanges({ positions, indices }, [[0, ni / 3]]);
+}
+
+function buildPrismFromRanges(
+  mesh: { positions: ArrayLike<number>; indices: ArrayLike<number> },
+  ranges: ReadonlyArray<readonly [number, number]>,
+): PrismGeometry | null {
   if (ranges.length === 0) return null;
   const boundary = boundaryEdges(mesh.positions, mesh.indices, ranges);
 

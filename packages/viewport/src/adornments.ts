@@ -1,6 +1,7 @@
 import type { HandleSpec, HighlightItem, Marker, PreviewSpec, Vec3 } from '@wren-cad/contracts';
 import { BufferGeometry, Group } from 'three/webgpu';
 import { HANDLE_PICK_PAD_PX } from './constants';
+import { addTintObjects } from './featureTint';
 import { meshBuffersToGeometry } from './geometry';
 import { ArrowHandle } from './handles';
 import { faceDrawRange, REFERENCE_ENTITY } from './ids';
@@ -45,6 +46,7 @@ export function clearHighlightObjects(vp: ViewportImpl): void {
 
 export function rebuildHighlights(vp: ViewportImpl): void {
   clearHighlightObjects(vp);
+  addTintObjects(vp);
   const ui = vp.ui;
   const pre = {
     fill: 0.16,

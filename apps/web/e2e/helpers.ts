@@ -117,6 +117,18 @@ export interface AppHooks {
   };
   /** Undo (`past`, oldest first) and redo (`future`) steps with their labels. */
   history(): { past: { label: string }[]; future: { label: string }[] };
+  /** Change preview (ADR-103): the tinted faces, the extrude volume shown, and Before. */
+  changePreview(): {
+    tint: { featureId: string; effect: 'add' | 'cut' | 'modify'; faces: number } | null;
+    prism: { featureId: string; effect: 'add' | 'cut'; distance: number } | null;
+    before: boolean;
+  };
+  /** What the viewport itself draws for it (null on a viewport without the feature). */
+  changePreviewDrawn(): {
+    effect: 'add' | 'cut' | 'modify' | null;
+    faces: number;
+    prism: { effect: 'add' | 'cut'; distance: number; builds: number } | null;
+  } | null;
   /** Applies a command as one undo step (not through the UI path). */
   apply(command: unknown, label?: string): boolean;
   load(doc: WrenDoc): void;
@@ -205,6 +217,9 @@ export const app = (page: Page) => ({
   ui: () => page.evaluate(() => (window as unknown as W).__wrenApp.ui()),
   marks: () => page.evaluate(() => (window as unknown as W).__wrenApp.marks()),
   history: () => page.evaluate(() => (window as unknown as W).__wrenApp.history()),
+  changePreview: () => page.evaluate(() => (window as unknown as W).__wrenApp.changePreview()),
+  changePreviewDrawn: () =>
+    page.evaluate(() => (window as unknown as W).__wrenApp.changePreviewDrawn()),
   apply: (command: unknown, label?: string) =>
     page.evaluate(
       ([c, l]) => (window as unknown as W).__wrenApp.apply(c, l as string | undefined),

@@ -110,6 +110,14 @@ export function onKey(wb: Workbench, e: KeyboardEvent): void {
       e.preventDefault();
       wb.repeatLast();
       return;
+    case 'before':
+      // Hold to see the model before the edited feature; the key's release ends it.
+      e.preventDefault();
+      if (!e.repeat) {
+        wb.changePreview.holdCode = e.code;
+        wb.changePreview.setBefore(true);
+      }
+      return;
     case 'radial':
       e.preventDefault();
       if (!e.repeat && !u.radial) {
@@ -127,6 +135,15 @@ export function onKey(wb: Workbench, e: KeyboardEvent): void {
   } else if (cmd.id.startsWith('view:')) {
     const name = cmd.id.slice('view:'.length) as Parameters<TouchViewport['setView']>[0];
     wb.viewport?.setView(name, true);
+  }
+}
+
+/** Releasing the key held for Before shows the model with the feature again (any modifier state). */
+export function onKeyUp(wb: Workbench, e: KeyboardEvent): void {
+  const cp = wb.changePreview;
+  if (cp.holdCode !== null && e.code === cp.holdCode) {
+    cp.holdCode = null;
+    cp.setBefore(false);
   }
 }
 

@@ -59,6 +59,8 @@ export interface ColorTokens {
    */
   compareAddedSwatch: string;
   compareRemovedSwatch: string;
+  /** Change preview (ADR-103): faces a feature reshapes (fillet, chamfer, draft, shell). Add and cut reuse the compare swatches. */
+  previewModifySwatch: string;
   /** Reference geometry drawn in the viewport: planes, axes, points (ADR-093). Non-text, >= 3:1 on the viewport. */
   reference: string;
 }
@@ -97,6 +99,7 @@ export const colors: Record<ThemeName, ColorTokens> = {
     compareRemovedSoft: '#fdebe1',
     compareAddedSwatch: '#00a878',
     compareRemovedSwatch: '#c2410c',
+    previewModifySwatch: '#7c3aed',
     reference: '#0f766e',
   },
   dark: {
@@ -132,6 +135,7 @@ export const colors: Record<ThemeName, ColorTokens> = {
     compareRemovedSoft: '#3d2116',
     compareAddedSwatch: '#3ddc97',
     compareRemovedSwatch: '#ff6a2e',
+    previewModifySwatch: '#b794ff',
     reference: '#2dd4bf',
   },
 };
