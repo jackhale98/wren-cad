@@ -463,6 +463,24 @@ for (const { variant } of VARIANTS) {
       expect(flat?.presentation).toBeUndefined();
     });
 
+    it('a datum no frame references comes back with its faces, name and presentation', () => {
+      // OCCT 8.0.1 reads datums only through tolerances; the kernel reads the rest from the STEP
+      // model (ADR-100 amendment, 2026-11-23).
+      const ss = session();
+      const sc = scenario(ss);
+      const right = sc.items.filter((i) => i.annotationId !== ID.position && i.kind === 'datum');
+      expect(right).toHaveLength(1);
+      const { bytes } = exportPmi([{ shape: sc.body.shape, name: 'Plate' }], right);
+      const pmi = decodeImport(importStep(bytes));
+      expect(pmi.issues).toEqual([]);
+      const datums = byKind(pmi.items, 'datum');
+      expect(datums).toHaveLength(1);
+      expect(datums[0]?.label).toBe('A');
+      expect(datums[0]?.name).toBe(ID.datumA);
+      expect(datums[0]?.targets).toEqual([sc.bottom]);
+      expectSamePresentation(datums[0]?.presentation, sc.prs.datumA);
+    });
+
     it('a STEP file without PMI imports without a pmi member; bad input is INVALID_INPUT', () => {
       const ss = session();
       const body = plate(ss);

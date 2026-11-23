@@ -6,11 +6,17 @@ This file is the single state file: update it at every merge; a new session star
 
 ## 0. Status
 
-- Phase 0: soak fix `8889ecc` on dev, release to main when its CI is green. Open: the workflow
-  permission check in CI; read the first real soak result.
-- Phase 1: contract v2 committed (`e252fd8`, not yet pushed). 1b (kernel), 1c (regen engine) and
-  1d (mapping and report) are running in worktrees. Next: merge, run the suites on the 1b Wasm
-  build, push, one main release.
+- Phase 0: done except reading the first real nightly Soak result (the fix is on main `a641707`;
+  the workflow permission check is in CI).
+- Phase 1: 1b, 1c and 1d merged on dev; all suites pass on the 1b Wasm build locally. Waiting for
+  CI (it rebuilds the kernel), then one main release. Results: NIST imports lose 12 annotations
+  across the four models (was 21; see `PMI_VALIDATION.md`); the bracket exports 28 (was 23); the
+  Wasm round trip loses nothing.
+- Phase 1 leftovers, not blocking: datum targets (new annotation kind; CTC 05 datums C, D);
+  proposed contract additions: a `PmiIssueCode` union, `perUnit` on tolerance items, `modifiers`
+  on dimensions, `ModelingApi.sketchGenerated`. Review the kernel's reading of raw STEP text for
+  recovered datums and its use of an OCCT-internal reader (ADR-100 amendment) at the M5 gate.
+- Next: Phase 2.
 
 ## 1. Owner decisions (all approved 2026-11-23)
 

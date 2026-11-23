@@ -123,9 +123,11 @@ void fixWrittenFitGrades(const occ::handle<StepData_StepModel>& model) {
 }
 
 // Transfers the document (GD&T included: the writer's DimTol mode is on by default and acts on
-// AP242 only) and writes it to a fresh MEMFS path.
-std::string writeStepDocument(const occ::handle<TDocStd_Document>& doc,
-                              const DESTEP_Parameters& params) {
+// AP242 only) and writes it to a fresh MEMFS path. `afterTransfer` may complete the STEP model
+// before it is written (PMI the XCAF writer cannot express, whittle_pmi.cpp).
+std::string writeStepDocument(
+    const occ::handle<TDocStd_Document>& doc, const DESTEP_Parameters& params,
+    const std::function<void(const occ::handle<StepData_StepModel>&)>& afterTransfer = {}) {
   STEPCAFControl_Writer writer;
   writer.SetNameMode(true);
   writer.SetColorMode(true);
@@ -134,6 +136,7 @@ std::string writeStepDocument(const occ::handle<TDocStd_Document>& doc,
     raiseError("OPERATION_FAILED", "The bodies could not be converted to STEP");
   }
   fixWrittenFitGrades(writer.ChangeWriter().Model());
+  if (afterTransfer) afterTransfer(writer.ChangeWriter().Model());
   const std::string path = nextMemfsPath("export", "step");
   if (writer.Write(path.c_str()) != IFSelect_RetDone) {
     raiseError("OPERATION_FAILED", "Writing the STEP file failed");
@@ -376,7 +379,8 @@ std::string importBodiesJson(const std::vector<std::pair<TopoDS_Shape, std::stri
 // M5 (whittle_pmi.cpp): the GD&T of a transferred STEP document as `,"pmi":{…}` on the imported
 // bodies' sub-shape indices, or empty when the file has none. Never throws.
 std::string stepPmiMember(STEPCAFControl_Reader& reader, const occ::handle<TDocStd_Document>& doc,
-                          const std::vector<std::pair<TopoDS_Shape, std::string>>& bodies) noexcept;
+                          const std::vector<std::pair<TopoDS_Shape, std::string>>& bodies,
+                          const std::string& path) noexcept;
 
 std::string importStep(const std::string& path) {
   STEPCAFControl_Reader reader;
@@ -396,7 +400,7 @@ std::string importStep(const std::string& path) {
   std::vector<std::pair<TopoDS_Shape, std::string>> bodies;
   for (int i = 1; i <= roots.Length(); ++i) walkStepLabel(roots(i), TopLoc_Location(), "", bodies, 0);
   if (bodies.empty()) raiseError("INVALID_INPUT", "The file contains no shapes");
-  return importBodiesJson(bodies, false, stepPmiMember(reader, doc, bodies));
+  return importBodiesJson(bodies, false, stepPmiMember(reader, doc, bodies, path));
 }
 
 std::string importBrep(const std::string& path) {

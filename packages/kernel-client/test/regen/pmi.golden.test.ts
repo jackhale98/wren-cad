@@ -736,8 +736,6 @@ describe.skipIf(!built)(`STEP AP242 PMI export of the M4 bracket${skipNote}`, ()
     first: Written,
     tag: string,
     lost: ReadonlySet<Id> = new Set(),
-    /** False on a kernel build that predates the v2 fields: they are written, not compared. */
-    v2 = true,
   ) {
     const bytes = first.bytes;
     const sha = await sha256Hex(bytes);
@@ -798,19 +796,6 @@ describe.skipIf(!built)(`STEP AP242 PMI export of the M4 bracket${skipNote}`, ()
       if (t.kind === 'edge') return `edge ${centroidKey(fp?.edges[t.index - 1]?.centroid as Vec3)}`;
       return `${t.kind}${t.index}`;
     };
-    // Contract v2 fields (ADR-101). A kernel build that predates them writes and reads none, so
-    // they are dropped on both sides there (`v2` false); delete this once the kernel has them.
-    const V2_FIELDS = [
-      'direction',
-      'at',
-      'qualifier',
-      'ordinate',
-      'spherical',
-      'modifiers',
-      'projected',
-      'unequal',
-      'allAround',
-    ];
     const norm = (w: Written, items: PmiExportItem[]) =>
       items.map((i) => {
         const { presentation: _p, ...rest } = i;
@@ -818,7 +803,6 @@ describe.skipIf(!built)(`STEP AP242 PMI export of the M4 bracket${skipNote}`, ()
           string,
           unknown
         >;
-        if (!v2) for (const key of V2_FIELDS) delete r[key];
         if (i.kind !== 'datum') r.value = Math.round(i.value * 1e9) / 1e9;
         if (i.kind === 'dimension' && i.tolerance?.kind === 'deviation') {
           r.tolerance = {
@@ -855,9 +839,8 @@ describe.skipIf(!built)(`STEP AP242 PMI export of the M4 bracket${skipNote}`, ()
       if (!r.ok) throw new Error(r.error.message);
       const first = real.written[0] as Written;
       expect(r.pmi?.exported).toBe(first.items.length);
-      // Datum C is referenced by no frame: OCCT 8.0.1 does not read it back (ADR-100 amendment).
-      // That build predates the v2 fields (ADR-101): they are written but not compared.
-      await roundTrip(eng, real, first, 'WASM', new Set([NEW(103)]), false);
+      // Nothing is lost: datum C (referenced by no frame) and the v2 fields come back (ADR-101 1b).
+      await roundTrip(eng, real, first, 'WASM');
       await eng.closePart(partId);
     },
     120_000,

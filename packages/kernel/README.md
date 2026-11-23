@@ -22,8 +22,9 @@ pnpm --filter @wren-cad/kernel test    # golden tests in Node, both variants
 
 1. `scripts/amalgamate.mjs` inlines `whittle_kernel.h`, `whittle_core.cpp`, `whittle_unify.cpp`, `whittle_modeling.cpp`,
    `whittle_pushpull.cpp`, `whittle_shape_ops.cpp`, `whittle_copies.cpp`, `whittle_reference.cpp`,
-   `whittle_measure.cpp`, `whittle_io.cpp`, `whittle_kernel.cpp` and `whittle_bindings.cpp` (in that
-   order) into `.libcascade/whittle_facade.cpp`, and stamps
+   `whittle_measure.cpp`, `whittle_io.cpp`, `whittle_pmi_step.cpp`, `whittle_pmi.cpp`,
+   `whittle_kernel.cpp` and `whittle_bindings.cpp` (in that order) into
+   `.libcascade/whittle_facade.cpp`, and stamps
    `WHITTLE_BUILD_ID`.
    `WHITTLE_BUILD_ID` is a SHA-256 over the façade sources, `libcascade.config.ts`, the
    amalgamation script and the toolchain version, and `kernelInfo()` reports it. The amalgamation
@@ -89,6 +90,13 @@ M5a (STEP AP242 PMI, `whittle_pmi.cpp`): a local single-threaded link measured 2
 6.58 MiB gzip, 4.59 MiB brotli, at most +50 KiB brotli over the M3.5 row above (that difference
 also holds M4's `subShapeGeometry`). OCCT's GD&T reader and writer were already linked (STEP import
 and export reach them), so the façade code is most of it; CI's size report has the exact delta.
+
+ADR-101 phase 1b (PMI contract v2, the STEP-model reading in `whittle_pmi_step.cpp`), measured
+against the M5a façade build: single-threaded 22.09 MB raw / 6.94 MB gzip / 4.84 MB brotli
+(+107 KiB raw, +37.7 KiB gzip, +33.7 KiB brotli, +0.72 %); threaded 21.39 / 6.91 / 4.81 MB
+(+104 KiB raw, +37.6 KiB gzip, +26.5 KiB brotli). Bytes: 22 091 366 / 6 940 179 / 4 838 573 and
+21 388 451 / 6 912 817 / 4 807 659 (before 21 981 810 / 6 901 581 / 4 804 094 and
+21 281 804 / 6 874 269 / 4 780 520).
 
 Budget: ≤ 15 MB brotli per kernel (PLAN §7.2). A full two-variant build takes about 20 to 30 min
 (M2: 29.7 min on 4 busy cores; M3: 32 min busy, about 25 min idle); most of that is wasm-opt
@@ -517,7 +525,9 @@ meshes a copy (`BRepBuilderAPI_Copy`), so export quality never changes the viewp
 
 ### STEP AP242 PMI (M5, ADR-100)
 
-Source: [`src/whittle_pmi.cpp`](src/whittle_pmi.cpp); TS side: [`src/pmi.ts`](src/pmi.ts)
+Source: [`src/whittle_pmi.cpp`](src/whittle_pmi.cpp) (XCAF) and
+[`src/whittle_pmi_step.cpp`](src/whittle_pmi_step.cpp) (what the STEP model says beyond OCCT's
+reader); TS side: [`src/pmi.ts`](src/pmi.ts)
 (`encodePmiExportItems`, `decodePmiExportReport`, `decodePmiImport`, `withAnnotationIds`).
 
 **Indices.** A `PmiTarget` is `{body, kind, index}`: `body` is 0-based (into the exported
@@ -548,6 +558,18 @@ presentation (and the annotation planes) out; `pmi.annotations` filtering is the
   same export skips the tolerance.
 - **Datums** (`XCAFDimTolObjects_DatumObject`): one per label; a second datum with the same label
   is skipped.
+- **Contract v2** (ADR-101; ADR-100 amendment 2026-11-23): dimension `direction` → the CAx-IF
+  `axis2_placement_3d('orientation')` of the linear distance (added to its representation after
+  transfer); `qualifier` → dimensional note `theoretical` / `auxiliary`; `at` and `ordinate` →
+  Wren descriptions (`wren measured points`, `wren dimension form`), noted; `spherical` →
+  spherical diameter / radius. Tolerance `spherical` → spherical zone form; `modifiers` → XCAF
+  modifiers (SZ as separate requirement, noted); `projected` → a `projected_zone_definition` and
+  `allAround` → an `all_around_shape_aspect`, both added after transfer; `unequal` cannot be
+  written (noted). `presentation.triangles` → a face holding the triangulation
+  (`complex_triangulated_surface_set`). Every caveat is a `notes` entry.
+- **After transfer** the façade also fixes two OCCT 8.0.1 writer bugs that hit exports without a
+  dimension: the presentation draughting model had no context (Write failed: geometry only) and
+  tolerance values in mm were tagged `SI_UNIT(.METRE.)`.
 - **Presentation**: each polyline becomes one edge on a degree-1 B-spline in a compound, set with
   `SetPresentation(shape, annotationId)` together with `SetPlane` and the text point (= plane
   origin, where OCCT's writer puts the annotation plane origin). OCCT writes it as a
@@ -579,20 +601,29 @@ has GD&T, the value adds `pmi: {items, issues, counts}`:
   presentation name (the annotation id for a Wren file) or a user-facing label name. Datums are
   grouped by label (OCCT creates one datum label per tolerance reference). Presentation-only
   annotations (`DimensionPresentation`, `CommonLabel`) become `presentationOnly` with polylines
-  (tessellated strips as written; curve presentations sampled).
+  (tessellated strips as written; curve presentations sampled) and `triangles` (filled areas).
+  Contract v2 fields are read back as written above, and from other systems where the file holds
+  them (spherical sizes and zones, all around, projected zones, zone modifiers, basic/reference).
 - Targets map exact sub-shapes of the returned bodies (same TShape and location), then by TShape
   alone for instanced parts (first instance, with an issue). An item with any unmapped target is
   not imported; it becomes an issue.
-- `issues`: whatever is not read, with what is known: unmapped targets, datum targets, modifiers
-  and qualifiers that the contract cannot hold, filled presentation areas, presentations without a
-  plane, deviations plus a class on one dimension, and, from a scan of the STEP model, semantic
-  entities that OCCT attached to no geometry and datums no readable tolerance references (OCCT
-  8.0.1 reads datums only through tolerances).
+- `issues`: whatever is not read, with what is known, each with a stable `code` and a `severity`
+  (`lost`, `approximated`, `cosmetic`; the list is in the ADR-100 amendment of 2026-11-23):
+  unmapped targets (supplemental geometry beside the solid named as such), datum targets,
+  dimensions the file gives no value, GD&T entities OCCT has no class for, modifiers and
+  qualifiers the contract cannot hold, presentations without a plane, deviations plus a class on
+  one dimension, and semantic entities OCCT attached to no geometry.
+- **The STEP model** is read where OCCT 8.0.1's reader drops what the file states: datum faces
+  given other than by a `geometric_item_specific_usage` (also typed `SET_REPRESENTATION_ITEM`
+  lists, which OCCT parses as null items), datums no tolerance references, the datum symbol's
+  presentation links (a shape aspect on its callout, or the frame or size dimension it is attached
+  to; if they disagree nothing is chosen), measuring directions, dimension modifiers in compound
+  items, projected zone heights, and tolerances in complex entities OCCT has no class for (read
+  `approximated` without the parts it cannot read).
 - `counts`: faces, edges and vertices per returned body. `decodePmiImport(pmi, bodies.length)`
   checks every target against them; an index past range is an `INTERNAL` error.
 - Known OCCT reader limits: it reads the lower deviation as a magnitude (`std::abs`), so a lower
-  deviation above the nominal comes back negated; spherical sizes and zones come back as plain
-  ones (with an issue).
+  deviation above the nominal comes back negated.
 - Reading PMI never fails an import: an OCCT exception while reading becomes an issue and the
   bodies are returned.
 

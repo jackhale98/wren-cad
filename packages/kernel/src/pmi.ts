@@ -13,6 +13,10 @@
  * back as `name`. OCCT cannot tell a Wren file from another, so import items carry no
  * `annotationId`; `withAnnotationIds` assigns them (contract proposal: make it optional).
  *
+ * Contract v2 (ADR-101): dimension `direction`, `at`, `qualifier`, `ordinate`, `spherical`;
+ * tolerance `spherical`, `modifiers`, `projected`, `unequal`, `allAround`; presentation
+ * `triangles`; issue `code` and `severity`. All optional, all validated.
+ *
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
@@ -22,13 +26,17 @@ import type {
   PmiDimensionType,
   PmiExportItem,
   PmiExportReport,
+  PmiImportIssue,
   PmiImportItem,
   PmiImportResult,
+  PmiIssueSeverity,
   PmiPresentation,
   PmiTarget,
   PmiToleranceType,
+  RefPoint,
   Result,
   Vec3,
+  ZoneModifier,
 } from '@wren-cad/contracts';
 
 /** Export report as the façade returns it: the contracts report plus per-item notes. */
@@ -88,6 +96,27 @@ const TOLERANCE_TYPES: readonly PmiToleranceType[] = [
 
 const KIND_COUNT = { face: 'faces', edge: 'edges', vertex: 'vertices' } as const;
 
+const REF_POINTS: readonly RefPoint[] = [
+  'self',
+  'center',
+  'axis',
+  'start',
+  'end',
+  'mid',
+  'min',
+  'max',
+];
+
+const ZONE_MODIFIERS: readonly ZoneModifier[] = [
+  'freeState',
+  'tangentPlane',
+  'statistical',
+  'combinedZone',
+  'separateZones',
+];
+
+const SEVERITIES: readonly PmiIssueSeverity[] = ['lost', 'approximated', 'cosmetic'];
+
 /** `pmiJson` for `exportStepPmi`. */
 export function encodePmiExportItems(items: readonly PmiExportItem[]): string {
   return JSON.stringify(items);
@@ -140,6 +169,25 @@ function material(v: unknown, what: string): 'M' | 'L' | undefined {
   return v === undefined ? undefined : oneOf(v, ['M', 'L'] as const, what);
 }
 
+function optBool(v: unknown, what: string): boolean | undefined {
+  if (v === undefined) return undefined;
+  return typeof v === 'boolean' ? v : fail(`${what} is not a boolean`);
+}
+
+function optPositive(v: unknown, what: string): number | undefined {
+  if (v === undefined) return undefined;
+  const n = num(v, what);
+  return n > 0 ? n : fail(`${what} is not greater than zero`);
+}
+
+/** A unit vector (the kernel writes normalised directions; 1e-9 slack for printing). */
+function unitVec3(v: unknown, what: string): Vec3 {
+  const d = vec3(v, what);
+  const len = Math.hypot(d[0], d[1], d[2]);
+  if (Math.abs(len - 1) > 1e-9) fail(`${what} is not a unit vector`);
+  return d;
+}
+
 function decodeTarget(v: unknown, counts: readonly PmiBodyCounts[], what: string): PmiTarget {
   const t = obj(v, what);
   const kind = oneOf(t.kind, ['face', 'edge', 'vertex'] as const, `${what}.kind`);
@@ -181,62 +229,16 @@ function decodePresentation(v: unknown, what: string): PmiPresentation {
     },
     polylines,
   };
-  // v2 (ADR-101): filled areas, three points per triangle.
   if (p.triangles !== undefined) {
-    const points = arr(p.triangles, `${what}.triangles`).map((q, j) =>
-      vec3(q, `${what}.triangles[${j}]`),
+    const points = arr(p.triangles, `${what}.triangles`).map((q, i) =>
+      vec3(q, `${what}.triangles[${i}]`),
     );
-    if (points.length % 3 !== 0) fail(`${what}.triangles is not a multiple of three points`);
-    if (points.length > 0) out.triangles = points;
+    if (points.length === 0 || points.length % 3 !== 0) {
+      fail(`${what}.triangles does not hold three points per triangle`);
+    }
+    out.triangles = points;
   }
   return out;
-}
-
-const REFPOINTS = ['self', 'center', 'axis', 'start', 'end', 'mid', 'min', 'max'] as const;
-const ZONE_MODIFIERS = [
-  'freeState',
-  'tangentPlane',
-  'statistical',
-  'combinedZone',
-  'separateZones',
-] as const;
-
-function bool(v: unknown, what: string): boolean {
-  return typeof v === 'boolean' ? v : fail(`${what} is not a boolean`);
-}
-
-/** v2 dimension fields (ADR-101), copied when present. */
-function decodeDimensionV2(
-  item: Extract<KernelPmiImportItem, { kind: 'dimension' }>,
-  raw: Record<string, unknown>,
-  what: string,
-): void {
-  if (raw.direction !== undefined) item.direction = vec3(raw.direction, `${what}.direction`);
-  if (raw.at !== undefined) {
-    item.at = arr(raw.at, `${what}.at`).map((p, i) => oneOf(p, REFPOINTS, `${what}.at[${i}]`));
-  }
-  if (raw.qualifier !== undefined) {
-    item.qualifier = oneOf(raw.qualifier, ['basic', 'reference'] as const, `${what}.qualifier`);
-  }
-  if (raw.ordinate !== undefined) item.ordinate = bool(raw.ordinate, `${what}.ordinate`);
-  if (raw.spherical !== undefined) item.spherical = bool(raw.spherical, `${what}.spherical`);
-}
-
-/** v2 tolerance fields (ADR-101), copied when present. */
-function decodeToleranceV2(
-  item: Extract<KernelPmiImportItem, { kind: 'tolerance' }>,
-  raw: Record<string, unknown>,
-  what: string,
-): void {
-  if (raw.spherical !== undefined) item.spherical = bool(raw.spherical, `${what}.spherical`);
-  if (raw.modifiers !== undefined) {
-    item.modifiers = arr(raw.modifiers, `${what}.modifiers`).map((m, i) =>
-      oneOf(m, ZONE_MODIFIERS, `${what}.modifiers[${i}]`),
-    );
-  }
-  if (raw.projected !== undefined) item.projected = num(raw.projected, `${what}.projected`);
-  if (raw.unequal !== undefined) item.unequal = num(raw.unequal, `${what}.unequal`);
-  if (raw.allAround !== undefined) item.allAround = bool(raw.allAround, `${what}.allAround`);
 }
 
 /** Copies the optional `name` and `presentation` of an item. */
@@ -287,7 +289,34 @@ function decodeImportItem(
           fail(`${what}.tolerance.kind '${String(t.kind)}' is unknown`);
         }
       }
-      decodeDimensionV2(item, raw, what);
+      if (raw.direction !== undefined) {
+        item.direction = unitVec3(raw.direction, `${what}.direction`);
+      }
+      if (raw.at !== undefined) {
+        const at = arr(raw.at, `${what}.at`).map((q, i) =>
+          oneOf(q, REF_POINTS, `${what}.at[${i}]`),
+        );
+        if (at.length > item.targets.length) fail(`${what}.at is longer than its targets`);
+        item.at = at;
+      }
+      if (raw.qualifier !== undefined) {
+        item.qualifier = oneOf(raw.qualifier, ['basic', 'reference'] as const, `${what}.qualifier`);
+        if (item.tolerance !== undefined) fail(`${what} is ${item.qualifier} and has a tolerance`);
+      }
+      const ordinate = optBool(raw.ordinate, `${what}.ordinate`);
+      if (ordinate !== undefined) {
+        if (ordinate && (item.type !== 'linearDistance' || item.direction === undefined)) {
+          fail(`${what} is an ordinate without a linear distance direction`);
+        }
+        item.ordinate = ordinate;
+      }
+      const spherical = optBool(raw.spherical, `${what}.spherical`);
+      if (spherical !== undefined) {
+        if (spherical && item.type !== 'linearDiameter' && item.type !== 'linearRadius') {
+          fail(`${what} is spherical but not a diameter or radius`);
+        }
+        item.spherical = spherical;
+      }
       return decorate(item, raw, what);
     }
     case 'datum': {
@@ -312,6 +341,21 @@ function decodeImportItem(
       }
       const m = material(raw.material, `${what}.material`);
       if (m !== undefined) item.material = m;
+      const spherical = optBool(raw.spherical, `${what}.spherical`);
+      if (spherical !== undefined) {
+        if (spherical && item.diameter !== true) fail(`${what} is spherical without diameter`);
+        item.spherical = spherical;
+      }
+      if (raw.modifiers !== undefined) {
+        item.modifiers = arr(raw.modifiers, `${what}.modifiers`).map((q, i) =>
+          oneOf(q, ZONE_MODIFIERS, `${what}.modifiers[${i}]`),
+        );
+      }
+      const projected = optPositive(raw.projected, `${what}.projected`);
+      if (projected !== undefined) item.projected = projected;
+      if (raw.unequal !== undefined) item.unequal = num(raw.unequal, `${what}.unequal`);
+      const allAround = optBool(raw.allAround, `${what}.allAround`);
+      if (allAround !== undefined) item.allAround = allAround;
       if (raw.datums !== undefined) {
         const datums = arr(raw.datums, `${what}.datums`);
         if (datums.length > 3) fail(`${what} references more than three datums`);
@@ -322,7 +366,6 @@ function decodeImportItem(
           return dm === undefined ? { label } : { label, material: dm };
         });
       }
-      decodeToleranceV2(item, raw, what);
       return decorate(item, raw, what);
     }
     case 'presentationOnly': {
@@ -362,25 +405,17 @@ export function decodePmiImport(value: unknown, bodyCount: number): Result<Kerne
     const items = arr(v.items, 'pmi.items').map((item, i) =>
       decodeImportItem(item, counts, `pmi.items[${i}]`),
     );
-    const issues = arr(v.issues, 'pmi.issues').map((issue, i) => {
+    const issues = arr(v.issues, 'pmi.issues').map((issue, i): PmiImportIssue => {
       const o = obj(issue, `pmi.issues[${i}]`);
-      const reason = str(o.reason, `pmi.issues[${i}].reason`);
+      const out: PmiImportIssue = { reason: str(o.reason, `pmi.issues[${i}].reason`) };
       const name = optStr(o.name, `pmi.issues[${i}].name`);
+      if (name !== undefined) out.name = name;
       const code = optStr(o.code, `pmi.issues[${i}].code`);
-      const severity =
-        o.severity === undefined
-          ? undefined
-          : oneOf(
-              o.severity,
-              ['lost', 'approximated', 'cosmetic'] as const,
-              `pmi.issues[${i}].severity`,
-            );
-      return {
-        ...(name === undefined ? {} : { name }),
-        reason,
-        ...(code === undefined ? {} : { code }),
-        ...(severity === undefined ? {} : { severity }),
-      };
+      if (code !== undefined) out.code = code;
+      if (o.severity !== undefined) {
+        out.severity = oneOf(o.severity, SEVERITIES, `pmi.issues[${i}].severity`);
+      }
+      return out;
     });
     return { ok: true, value: { items, issues, counts } };
   } catch (e) {
