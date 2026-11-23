@@ -14,14 +14,16 @@ import {
   CircleMinus,
   FolderInput,
   Maximize,
+  PenLine,
   Redo2,
   Scissors,
+  SlidersHorizontal,
   Undo2,
   Box as ViewIcon,
   X as XIcon,
 } from 'lucide-react';
 import type { ReactNode } from 'react';
-import { RADIAL_ADD_FOLDER } from '../app/radial';
+import { RADIAL_ADD_FOLDER, RADIAL_EDIT_FEATURE, RADIAL_EDIT_SKETCH } from '../app/radial';
 import { registryIds } from '../app/radial-config';
 
 const ic = 'size-[18px]';
@@ -31,6 +33,11 @@ const EXTRA: Record<string, { label: string; icon: ReactNode }> = {
     label: 'Add to new folder',
     icon: <FolderInput className={ic} aria-hidden />,
   },
+  [RADIAL_EDIT_FEATURE]: {
+    label: 'Edit feature',
+    icon: <SlidersHorizontal className={ic} aria-hidden />,
+  },
+  [RADIAL_EDIT_SKETCH]: { label: 'Edit sketch', icon: <PenLine className={ic} aria-hidden /> },
   cut: { label: 'Cut', icon: <CircleMinus className={ic} aria-hidden /> },
   section: { label: 'Section', icon: <Scissors className={ic} aria-hidden /> },
   fit: { label: 'Fit view', icon: <Maximize className={ic} aria-hidden /> },

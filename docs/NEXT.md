@@ -140,6 +140,15 @@ report and v2 mapping (app). Details: ADR-101 and its amendments, `PMI_VALIDATIO
     adds) returned as a preview mesh for the edited feature only, drawn translucent.
   - Done with this request: clicking a selected face, edge or vertex deselects it, and picking
     an entity that is already in a feature's pick list takes it out (`selection-toggle.spec.ts`).
+- Radial menu (owner, 2026-11-23), on the session branch: a right click on one face adds "Edit
+  feature" (the feature that made the face, from its persistent name) and "Edit sketch" (the
+  sketch that feature consumed) to the default ring, where the device may edit. The ring holds
+  seven items, so on a flat face Section gives way first, then Draft; both stay in the command
+  bar and can be put back in Settings. Both items are in the ring editor's command list
+  (`app/face-owner.ts`, `radial-edit.spec.ts`).
+- Local E2E and agents: Playwright reuses a server on port 4173. An agent running E2Es in a
+  worktree and the lead clash on it and each tests the other's build. Give every runner its
+  own `WREN_E2E_PORT`.
 
 - After the release, on the session branch: click-to-deselect (merged, `6acbbbf`); in progress
   (sketch): shapes that do not touch stay independent. Owner report: dragging one shape moved

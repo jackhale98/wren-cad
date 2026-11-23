@@ -12,8 +12,10 @@ import {
 } from '@wren-cad/ui';
 import type { FeatureTool, ModelTool } from '../features/factories';
 import { hitKey } from '../selection/pick';
+import { selectedFaceOwner } from './face-owner';
 import type { BubbleActionId } from './gestures';
 import { commandFor, type InputSettings, withKeymap, withNavigation } from './input';
+import { RADIAL_EDIT_FEATURE, RADIAL_EDIT_SKETCH } from './radial';
 import type { SettingsTab } from './state';
 import type { Workbench } from './workbench';
 
@@ -176,7 +178,13 @@ export function radialAction(wb: Workbench, id: string): void {
   else if (id.startsWith('sketch:')) wb.sketch?.setTool(id.slice(7) as SketchToolId);
   else if (id === 'iso') wb.viewport?.setView('iso', true);
   else if (id === 'folder:add') void wb.addFolder(wb.folderRunOf(wb.treeSelection.get()));
-  else wb.bubbleAction(id as BubbleActionId);
+  else if (id === RADIAL_EDIT_FEATURE || id === RADIAL_EDIT_SKETCH) {
+    const made = selectedFaceOwner(wb);
+    const target = id === RADIAL_EDIT_FEATURE ? made?.featureId : made?.sketchId;
+    const caps = wb.capabilities.get();
+    const allowed = id === RADIAL_EDIT_FEATURE ? caps.editFeatures : caps.editSketches;
+    if (target && allowed) wb.editFeature(target);
+  } else wb.bubbleAction(id as BubbleActionId);
 }
 
 export async function openRadial(

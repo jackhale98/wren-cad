@@ -6,6 +6,7 @@
  */
 
 import { canFolder, RadialMenu, tools } from '@wren-cad/ui';
+import { selectedFaceOwner } from '../app/face-owner';
 import { useObservable } from '../app/observable';
 import { modelRadialIds, type RadialSelection, sketchRadialIds } from '../app/radial';
 import { contextOf, customRing, loadRadialConfig, ringToItems } from '../app/radial-config';
@@ -31,6 +32,13 @@ export default function RadialLayer({ wb }: { wb: Workbench }) {
     sel.length === 0 &&
     run.length > 1 &&
     canFolder(part.features, part.folders ?? [], run).ok;
+  // One face: what made it, offered as "Edit feature" / "Edit sketch" where the device may edit.
+  const caps = wb.capabilities.get();
+  const made = ui.sketch ? null : selectedFaceOwner(wb);
+  const owner = {
+    feature: !!made && caps.editFeatures,
+    sketch: !!made?.sketchId && caps.editSketches,
+  };
   const cfg = loadRadialConfig().config;
   const ctx = contextOf(sel, {
     sketch: !!ui.sketch,
@@ -39,8 +47,8 @@ export default function RadialLayer({ wb }: { wb: Workbench }) {
   });
   const ring = customRing(cfg, ctx);
   const items = ring
-    ? ringToItems(ring, { sel, folderable, sketch: !!ui.sketch }, itemFor)
-    : (ui.sketch ? sketchRadialIds() : modelRadialIds(sel, { folderable })).map(itemFor);
+    ? ringToItems(ring, { sel, folderable, sketch: !!ui.sketch, owner }, itemFor)
+    : (ui.sketch ? sketchRadialIds() : modelRadialIds(sel, { folderable, owner })).map(itemFor);
   const last = wb.lastCommandLabel();
   const label = last ? (tools.find((t) => t.id === last)?.label ?? last) : null;
   return (

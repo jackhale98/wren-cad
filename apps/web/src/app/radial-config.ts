@@ -21,6 +21,9 @@ import {
   MAX_RADIAL_ITEMS,
   modelRadialIds,
   RADIAL_ADD_FOLDER,
+  RADIAL_EDIT_FEATURE,
+  RADIAL_EDIT_SKETCH,
+  type RadialOwner,
   type RadialSelection,
   sketchRadialIds,
 } from './radial';
@@ -150,13 +153,22 @@ export function registryIds(sketch: boolean): string[] {
       'sketch:finish',
       ...VIEW_IDS,
     ];
-  return [...tools.map((t) => t.id as string), 'cut', RADIAL_ADD_FOLDER, ...VIEW_IDS];
+  return [
+    ...tools.map((t) => t.id as string),
+    'cut',
+    RADIAL_EDIT_FEATURE,
+    RADIAL_EDIT_SKETCH,
+    RADIAL_ADD_FOLDER,
+    ...VIEW_IDS,
+  ];
 }
 
 export interface ApplyState {
   sel: readonly RadialSelection[];
   folderable: boolean;
   sketch: boolean;
+  /** One face selected: what made it. */
+  owner?: RadialOwner;
 }
 
 /** Whether a command can act on the current selection (otherwise its slot shows disabled). */
@@ -200,6 +212,10 @@ export function applies(id: string, st: ApplyState): boolean {
       return all('vertex');
     case RADIAL_ADD_FOLDER:
       return st.folderable;
+    case RADIAL_EDIT_FEATURE:
+      return n === 1 && all('face') && st.owner?.feature === true;
+    case RADIAL_EDIT_SKETCH:
+      return n === 1 && all('face') && st.owner?.sketch === true;
     default:
       return true;
   }

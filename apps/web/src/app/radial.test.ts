@@ -3,6 +3,8 @@ import {
   MAX_RADIAL_ITEMS,
   modelRadialIds,
   RADIAL_ADD_FOLDER,
+  RADIAL_EDIT_FEATURE,
+  RADIAL_EDIT_SKETCH,
   sketchRadialIds,
   sketchToolOf,
 } from './radial';
@@ -28,6 +30,50 @@ describe('radial contents', () => {
       expect(s.length).toBeLessThanOrEqual(MAX_RADIAL_ITEMS);
       expect(new Set(s).size).toBe(s.length);
     }
+  });
+
+  it('one face: offers Edit feature and Edit sketch for what made it, within seven items', () => {
+    const flat = [{ kind: 'face' as const, planar: true }];
+    const round = [{ kind: 'face' as const, planar: false }];
+    // Nothing known about the face: the ring is as it always was.
+    expect(modelRadialIds(flat)).toEqual(
+      modelRadialIds(flat, { owner: { feature: false, sketch: false } }),
+    );
+    const both = modelRadialIds(flat, { owner: { feature: true, sketch: true } });
+    expect(both).toEqual([
+      'sketch',
+      'pushPull',
+      'hole',
+      'shell',
+      'measure',
+      RADIAL_EDIT_FEATURE,
+      RADIAL_EDIT_SKETCH,
+    ]);
+    // Only a feature (a fillet face, a primitive): one item, so only Section gives way.
+    const one = modelRadialIds(flat, { owner: { feature: true, sketch: false } });
+    expect(one).toEqual([
+      'sketch',
+      'pushPull',
+      'hole',
+      'shell',
+      'draft',
+      'measure',
+      RADIAL_EDIT_FEATURE,
+    ]);
+    expect(modelRadialIds(round, { owner: { feature: true, sketch: true } })).toEqual([
+      'thread',
+      'shell',
+      'draft',
+      'measure',
+      RADIAL_EDIT_FEATURE,
+      RADIAL_EDIT_SKETCH,
+    ]);
+    for (const r of [both, one]) expect(r.length).toBeLessThanOrEqual(MAX_RADIAL_ITEMS);
+    // Never for several faces, edges or an empty selection.
+    const owner = { feature: true, sketch: true };
+    expect(modelRadialIds([...flat, ...flat], { owner })).not.toContain(RADIAL_EDIT_FEATURE);
+    expect(modelRadialIds([{ kind: 'edge' }], { owner })).not.toContain(RADIAL_EDIT_FEATURE);
+    expect(modelRadialIds([], { owner })).not.toContain(RADIAL_EDIT_SKETCH);
   });
 
   it('is chosen by what is selected', () => {

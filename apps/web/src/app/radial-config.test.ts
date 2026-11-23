@@ -90,6 +90,15 @@ describe('custom ring layout', () => {
     expect(applies('folder:add', planar)).toBe(false);
     expect(applies('undo', planar)).toBe(true);
     expect(applies('sketch:line', { sel: [], folderable: false, sketch: true })).toBe(true);
+    // Edit feature / Edit sketch: one face whose owner is known; otherwise dimmed in a custom ring.
+    expect(applies('edit:feature', planar)).toBe(false);
+    const made = { ...planar, owner: { feature: true, sketch: false } };
+    expect(applies('edit:feature', made)).toBe(true);
+    expect(applies('edit:sketch', made)).toBe(false);
+    expect(applies('edit:sketch', { ...planar, owner: { feature: true, sketch: true } })).toBe(
+      true,
+    );
+    expect(applies('edit:feature', { ...made, sel: [face, face] })).toBe(false);
   });
 
   it('a ring equal to the default is not stored; reset removes it', () => {
