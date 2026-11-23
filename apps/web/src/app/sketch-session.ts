@@ -57,6 +57,7 @@ import {
   startDraw,
   withPending,
 } from '../sketch/draw';
+import { glyphNear } from '../sketch/glyph-hit';
 import { sketchCurves } from '../sketch/overlay';
 import {
   axisSpan,
@@ -69,12 +70,14 @@ import {
   SKETCH_ORIGIN,
   spanCovers,
 } from '../sketch/references';
+import { additiveSelect, nextSelection } from '../sketch/select';
 import { displayFeature, type ShownSketch } from '../sketch/shown';
 import { MIN_CONFIDENCE, strokeEdit } from '../sketch/stroke';
 import { DragSteps } from './drag-steps';
 import { observable } from './observable';
 import { replayedPointerDowns } from './pointers';
 import { isEditTool, SketchEditTools, startEdit } from './sketch-edit';
+import { announceLinks, DragCarriers } from './sketch-links';
 import type { SketchUi } from './state';
 import type { Workbench } from './workbench';
 
@@ -129,6 +132,7 @@ interface DragState {
   steps: DragSteps<Vec2>;
   moved: boolean;
   start: { x: number; y: number };
+  carriers: DragCarriers;
 }
 
 /**
@@ -270,7 +274,7 @@ export class SketchSession {
     return this.wb.ui.get().sketch;
   }
 
-  private patch(p: Partial<SketchUi>): void {
+  patch(p: Partial<SketchUi>): void {
     this.wb.ui.set((u) => (u.sketch ? { ...u, sketch: { ...u.sketch, ...p } } : u));
   }
 
@@ -1091,6 +1095,7 @@ export class SketchSession {
       }),
       moved: false,
       start,
+      carriers: new DragCarriers(f, entity),
     };
   }
 
@@ -1150,18 +1155,7 @@ export class SketchSession {
       void this.commitEdit((cur) => removeEntities(cur, ids), 'Erase sketch geometry');
       return;
     }
-    const edit = result.edit;
-    const pending: SketchData = { entities: edit.entities, constraints: edit.constraints };
-    this.unsettled.push(pending);
-    void this.commitEdit(
-      (cur) => ({
-        entities: [...cur.entities, ...edit.entities],
-        constraints: [...cur.constraints, ...edit.constraints],
-      }),
-      `Draw ${result.shape}`,
-    ).finally(() => {
-      this.unsettled = this.unsettled.filter((x) => x !== pending);
-    });
+    this.commitDrawEdit(result.edit, result.shape);
   }
 
   /**
@@ -1359,7 +1353,10 @@ export class SketchSession {
       key,
     );
     this.solvedFor = this.feature();
-    this.patch({ solve: res });
+    this.patch({
+      solve: res,
+      carrying: this.drag?.key === key ? this.drag.carriers.update(res.entities) : [],
+    });
   }
 
   onPointerUp(
@@ -1395,7 +1392,7 @@ export class SketchSession {
       e.stopPropagation();
       // Queued like any edit, so the final drag result lands before anything after the release
       // (an immediate undo, a dimension, `whenSettled`) — never after it as a separate step.
-      this.endDrag((entity) => this.selectEntity(entity, e.shiftKey));
+      this.endDrag((entity) => this.selectEntity(entity, additiveSelect(e)));
       return;
     }
     // Only this pointer's own press counts (never another finger's or the pen's).
@@ -1436,7 +1433,9 @@ export class SketchSession {
     }
     if (moved) return;
     const hit = this.pickSketch(e);
-    if (hit?.entity) this.selectEntity(hit.entity, e.shiftKey || e.metaKey || e.ctrlKey);
+    const glyph = hit?.entity ? null : glyphNear(e); // a touch near a constraint glyph
+    if (hit?.entity) this.selectEntity(hit.entity, additiveSelect(e));
+    else if (glyph) this.selectConstraint(glyph);
     else this.patch({ selected: [], selectedConstraint: null });
     this.pushHighlights();
   }
@@ -1468,7 +1467,7 @@ export class SketchSession {
     const r = drawClick(state, base);
     this.patch({ draw: r.state, cursor: r.state.cursor });
     this.commitDrawEdit(r.edit, u.tool);
-    if (r.select) this.selectEntity(r.select, false); // the Point tool on an existing point
+    if (r.select) this.selectEntity(r.select, false, false); // the Point tool on an existing point
     this.scheduleOverlay();
   }
 
@@ -1505,20 +1504,22 @@ export class SketchSession {
     return true;
   }
 
-  private commitDrawEdit(edit: SketchEdit | null, tool: SketchToolId | null): void {
-    if (edit) {
-      const pending: SketchData = { entities: edit.entities, constraints: edit.constraints };
-      this.unsettled.push(pending);
-      void this.commitEdit(
-        (cur) => ({
-          entities: [...cur.entities, ...edit.entities],
-          constraints: [...cur.constraints, ...edit.constraints],
-        }),
-        `Draw ${tool ?? 'geometry'}`,
-      ).finally(() => {
+  /** Commits a drawn shape (click or Pencil); a link to another shape is announced (ADR-087). */
+  private commitDrawEdit(edit: SketchEdit | null, what: string | null): void {
+    if (!edit) return;
+    const pending: SketchData = { entities: edit.entities, constraints: edit.constraints };
+    this.unsettled.push(pending);
+    void this.commitEdit(
+      (cur) => ({
+        entities: [...cur.entities, ...edit.entities],
+        constraints: [...cur.constraints, ...edit.constraints],
+      }),
+      `Draw ${what ?? 'geometry'}`,
+    )
+      .then(() => announceLinks(this, this.wb, edit))
+      .finally(() => {
         this.unsettled = this.unsettled.filter((x) => x !== pending);
       });
-    }
   }
 
   onDoubleClick(e: MouseEvent): void {
@@ -1531,15 +1532,13 @@ export class SketchSession {
     this.scheduleOverlay();
   }
 
-  private selectEntity(id: Id, additive: boolean): void {
+  private selectEntity(id: Id, additive: boolean, toggle = true): void {
     const u = this.ui();
     if (!u) return;
-    const selected = additive
-      ? u.selected.includes(id)
-        ? u.selected.filter((x) => x !== id)
-        : [...u.selected, id]
-      : [id];
-    this.patch({ selected, selectedConstraint: null });
+    this.patch({
+      selected: nextSelection(u.selected, id, additive, toggle),
+      selectedConstraint: null,
+    });
     this.pushHighlights();
   }
 

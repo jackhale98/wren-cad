@@ -348,7 +348,7 @@ export function ViewportOverlays({ wb, touch }: { wb: Workbench; touch: boolean 
       {sk && session ? (
         <>
           <Suspense fallback={null}>
-            <SketchLayer wb={wb} session={session} ui={sk} doc={doc} />
+            <SketchLayer wb={wb} session={session} ui={sk} doc={doc} touch={touch} />
           </Suspense>
           <div
             className="pointer-events-auto absolute left-1/2 -translate-x-1/2"
@@ -563,6 +563,22 @@ export function ViewportOverlays({ wb, touch }: { wb: Workbench; touch: boolean 
             )}
           >
             {ui.toast.text}
+            {ui.toast.action ? (
+              <button
+                type="button"
+                data-testid="toast-action"
+                onClick={() => {
+                  ui.toast?.action?.run();
+                  wb.dismissToast();
+                }}
+                className={cn(
+                  'pointer-events-auto ml-3 rounded-control bg-surface-2 px-2.5 font-medium text-accent-text shadow-[inset_0_0_0_1px_var(--color-border)] hover:bg-surface-3 focus-visible:outline-2 focus-visible:outline-accent',
+                  touch ? 'min-h-11' : 'h-7',
+                )}
+              >
+                {ui.toast.action.label}
+              </button>
+            ) : null}
           </output>
         ) : null}
       </div>
