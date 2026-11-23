@@ -53,6 +53,7 @@ export class PrismPreview {
   private readonly cutMaterial: MeshBasicNodeMaterial;
   private readonly dirU = uniform(new Vector3(0, 0, 1));
   private readonly distU = uniform(0);
+  private readonly offU = uniform(0);
   private readonly colorU = uniform(new Color());
   private readonly addColor = new Color();
   private readonly cutColor = new Color();
@@ -69,8 +70,10 @@ export class PrismPreview {
       depthWrite: false,
       side: DoubleSide,
     });
+    // position + direction * (offset + distance * lift): the offset starts a symmetric prism
+    // half its length behind the profile (it is 0 for push/pull).
     m.positionNode = positionLocal.add(
-      this.dirU.mul(this.distU).mul(tslAttribute('lift', 'float')),
+      this.dirU.mul(this.offU.add(this.distU.mul(tslAttribute('lift', 'float')))),
     );
     m.colorNode = this.colorU.mul(facetShade());
     this.material = m;
@@ -96,11 +99,21 @@ export class PrismPreview {
     this.colorU.value.copy(this.sign >= 0 ? this.addColor : this.cutColor);
   }
 
-  /** Allocation-free: three uniform writes. */
-  update(direction: readonly [number, number, number], distance: number): void {
+  /**
+   * Allocation-free: uniform writes. `tone` overrides the sign rule (a region prism's distance is
+   * always positive; its direction already carries "reverse"); `offset` shifts the whole prism
+   * along `direction` (mm).
+   */
+  update(
+    direction: readonly [number, number, number],
+    distance: number,
+    offset = 0,
+    tone?: 'add' | 'cut',
+  ): void {
     this.dirU.value.set(direction[0], direction[1], direction[2]);
     this.distU.value = distance;
-    const sign = distance >= 0 ? 1 : -1;
+    this.offU.value = offset;
+    const sign = tone ? (tone === 'add' ? 1 : -1) : distance >= 0 ? 1 : -1;
     if (sign !== this.sign) {
       this.sign = sign;
       this.colorU.value.copy(sign >= 0 ? this.addColor : this.cutColor);

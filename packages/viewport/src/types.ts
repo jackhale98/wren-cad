@@ -1,4 +1,5 @@
 import type { CompareViewport, Vec3, ViewportOptions } from '@wren-cad/contracts';
+import type { FeatureTint, RegionPrismSpec, tintStats } from './featureTint';
 import type { PivotSource } from './navigation';
 import type { Bounds, FrameInsets } from './views';
 
@@ -98,6 +99,15 @@ export interface ViewportEngine extends CompareViewport {
   setReferences(refs: readonly ViewportReference[]): void;
   /** Draw the world origin planes and axes (a per-device view toggle; the sketch plane chooser shows them). */
   setOriginReferences(show: boolean): void;
+  /**
+   * Change preview (ADR-103): tints the faces the feature being edited made (add, cut or modify);
+   * `null` clears. Drawn under selection and hover; follows body and theme changes.
+   */
+  setFeatureTint(tint: FeatureTint | null): void;
+  /** Change preview: the swept volume of a profile (blind extrude), same frame as the input. */
+  setRegionPrism(spec: RegionPrismSpec | null): void;
+  /** Tint and region-prism state for tests. */
+  getTintStats(): ReturnType<typeof tintStats>;
   getReferenceStats(): ReferenceStats;
   /** Live material state of a body (tests: ghosting is restored exactly on `setCompare(null)`). */
   getBodyMaterialState(id: string): BodyMaterialState | null;

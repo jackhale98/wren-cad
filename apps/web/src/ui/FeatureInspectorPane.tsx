@@ -21,6 +21,7 @@ import { useObservable } from '../app/observable';
 import { refAcks } from '../app/ref-notes';
 import type { Workbench } from '../app/workbench';
 import { featureLineage } from '../model/lineage';
+import BeforeChip from './BeforeChip';
 import { describeRef } from './Inspector';
 
 type HoleTables = typeof import('../features/hole-tables')['HOLE_TABLES'];
@@ -155,6 +156,11 @@ export default function FeatureInspectorPane({
             </li>
           ))}
         </ul>
+      ) : null}
+      {touch && f.type !== 'sketch' ? (
+        <div className="flex justify-end px-4 pt-2">
+          <BeforeChip wb={wb} />
+        </div>
       ) : null}
       {f.type !== 'sketch' || lineage.children.length > 0 || lineage.parents.length > 0 ? (
         <FeatureLineage

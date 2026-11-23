@@ -16,6 +16,7 @@ import {
 import { previewColors, rebuildHighlights, refreshPreviewsFor } from './adornments';
 import { effectiveOpacity } from './compare';
 import { buildCompare } from './compareView';
+import { recolorRegionPrism } from './featureTint';
 import { edgesToSegments, meshBuffersToGeometry } from './geometry';
 import {
   type BodyEntry,
@@ -144,6 +145,7 @@ export function setTheme(vp: ViewportImpl, theme: 'light' | 'dark'): void {
   for (const [id, s] of [...vp.sketches]) vp.setSketch(id, s.overlay);
   for (const [id, g] of [...vp.ghosts]) rebuildGhostColors(vp, id, g);
   if (vp.compare) buildCompare(vp, vp.compare.overlay);
+  recolorRegionPrism(vp);
   for (const p of vp.previews.values()) {
     if (p.kind === 'prism') p.view.setColors(previewColors(vp));
     else p.view.setColor(vp.ui.accent);

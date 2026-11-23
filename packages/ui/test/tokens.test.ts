@@ -87,6 +87,9 @@ const pairs: Pair[] = [
   ['compareRemoved', 'viewportBottom', 3, 'removed overlay over viewport'],
   ['compareAddedSwatch', 'surface', 3, 'added legend swatch (non-text)'],
   ['compareRemovedSwatch', 'surface', 3, 'removed legend swatch (non-text)'],
+  ['previewModifySwatch', 'surface', 3, 'modify tint (non-text)'],
+  ['previewModifySwatch', 'viewportBottom', 3, 'modify tint over the viewport'],
+  ['previewModifySwatch', 'viewportTop', 3, 'modify tint over the viewport'],
   ['reference', 'viewportBottom', 3, 'reference geometry over the viewport'],
   ['reference', 'viewportTop', 3, 'reference geometry over the viewport'],
 ];

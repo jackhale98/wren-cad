@@ -272,6 +272,8 @@ export interface UiState {
   bubbleDismissed: string | null;
   /** M3.5: the radial menu, the box-select rubber band, the settings panel. */
   radial: RadialRequest | null;
+  /** Change preview (ADR-103): the model is shown as it was before the edited feature (held key or chip). Never saved, never an edit. */
+  before: boolean;
   box: BoxSelect | null;
   settings: SettingsTab | null;
   /** M4: the drawing route is open (`id` null = a new drawing of the part). */
@@ -316,6 +318,7 @@ export const initialUi: UiState = {
   bubble: null,
   bubbleDismissed: null,
   radial: null,
+  before: false,
   box: null,
   settings: null,
   drawing: null,

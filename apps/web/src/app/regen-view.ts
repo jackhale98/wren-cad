@@ -44,13 +44,16 @@ export function onRegen(wb: Workbench, raw: RegenView): void {
   const outcome = features.some((s, i) => s !== raw.result.features[i])
     ? { ...raw, result: { ...raw.result, features } }
     : raw;
-  if (current || !wb.ui.get().picking) wb.treeStatuses.set(outcome.result.features);
+  // A rolled-back view (pick fields, Before) never replaces the real statuses.
+  const rolledBack = wb.ui.get().picking !== null || wb.ui.get().before;
+  if (current || !rolledBack) wb.treeStatuses.set(outcome.result.features);
   if (current) {
     wb.heals = healsFrom(outcome.result.features);
     wb.healsFor = outcome.doc;
   }
   wb.regen.set(outcome);
-  wb.remapSelection(outcome.result);
+  // Before shows other geometry: the selection waits for the real result.
+  if (!wb.ui.get().before) wb.remapSelection(outcome.result);
   wb.syncViewport();
   wb.sketch?.onRegen(outcome.result);
   wb.keepInView(outcome);
@@ -338,6 +341,8 @@ export function syncViewport(wb: Workbench): void {
   wb.syncAttentionMarkers();
   wb.refreshSketchVisibility();
   wb.pushHighlights();
+  // After the bodies are in: the tint follows this very result (same frame).
+  wb.changePreview.sync();
 }
 
 export function syncAttentionMarkers(wb: Workbench): void {
@@ -366,6 +371,11 @@ export function pushHighlights(wb: Workbench): void {
   const u = wb.ui.get();
   if (u.sketch) {
     wb.sketch?.pushHighlights();
+    return;
+  }
+  // Before shows other geometry: the picks' indices would land on the wrong faces.
+  if (u.before) {
+    v.setHighlights({ selected: [], preselected: [] });
     return;
   }
   const view = wb.regen.get();

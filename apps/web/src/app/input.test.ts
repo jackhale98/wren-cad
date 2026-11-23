@@ -3,6 +3,7 @@ import { DEFAULT_COMMANDS, findConflicts, resolveKeymap } from '@wren-cad/ui';
 import { describe, expect, it } from 'vitest';
 import {
   APP_COMMANDS,
+  BEFORE_COMMAND,
   commandFor,
   type InputSettings,
   RADIAL_COMMAND,
@@ -38,6 +39,20 @@ describe('app keymap', () => {
       expect(c.reserved).toBeUndefined();
     }
     expect(DEFAULT_COMMANDS.some((c) => c.defaults.includes('KeyQ'))).toBe(false);
+  });
+
+  it('the Before key is free in every context and works in the model only', () => {
+    const resolved = resolveKeymap(APP_COMMANDS);
+    for (const b of BEFORE_COMMAND.defaults) {
+      const c = findConflicts(APP_COMMANDS, resolved, BEFORE_COMMAND.id, b, 'linux');
+      expect(c.commands).toEqual([]);
+      expect(c.reserved).toBeUndefined();
+    }
+    expect(commandFor(settings(), 'KeyH', false)?.id).toBe('before');
+    expect(commandFor(settings(), 'KeyH', true)).toBeUndefined();
+    // Rebindable like the others.
+    expect(commandFor(settings({ before: ['KeyJ'] }), 'KeyJ', false)?.id).toBe('before');
+    expect(commandFor(settings({ before: ['KeyJ'] }), 'KeyH', false)).toBeUndefined();
   });
 
   it('matches by physical key in the active contexts', () => {

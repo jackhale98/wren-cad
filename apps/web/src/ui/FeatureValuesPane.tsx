@@ -10,6 +10,7 @@ import { applyPatch, exprFields, fieldLabel, getAt } from '@wren-cad/document';
 import { FeatureValues } from '@wren-cad/ui';
 import { useMemo } from 'react';
 import type { Workbench } from '../app/workbench';
+import BeforeChip from './BeforeChip';
 
 function withValue(f: Feature, pointer: string, expr: Expr): Feature {
   return applyPatch(f, [{ op: 'replace', path: pointer, value: expr }]).doc;
@@ -42,15 +43,22 @@ export default function FeatureValuesPane({
     [feature],
   );
   return (
-    <FeatureValues
-      key={feature.id}
-      name={feature.name}
-      fields={fields}
-      evaluate={(e, d) => wb.evaluate(e, d)}
-      units={{ length: lengthUnit, angle: angleUnit }}
-      onPreview={(pointer, expr) => wb.updateFeature(withValue(feature, pointer, expr), 'preview')}
-      onCommit={(pointer, expr) => wb.updateFeature(withValue(feature, pointer, expr), 'commit')}
-      onDone={() => wb.selectFeature(null)}
-    />
+    <>
+      <FeatureValues
+        key={feature.id}
+        name={feature.name}
+        fields={fields}
+        evaluate={(e, d) => wb.evaluate(e, d)}
+        units={{ length: lengthUnit, angle: angleUnit }}
+        onPreview={(pointer, expr) =>
+          wb.updateFeature(withValue(feature, pointer, expr), 'preview')
+        }
+        onCommit={(pointer, expr) => wb.updateFeature(withValue(feature, pointer, expr), 'commit')}
+        onDone={() => wb.selectFeature(null)}
+      />
+      <div className="flex justify-end px-4 pb-2">
+        <BeforeChip wb={wb} />
+      </div>
+    </>
   );
 }

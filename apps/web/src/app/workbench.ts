@@ -74,6 +74,7 @@ import { capabilitiesFor, policyFor, type TierPolicy } from '../platform/tier-po
 import type { Accepts } from '../selection/pick';
 import type { SyncController, SyncHost } from '../sync/controller';
 import * as attention from './attention-actions';
+import { ChangePreview } from './change-preview';
 import { ConfigController } from './config-controller';
 import { activeIdOf, type MassSummaryView } from './config-model';
 import * as editLayout from './edit-layout';
@@ -145,6 +146,8 @@ export class Workbench {
   /** "Take the tour" requests (welcome card, ⌘K); the app runs the tutorial on a new part. */
   readonly tourRequests = observable(0);
   readonly pushPull: PushPullTool;
+  /** Change preview (ADR-103): feature tint, extrude volume, Before. */
+  readonly changePreview: ChangePreview;
   /** Part configurations (M3.7): what is regenerated, edit scope, the table, background builds. */
   readonly config: ConfigController = new ConfigController(this);
   readonly sectionTool: SectionTool;
@@ -216,6 +219,7 @@ export class Workbench {
     // The inspector panel starts open beside the view on desktop, closed on a tablet until editing opens it.
     this.ui.set((u) => ({ ...u, inspectorOpen: this.capabilities.get().density === 'compact' }));
     this.pushPull = new PushPullTool(this);
+    this.changePreview = new ChangePreview(this);
     this.sectionTool = new SectionTool(this);
     this.measure = new MeasureTool(this);
     // Coalescing groups are closed explicitly (pointer up, Enter, blur); the idle window only
@@ -246,6 +250,9 @@ export class Workbench {
       this.store.subscribe((doc, change) => this.onDocChange(doc, change.patches[0]?.path === '')),
       this.ui.subscribe(() => this.onUiChange()),
       this.listen(window, 'keydown', (e) => this.onKey(e as KeyboardEvent)),
+      // Hold-to-see "Before" ends with its key, or when the window loses focus.
+      this.listen(window, 'keyup', (e) => keys.onKeyUp(this, e as KeyboardEvent)),
+      this.listen(window, 'blur', () => this.changePreview.setBefore(false)),
       this.listen(document, 'visibilitychange', () => {
         if (document.visibilityState === 'hidden') void this.flushSave();
       }),
@@ -484,10 +491,15 @@ export class Workbench {
     }
     const p = this.ui.get().picking;
     const key = p ? `${p.featureId}|${p.path}` : '';
-    if (key !== this.lastPickKey) {
-      this.lastPickKey = key;
+    // Before ends with the feature it was showing the model without (closed, deleted, another one).
+    if (this.ui.get().before && !this.changePreview.canShowBefore())
+      this.patchUi({ before: false });
+    const viewKey = this.ui.get().before ? `${key}|before|${this.ui.get().featureId}` : key;
+    if (viewKey !== this.lastPickKey) {
+      this.lastPickKey = viewKey;
       this.loop?.request();
     }
+    this.changePreview.sync(); // tint and prism follow the edited feature
     // Which sketches show depends on what is being edited or picked: re-evaluate whenever that
     // changes, on every path (Done, clear selection, Esc, tree clicks), not only on some of them.
     const u = this.ui.get();
@@ -639,6 +651,7 @@ export class Workbench {
   /** Undo/redo wait for sketch edits still being solved (they land first, then are undone). */
   undo(): void {
     const run = () => {
+      this.changePreview.clear();
       if (!this.store.undo()) this.toast('Nothing to undo', 'info');
     };
     // Tracked, so `idle()` waits for the deferred undo/redo too.
@@ -648,6 +661,7 @@ export class Workbench {
 
   redo(): void {
     const run = () => {
+      this.changePreview.clear();
       if (!this.store.redo()) this.toast('Nothing to redo', 'info');
     };
     // Tracked, so `idle()` waits for the deferred undo/redo too.
@@ -1178,6 +1192,7 @@ export class Workbench {
   updateFeature(feature: Feature, mode: 'commit' | 'preview', chip = false): void {
     if (activeIdOf(this.part) !== null) this.config.updateFeature(feature, mode, chip);
     else tree.updateFeature(this, feature, mode);
+    this.changePreview.onFeature(feature); // the swept volume, before the kernel answers
   }
 
   /** The feature edit that always writes the stored (Default) feature. */

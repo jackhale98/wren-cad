@@ -31,7 +31,22 @@ export const RADIAL_COMMAND: KeymapCommand = {
   context: 'global',
   defaults: ['KeyQ'],
 };
-export const APP_COMMANDS: readonly KeymapCommand[] = [...DEFAULT_COMMANDS, RADIAL_COMMAND];
+/**
+ * Change preview (ADR-103): hold to see the model as it was before the feature being edited. H is
+ * free in every context (asserted by a test); model context only, since a sketch edits no feature.
+ */
+export const BEFORE_COMMAND: KeymapCommand = {
+  id: 'before',
+  label: 'Show the model before the edited feature (hold)',
+  group: 'View',
+  context: 'model',
+  defaults: ['KeyH'],
+};
+export const APP_COMMANDS: readonly KeymapCommand[] = [
+  ...DEFAULT_COMMANDS,
+  RADIAL_COMMAND,
+  BEFORE_COMMAND,
+];
 
 export function sanitizeOverrides(raw: unknown): KeymapOverrides {
   if (!raw || typeof raw !== 'object') return {};

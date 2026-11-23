@@ -63,6 +63,11 @@ export function testHooks(wb: Workbench) {
     },
     /** The PMI report on screen (M5a), or null. */
     pmiReport: () => wb.ui.get().pmiReport,
+    /** Change preview (ADR-103): the tinted faces, the extrude volume shown, Before. */
+    changePreview: () => wb.changePreview.state(),
+    /** What the viewport itself draws for the change preview (engine probe), or null. */
+    changePreviewDrawn: () =>
+      (wb.viewport as { getTintStats?: () => unknown } | null)?.getTintStats?.() ?? null,
     shownSketches: () => [...wb.shownSketches],
     /** Ids of the bodies the viewport holds (what is on screen). */
     shownBodies: () => [...wb.shownBodies],

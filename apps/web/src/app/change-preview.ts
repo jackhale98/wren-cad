@@ -1,0 +1,216 @@
+/**
+ * Change preview (slice 2e.1, ADR-103): while a feature is created or edited, the faces it made are
+ * tinted by effect, a blind extrude shows its swept volume before the kernel answers, and a held
+ * key (touch: the Before chip) shows the model as it was before the feature.
+ *
+ * Nothing here calls the kernel or edits the document. The tint follows the displayed regen
+ * result (so it appears in the frame the result does, and is gone when the feature errors or the
+ * edit ends); the prism is drawn synchronously from the input and dropped when the regen of the
+ * current document arrives. Before reuses the pick rollback of `view-doc.ts`.
+ */
+
+import type { Feature, Id, RegenResult, TouchViewport } from '@wren-cad/contracts';
+import type { FeatureEffect, FeatureTint, RegionPrismSpec } from '@wren-cad/viewport';
+import { extrudePrism, featureEffect, ownedFaces } from '../model/feature-effect';
+import type { RegenView } from './state';
+import type { Workbench } from './workbench';
+
+/** The viewport engine's change-preview methods (optional: other viewports simply draw nothing). */
+type ChangeViewport = TouchViewport & {
+  setFeatureTint?(tint: FeatureTint | null): void;
+  setRegionPrism?(spec: RegionPrismSpec | null): void;
+};
+
+export interface ChangePreviewState {
+  tint: { featureId: Id; effect: FeatureEffect; faces: number } | null;
+  prism: { featureId: Id; effect: 'add' | 'cut'; distance: number } | null;
+  before: boolean;
+}
+
+export class ChangePreview {
+  /** `KeyboardEvent.code` of the key held for Before (its release ends it). */
+  holdCode: string | null = null;
+  private tint: ChangePreviewState['tint'] = null;
+  private prism: { featureId: Id; spec: RegionPrismSpec } | null = null;
+  /** The full result shown when Before was pressed: restored in the frame the key is released. */
+  private stash: RegenView | null = null;
+
+  constructor(private readonly wb: Workbench) {}
+
+  private get vp(): ChangeViewport | null {
+    return this.wb.viewport as ChangeViewport | null;
+  }
+
+  state(): ChangePreviewState {
+    return {
+      tint: this.tint,
+      prism: this.prism
+        ? {
+            featureId: this.prism.featureId,
+            effect: this.prism.spec.effect,
+            distance: this.prism.spec.distance,
+          }
+        : null,
+      before: this.wb.ui.get().before,
+    };
+  }
+
+  /** The feature being created or edited in the inspector (not a sketch, not while viewing Before). */
+  private editedFeature(view: RegenView | null): Feature | undefined {
+    const u = this.wb.ui.get();
+    if (!u.featureId || u.sketch || u.before || u.pushPull) return undefined;
+    return view?.doc.parts[0]?.features.find((f) => f.id === u.featureId && !f.suppressed);
+  }
+
+  /** After a regen result is applied and when what is edited changes: tint and prism follow. */
+  sync(): void {
+    const view = this.wb.regen.get();
+    // Runs on every UI change (hover too): skip unless an input of the tint changed.
+    const u = this.wb.ui.get();
+    const stamp = { view, id: u.featureId, flags: `${!!u.sketch}${u.before}${!!u.pushPull}` };
+    const s = this.stamp;
+    if (!this.prism && s && s.view === stamp.view && s.id === stamp.id && s.flags === stamp.flags)
+      return;
+    this.stamp = stamp;
+    const f = view === this.cleared ? undefined : this.editedFeature(view);
+    this.syncTint(view, f);
+    this.syncPrism(view, f);
+  }
+
+  private syncTint(view: RegenView | null, f: Feature | undefined): void {
+    const next = f && view?.source === 'live' ? tintFor(f, view.result) : null;
+    const same =
+      next === null
+        ? this.tint === null
+        : this.tint?.featureId === next.featureId &&
+          this.tint.effect === next.effect &&
+          this.tint.faces === next.faces &&
+          this.tintedResult === view?.result;
+    if (same) return;
+    this.tint = next && { featureId: next.featureId, effect: next.effect, faces: next.faces };
+    this.tintedResult = next ? view?.result : undefined;
+    this.vp?.setFeatureTint?.(next ? { effect: next.effect, faces: next.bodies } : null);
+  }
+  private tintedResult: RegenResult | undefined;
+  /** The result on screen when undo / Before cleared the tint: it is not tinted again; the next one is. */
+  private cleared: RegenView | null = null;
+  private stamp: { view: RegenView | null; id: Id | null; flags: string } | null = null;
+
+  private syncPrism(view: RegenView | null, f: Feature | undefined): void {
+    const p = this.prism;
+    if (!p) return;
+    // Gone when the edit ends, when the feature is not the edited one any more, and once the
+    // regen of the current document is shown (its real, tinted faces replace the estimate).
+    const arrived = view?.source === 'live' && view.doc === this.wb.viewDoc();
+    if (!f || f.id !== p.featureId || arrived) this.clearPrism();
+  }
+
+  private clearPrism(): void {
+    if (!this.prism) return;
+    this.prism = null;
+    this.vp?.setRegionPrism?.(null);
+  }
+
+  /**
+   * A value of `feature` just changed (drag, typed, inspector): the swept volume of a blind
+   * extrude appears in this frame, from the sketch region and the evaluated depth. Anything that
+   * cannot be exact shows nothing.
+   */
+  onFeature(feature: Feature): void {
+    const vp = this.vp;
+    if (!vp?.setRegionPrism) return;
+    const view = this.wb.regen.get();
+    if (feature.type !== 'extrude' || !view || this.wb.ui.get().before) {
+      this.clearPrism();
+      return;
+    }
+    // No change to show when the displayed result already is this document.
+    if (view.source === 'live' && view.doc === this.wb.viewDoc()) {
+      this.clearPrism();
+      return;
+    }
+    let depth: number | null = null;
+    if (feature.end.kind === 'blind') {
+      const r = this.wb.evaluate(feature.end.depth, 'length');
+      depth = r.ok ? r.value : null;
+    }
+    let drafted = false;
+    if (feature.draft !== undefined && feature.draft.trim() !== '') {
+      const r = this.wb.evaluate(feature.draft, 'angle');
+      drafted = !r.ok || Math.abs(r.value) > 1e-9;
+    }
+    const spec = extrudePrism(feature, view.result.sketches, depth, drafted);
+    if (!spec) {
+      this.clearPrism();
+      return;
+    }
+    this.prism = { featureId: feature.id, spec };
+    vp.setRegionPrism(spec);
+  }
+
+  /** Everything off (undo, redo, document replaced). The next regen result may tint again. */
+  clear(): void {
+    this.stamp = null;
+    this.cleared = this.wb.regen.get() ?? null;
+    this.clearPrism();
+    if (this.tint) {
+      this.tint = null;
+      this.tintedResult = undefined;
+      this.vp?.setFeatureTint?.(null);
+    }
+  }
+
+  /** Whether Before can be shown now: a feature is open and some feature stands before it. */
+  canShowBefore(): boolean {
+    const u = this.wb.ui.get();
+    const part = this.wb.part;
+    if (!u.featureId || u.sketch || !part) return false;
+    const i = part.features.findIndex((f) => f.id === u.featureId);
+    return i >= 0 && i < part.rollbackIndex && part.features[i]?.type !== 'sketch';
+  }
+
+  /**
+   * Hold-to-see: the model without the edited feature (the rolled-back view the pick fields use,
+   * served by the regen cache). Never an edit: only a UI flag changes, so nothing reaches the
+   * document or the undo history. Releasing shows the stashed result again in the same frame.
+   */
+  setBefore(on: boolean): void {
+    const wb = this.wb;
+    if (on === wb.ui.get().before) return;
+    if (on) {
+      if (!this.canShowBefore()) return;
+      this.stash = wb.regen.get() ?? null;
+      this.clear();
+      wb.patchUi({ before: true });
+      return;
+    }
+    const stash = this.stash;
+    this.stash = null;
+    wb.patchUi({ before: false });
+    this.cleared = null;
+    this.stamp = null;
+    if (stash && stash.doc === wb.viewDoc()) {
+      wb.regen.set(stash);
+      wb.syncViewport();
+    }
+  }
+}
+
+function tintFor(
+  f: Feature,
+  result: RegenResult,
+): { featureId: Id; effect: FeatureEffect; faces: number; bodies: FeatureTint['faces'] } | null {
+  const status = result.features.find((s) => s.featureId === f.id);
+  // An error, an unresolved reference or a blocked feature tints nothing: the error state shows.
+  if (!status || status.state !== 'ok') return null;
+  const effect = featureEffect(f);
+  if (!effect) return null;
+  const bodies = ownedFaces(result.bodies, f.id);
+  if (bodies.length === 0) return null;
+  return {
+    featureId: f.id,
+    effect,
+    faces: bodies.reduce((n, b) => n + b.faces.length, 0),
+    bodies,
+  };
+}
