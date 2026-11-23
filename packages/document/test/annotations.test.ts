@@ -520,6 +520,9 @@ describe(`ISO 286 fits (${PROVISIONAL}; formulas, not copied tables)`, () => {
     expect(rangeMean(20)).toBeCloseTo(Math.sqrt(18 * 30), 12);
     expect(rangeMean(30)).toBeCloseTo(Math.sqrt(18 * 30), 12);
     expect(rangeMean(30.01)).toBeCloseTo(Math.sqrt(30 * 50), 12);
+    // A measured 30 with float noise is still in 18–30 (H7 +0.021, not the next range's +0.025).
+    expect(rangeMean(30 + 4e-15)).toBeCloseTo(Math.sqrt(18 * 30), 12);
+    expect(rangeMean(500 + 4e-13)).toBeCloseTo(Math.sqrt(400 * 500), 12);
     expect(rangeMean(1)).toBeCloseTo(Math.sqrt(3), 12);
     expect(rangeMean(0)).toBeUndefined();
     expect(rangeMean(501)).toBeUndefined();

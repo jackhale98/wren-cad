@@ -138,6 +138,20 @@ describe('ToleranceEditor: the fields of each type', () => {
     expect(previewText()).toBe('20 ±0.1');
   });
 
+  it('symmetric: a typed sign is dropped, and zero is not a tolerance', async () => {
+    const { onCommit } = setup({ value: { kind: 'symmetric', value: '0.1 mm' } });
+    const f = screen.getByRole('textbox', { name: 'Symmetric tolerance' });
+    await userEvent.clear(f);
+    await userEvent.type(f, '-0.2{Enter}');
+    expect(onCommit).toHaveBeenLastCalledWith({
+      tolerance: { kind: 'symmetric', value: '0.2 mm' },
+    });
+    onCommit.mockClear();
+    await userEvent.clear(f);
+    await userEvent.type(f, '0{Enter}');
+    expect(onCommit).not.toHaveBeenCalled();
+  });
+
   it('deviation: upper and lower, signed, one commit each; upper below lower is refused with a reason', async () => {
     const { onCommit } = setup({
       value: { kind: 'bilateral', upper: '0.1 mm', lower: '-0.1 mm' },

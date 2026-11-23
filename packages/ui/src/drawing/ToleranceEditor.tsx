@@ -281,9 +281,15 @@ export function ToleranceEditor({
   if (value?.kind === 'symmetric') {
     fields = (
       <Field label="Plus and minus (±)">
-        {input('Symmetric tolerance', value.value, (t) =>
-          commit({ kind: 'symmetric', value: norm(t) }),
-        )}
+        {input('Symmetric tolerance', value.value, (t) => {
+          // ± takes a size: a typed sign is dropped, and zero (or what cannot be read) is not a
+          // tolerance, so the field keeps its last value.
+          const unsigned = norm(t.trim().replace(/^[+\-−–]\s*/, ''));
+          const r = evaluate(unsigned);
+          if (r.ok && typeof r.value === 'number' && r.value > 0) {
+            commit({ kind: 'symmetric', value: unsigned });
+          }
+        })}
       </Field>
     );
   } else if (value?.kind === 'bilateral') {
