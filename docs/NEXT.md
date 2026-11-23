@@ -178,8 +178,19 @@ report and v2 mapping (app). Details: ADR-101 and its amendments, `PMI_VALIDATIO
   rigid sub-assemblies, absent instance configuration means Default, a drag through a free DOF
   is an undoable edit); Section and Draft may leave the default face ring to make room for the
   edit items; change preview starts with slice 2e.1.
-- Next: slice 2e.1 (in progress, viewport), then Phase 3 starting with the 6.0 contract
-  revision. Open: the first nightly Soak result.
+- 2e.1 merged on the session branch (ADR-103): faces made by the edited feature are tinted
+  (add, cut, modify); a blind extrude shows its volume as a prism at once when its depth is
+  typed (no depth drag handle exists in the app); H held (rebindable; a press-and-hold chip on
+  touch) shows the model before the feature. Limits: up-to, through-all, drafted and intersect
+  extrudes show no prism; a cut's tinted faces are inside the pocket and hard to see from
+  outside (2e.2, the exact tool body, is what fixes that); push/pull tints nothing; the prism's
+  16 ms budget is not measured on a real GPU. Proposed for the next contract revision:
+  `setFeatureTint` and `setRegionPrism` on the viewport contract (today optional engine
+  methods). `pnpm --filter @wren-cad/viewport perf`: 8 of 9; the 1M-triangle wheel burst fails
+  the same way without the change (software rendering in the container).
+- In progress (drawing): the tolerance editor redesign and inspection dimensions (owner,
+  2026-11-23; `inspection?: boolean` added to the dimension contract).
+- Next: Phase 3 starting with the 6.0 contract revision. Open: the first nightly Soak result.
 - Local E2E and agents: Playwright reuses a server on port 4173. An agent running E2Es in a
   worktree and the lead clash on it and each tests the other's build. Give every runner its
   own `WREN_E2E_PORT`.
