@@ -57,7 +57,7 @@ has Welcome and samples, the demo bracket, New document, Open library, Open or i
   **Measure**, **Section** and **Export**.
 - **Features** shows the feature tree with a draggable rollback line, for review only; see
   [Reviewing on the phone](#reviewing-on-the-phone).
-- You can change numbers on a phone (a feature's values, parameters), switch configuration and save,
+- You can change a feature's values and edit parameters on a phone, switch configuration and save,
   compare or release versions. You cannot create or restructure features (no sketching, push/pull,
   delete, rename or reordering). Use a desktop or tablet, or turn on **Use full editor** in Settings.
 

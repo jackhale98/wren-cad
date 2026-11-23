@@ -9,10 +9,15 @@ import type { DeviceCapabilities } from '@wren-cad/contracts';
 
 type Gate = Pick<DeviceCapabilities, 'layout' | 'editValues' | 'editFeatures'>;
 
-/** The Params tab: everything with the full editor, expressions only with `editValues`, else none. */
+/**
+ * The Params tab. Parameters have always been fully editable on the phone (PLAN §9.1: "editing is
+ * limited to parameters and simple features"; the M2 phone tests add descriptions there), so
+ * `editValues` keeps the whole table: Phase 2c adds abilities to the review layout, it removes
+ * none. A device with neither capability only views. (`ParamsTable` also has a `values` mode,
+ * expressions only, which no layout uses today.)
+ */
 export function paramsModeFor(caps: Gate): 'edit' | 'values' | 'view' {
-  if (caps.editFeatures) return 'edit';
-  return caps.editValues ? 'values' : 'view';
+  return caps.editFeatures || caps.editValues ? 'edit' : 'view';
 }
 
 /**

@@ -82,14 +82,10 @@ test('phone: change an extrude depth inline; the document and the feature update
   expect(after?.bodies[0]?.volume).not.toBeCloseTo(before?.bodies[0]?.volume ?? 0, 0);
 });
 
-test('phone: Params tab edits an expression but offers no add, delete or rename', async ({
-  page,
-}) => {
+test('phone: Params tab edits an expression with the keypad', async ({ page }) => {
   test.slow();
   const a = await openDemo(page);
   await tab(page, 'Params').tap();
-  await expect(page.getByRole('button', { name: 'Add parameter' })).toHaveCount(0);
-  await expect(page.getByRole('textbox', { name: /^Name of parameter/ })).toHaveCount(0);
   const field = page.getByRole('textbox', { name: 'Expression for thickness' });
   await field.scrollIntoViewIfNeeded();
   await field.tap();

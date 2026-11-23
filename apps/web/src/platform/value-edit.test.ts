@@ -5,9 +5,9 @@ import { inlineFeatureValues, paramsModeFor } from './value-edit';
 const off = { fullEditor: false };
 
 describe('value editing gates (ADR-101)', () => {
-  it('phone review: expressions only, inline feature values', () => {
+  it('phone review: the full parameter table (as before Phase 2), inline feature values', () => {
     const c = capabilitiesFor('phone', off);
-    expect(paramsModeFor(c)).toBe('values');
+    expect(paramsModeFor(c)).toBe('edit');
     expect(inlineFeatureValues(c)).toBe(true);
   });
   it('phone with the full editor, tablet and desktop: the full table, no inline values pane', () => {
