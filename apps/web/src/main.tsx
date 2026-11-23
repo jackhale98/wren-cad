@@ -6,7 +6,7 @@ import { createRoot } from 'react-dom/client';
 import { App } from './app/App';
 import { firstBodyRendered } from './app/timing';
 import { Workbench } from './app/workbench';
-import { getDiagnostics, installTestHooks } from './platform/diagnostics';
+import { installTestHooks } from './platform/diagnostics';
 import { watchInstallPrompt } from './platform/install';
 import { installPageGuards } from './platform/page-guards';
 import { initServiceWorker, keepServiceWorkerFresh } from './platform/sw-register';
@@ -38,5 +38,6 @@ const render = () =>
     </StrictMode>,
   );
 const layout = workbench.capabilities.get().layout;
-if (getDiagnostics().tier === 'desktop') render();
+if (workbench.capabilities.get().density === 'compact')
+  render(); // desktop: nothing to preload
 else void preloadShell(layout).then(render, render);

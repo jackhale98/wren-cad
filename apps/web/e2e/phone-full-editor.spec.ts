@@ -47,9 +47,23 @@ test('phone: Use full editor gives the editing shell at touch density, and off r
   await expect(viewerTools).toHaveCount(0);
   await expect(page.getByTestId('settings-button')).toBeVisible();
   await expect(page.getByTestId('app-shell')).toHaveAttribute('data-tier', 'phone');
-  const sketchBtn = page.getByRole('button', { name: 'Sketch', exact: true });
+  const sketchBtn = modelingTools.getByRole('button', { name: 'Sketch', exact: true });
   await expect(sketchBtn).toBeVisible();
   expect((await sketchBtn.boundingBox())?.height).toBeGreaterThanOrEqual(44);
+  // The bar fits the phone: it never extends past the viewport and scrolls inside it, so the last
+  // button (More) is reached by swiping the bar, and Sketch is back in view at the start.
+  const barBox = await modelingTools.boundingBox();
+  expect(barBox?.x ?? -1).toBeGreaterThanOrEqual(0);
+  expect((barBox?.x ?? 0) + (barBox?.width ?? 0)).toBeLessThanOrEqual(390);
+  const more = modelingTools.getByRole('button', { name: 'More', exact: true });
+  await modelingTools.evaluate((el) => {
+    el.scrollLeft = el.scrollWidth;
+  });
+  const moreBox = await more.boundingBox();
+  expect((moreBox?.x ?? 0) + (moreBox?.width ?? 0)).toBeLessThanOrEqual(390);
+  await modelingTools.evaluate((el) => {
+    el.scrollLeft = 0;
+  });
   // The choice is stored per device.
   expect(await page.evaluate(() => localStorage.getItem('wren.fullEditor'))).toBe('1');
 
@@ -58,7 +72,7 @@ test('phone: Use full editor gives the editing shell at touch density, and off r
   await page.getByTestId('plane-chooser').getByRole('button', { name: /Top/ }).tap();
   await expect(page.getByRole('toolbar', { name: 'Sketch tools' })).toBeVisible();
   await expect.poll(async () => (await a.ui()).sketch !== null).toBe(true);
-  await page.getByRole('button', { name: 'Done' }).tap();
+  await page.getByRole('button', { name: 'Finish sketch' }).tap();
   await a.idle();
 
   // Off again, from the palette: back to the review shell, same document (nothing reloaded).

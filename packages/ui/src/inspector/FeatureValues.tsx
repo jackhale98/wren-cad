@@ -119,6 +119,9 @@ export function FeatureValues({
               }
               step={f.expected === 'angle' ? 5 : 1}
               size={size}
+              // Values edit; they never add parameters (a structural edit). Typing the name of an
+              // existing parameter still links to it.
+              paramLinks="complete"
               onPreview={(e) => onPreview?.(f.pointer, e)}
               onCommit={(e) => onCommit(f.pointer, e)}
             />

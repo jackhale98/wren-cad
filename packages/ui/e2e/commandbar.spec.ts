@@ -151,3 +151,47 @@ test.describe('nested tree: inline delete prompt', () => {
     });
   }
 });
+
+/** The bar never extends past the viewport; it scrolls, and every button stays reachable at 44 px+. */
+for (const [w, h, url] of [
+  [390, 844, '/?shell=phone&layout=full&theme=light'],
+  [744, 1133, '/?shell=tablet&theme=light'],
+] as const) {
+  test(`command bar fits a ${w}px viewport: scrolls inside it, every button reachable`, async ({
+    page,
+  }, info) => {
+    test.skip(info.project.name !== 'desktop');
+    await page.setViewportSize({ width: w, height: h });
+    await page.goto(url);
+    await page.locator('[data-testid="app-shell"]').waitFor();
+    await page.evaluate(() => document.fonts.ready);
+    const b = bar(page);
+    const inside = async (name: string) => {
+      const box = await b.getByRole('button', { name }).first().boundingBox();
+      expect(box?.x ?? -1, `${name} left`).toBeGreaterThanOrEqual(0);
+      expect((box?.x ?? 0) + (box?.width ?? 0), `${name} right`).toBeLessThanOrEqual(w);
+      expect(box?.width ?? 0).toBeGreaterThanOrEqual(44);
+      expect(box?.height ?? 0).toBeGreaterThanOrEqual(44);
+    };
+    const bb = await b.boundingBox();
+    expect(bb?.x ?? -1).toBeGreaterThanOrEqual(0);
+    expect((bb?.x ?? 0) + (bb?.width ?? 0)).toBeLessThanOrEqual(w);
+    await inside('Sketch');
+    await b.evaluate((el) => {
+      el.scrollLeft = el.scrollWidth;
+    });
+    await inside('More');
+    await b.evaluate((el) => {
+      el.scrollLeft = 0;
+    });
+    await inside('Sketch');
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(w);
+    await b.getByRole('button', { name: /Extrude/ }).click();
+    const fly = page.getByTestId('tool-flyout');
+    await expect(fly).toBeVisible();
+    const fb = await fly.boundingBox();
+    expect(fb?.x ?? -1).toBeGreaterThanOrEqual(0);
+    expect((fb?.x ?? 0) + (fb?.width ?? 0)).toBeLessThanOrEqual(w);
+    await expect(page).toHaveScreenshot(`cb-${w}-flyout-open.png`);
+  });
+}

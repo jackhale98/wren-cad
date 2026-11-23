@@ -245,7 +245,8 @@ export function DesktopShell(props: DesktopShellProps) {
             // Narrow (iPad mini portrait, 744): tighter gaps and padding keep the last button on
             // screen with any system font metrics.
             className={cn(
-              'flex shrink-0 items-center pb-px',
+              // The name gives way first; if the buttons still do not fit (a phone with every chip), the bar scrolls instead of clipping them.
+              'flex shrink-0 items-center overflow-x-auto pb-px [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&>*]:shrink-0 [&>[data-name]]:shrink',
               overlay ? 'gap-0.5 px-2' : 'gap-1 px-3',
               touch ? 'h-14' : 'h-12',
             )}
@@ -262,10 +263,10 @@ export function DesktopShell(props: DesktopShellProps) {
               data-testid="left-toggle"
               onClick={toggleLeft}
             />
-            <div className="mx-1.5 flex items-center gap-2.5">
+            <div data-name className="mx-1.5 flex min-w-9 items-center gap-2.5 overflow-hidden">
               <Mark className={touch ? 'size-7' : undefined} />
               <h1
-                className="max-w-[28ch] truncate text-sm font-semibold tracking-tight in-data-[narrow]:max-w-[12ch]"
+                className="min-w-0 max-w-[28ch] truncate text-sm font-semibold tracking-tight in-data-[narrow]:max-w-[12ch]"
                 data-testid="document-name"
               >
                 {documentName}

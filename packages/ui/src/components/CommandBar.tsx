@@ -44,7 +44,7 @@ const HOLD_MS = 420;
 const DRAG_UP_PX = 14;
 
 const item =
-  'relative flex h-[52px] w-[58px] shrink-0 flex-col items-center justify-center gap-0.5 rounded-control text-fg-muted transition-colors duration-fast select-none hover:bg-surface-2 hover:text-fg active:bg-surface-3 aria-disabled:opacity-60';
+  'relative flex snap-start h-[52px] w-[58px] shrink-0 flex-col items-center justify-center gap-0.5 rounded-control text-fg-muted transition-colors duration-fast select-none hover:bg-surface-2 hover:text-fg active:bg-surface-3 aria-disabled:opacity-60';
 
 function readLast(): LastTools {
   const v = readJson<unknown>(LAST_TOOLS_KEY, {});
@@ -84,6 +84,7 @@ export function CommandBar({
   const [left, setLeft] = useState(0);
   const [last, setLast] = useState(readLast);
   const wrap = useRef<HTMLDivElement>(null);
+  const strip = useRef<HTMLDivElement>(null);
   const flyout = useRef<HTMLDivElement>(null);
   const hold = useRef<{
     timer: ReturnType<typeof setTimeout> | null;
@@ -229,11 +230,35 @@ export function CommandBar({
 
   const openDef = toolGroups.find((g) => g.id === open);
 
+  // The bar never outgrows the room it is given: it scrolls inside it (buttons keep their size),
+  // and the group in use is scrolled into view, by hand so the page itself never scrolls.
+  const activeGroup = toolGroups.find((g) => activeTool && g.tools.includes(activeTool))?.id;
+  useLayoutEffect(() => {
+    const bar = strip.current;
+    const btn = activeGroup ? groupButton(activeGroup) : null;
+    if (!bar || !btn) return;
+    const b = bar.getBoundingClientRect();
+    const r = btn.getBoundingClientRect();
+    if (r.left < b.left) bar.scrollLeft += r.left - b.left - 6;
+    else if (r.right > b.right) bar.scrollLeft += r.right - b.right + 6;
+  }, [activeGroup, groupButton]);
+
+  // A flyout opens above its button but stays inside the viewport (and the bar's own width).
+  useLayoutEffect(() => {
+    const f = flyout.current;
+    const box = wrap.current?.getBoundingClientRect();
+    if (!open || !f || !box) return;
+    const w = f.getBoundingClientRect().width;
+    const room = document.documentElement.clientWidth - 8;
+    const want = Math.max(8 - box.left, Math.min(left, room - w - box.left));
+    if (Math.abs(want - left) > 0.5) setLeft(want);
+  }, [open, left]);
+
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: Escape and focus-out are delegated from the buttons inside
     <div
       ref={wrap}
-      className="relative"
+      className="relative min-w-0 max-w-full"
       onKeyDown={(e) => {
         if (e.key === 'Escape' && open) {
           e.stopPropagation();
@@ -247,10 +272,11 @@ export function CommandBar({
       }}
     >
       <RToolbar.Root
+        ref={strip}
         aria-label="Modeling tools"
         orientation="horizontal"
         className={cn(
-          'w-panel pointer-events-auto flex items-stretch gap-0.5 rounded-panel p-1.5',
+          'w-panel pointer-events-auto flex max-w-full snap-x snap-proximity items-stretch gap-0.5 overflow-x-auto overscroll-x-contain rounded-panel p-1.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden',
           className,
         )}
       >
