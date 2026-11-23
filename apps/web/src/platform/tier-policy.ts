@@ -103,7 +103,7 @@ export function capabilitiesFor(
     density: 'touch',
     editSketches: false,
     editFeatures: false,
-    editValues: false, // phase 2c turns this on
+    editValues: true, // phase 2c: change numbers, switch configuration; nothing structural
     editDrawings: false,
   };
 }

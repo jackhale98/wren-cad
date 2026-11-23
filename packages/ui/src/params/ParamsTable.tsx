@@ -94,6 +94,12 @@ export interface ParamsTableProps {
   onMake?(name: string, expr: Expr): string | undefined;
   /** The field has committed the new name: close the undo step. */
   onMakeDone?(): void;
+  /**
+   * What the table lets you change. `edit` (default): everything. `values`: only the expressions
+   * (names, descriptions, add, delete and reorder are read-only), the phone with `editValues`.
+   * `view`: nothing.
+   */
+  mode?: 'edit' | 'values' | 'view';
   density?: 'compact' | 'touch';
   className?: string;
 }
@@ -138,7 +144,11 @@ function ParamRow({
   onHint,
   onFocusParam,
 }: RowProps) {
-  const { params, evaluate, formatValue, onUpdate, onRemove, onMove, usage, density } = props;
+  const { params, evaluate, formatValue, onUpdate, usage, density } = props;
+  const mode = props.mode ?? 'edit';
+  const structural = mode === 'edit';
+  const onRemove = structural ? props.onRemove : undefined;
+  const onMove = structural ? props.onMove : undefined;
   const touch = density === 'touch';
   const cfg = props.configuration;
   const activeIsDefault = !cfg || cfg.activeId === null;
@@ -214,30 +224,42 @@ function ParamRow({
         <div className="flex min-w-0 flex-1 flex-col gap-1.5">
           <div className="flex items-center gap-2">
             <div className="min-w-0 flex-1">
-              <input
-                aria-label={`Name of parameter ${param.name}`}
-                aria-invalid={nameError ? true : undefined}
-                value={name}
-                spellCheck={false}
-                autoComplete="off"
-                onChange={(e) => setNameDraft(e.target.value)}
-                onBlur={commitName}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault();
-                    commitName();
-                  } else if (e.key === 'Escape' && nameDraft !== null) {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    setNameDraft(null);
-                  }
-                }}
-                className={cn(
-                  'w-full min-w-0 rounded-[7px] bg-transparent px-1.5 font-semibold text-fg outline-none transition-shadow duration-fast hover:shadow-[inset_0_0_0_1px_var(--color-border)] focus-visible:bg-surface focus-visible:shadow-[inset_0_0_0_2px_var(--color-accent)]',
-                  touch ? 'h-11 text-sm' : 'h-7 text-ui',
-                  nameError && 'shadow-[inset_0_0_0_1.5px_var(--color-danger)]',
-                )}
-              />
+              {structural ? (
+                <input
+                  aria-label={`Name of parameter ${param.name}`}
+                  aria-invalid={nameError ? true : undefined}
+                  value={name}
+                  spellCheck={false}
+                  autoComplete="off"
+                  onChange={(e) => setNameDraft(e.target.value)}
+                  onBlur={commitName}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      commitName();
+                    } else if (e.key === 'Escape' && nameDraft !== null) {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setNameDraft(null);
+                    }
+                  }}
+                  className={cn(
+                    'w-full min-w-0 rounded-[7px] bg-transparent px-1.5 font-semibold text-fg outline-none transition-shadow duration-fast hover:shadow-[inset_0_0_0_1px_var(--color-border)] focus-visible:bg-surface focus-visible:shadow-[inset_0_0_0_2px_var(--color-accent)]',
+                    touch ? 'h-11 text-sm' : 'h-7 text-ui',
+                    nameError && 'shadow-[inset_0_0_0_1.5px_var(--color-danger)]',
+                  )}
+                />
+              ) : (
+                <span
+                  data-testid="param-name"
+                  className={cn(
+                    'block truncate px-1.5 font-semibold text-fg',
+                    touch ? 'text-sm' : 'text-ui',
+                  )}
+                >
+                  {param.name}
+                </span>
+              )}
             </div>
             <button
               type="button"
@@ -382,6 +404,7 @@ function ParamRow({
             formatValue={formatValue}
             showValue={false}
             paramLinks="complete"
+            disabled={mode === 'view'}
             size={touch ? 'touch' : 'md'}
             onCommit={(expr) =>
               cfg && !activeIsDefault
@@ -393,7 +416,11 @@ function ParamRow({
                 : onUpdate?.(param.id, { expr })
             }
           />
-          {param.description || describing ? (
+          {!structural ? (
+            param.description ? (
+              <p className="px-1.5 text-2xs text-fg-muted">{param.description}</p>
+            ) : null
+          ) : param.description || describing ? (
             <input
               aria-label={`Description of ${param.name}`}
               placeholder="Add a description"
@@ -488,7 +515,10 @@ function ParamDragGhost() {
  * inline with span underlines; names are checked for syntax and uniqueness before `onUpdate`.
  */
 export function ParamsTable(props: ParamsTableProps) {
-  const { params, onAdd, onMove, density = 'compact', className } = props;
+  const { params, density = 'compact', className } = props;
+  const structural = (props.mode ?? 'edit') === 'edit';
+  const onAdd = structural ? props.onAdd : undefined;
+  const onMove = structural ? props.onMove : undefined;
   const touch = density === 'touch';
   const list = useRef<HTMLUListElement>(null);
   const [shake, setShake] = useState<{ id: Id; key: number } | null>(null);

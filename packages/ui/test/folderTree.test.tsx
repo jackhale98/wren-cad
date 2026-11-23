@@ -614,6 +614,23 @@ describe('review-only tree (phones)', () => {
       expect(screen.queryByRole('menuitem', { name: gone })).toBeNull();
   });
 
+  it('with onValues (editValues) the menu adds Values on a feature, still no Delete or Edit', () => {
+    const onValues = vi.fn();
+    setup({ density: 'touch', actions: 'review', onValues });
+    fireEvent.contextMenu(row(/Extrude 1/));
+    expect(menuNames()).toEqual(['Values', 'Suppress', 'Roll to here']);
+    for (const gone of ['Delete', 'Edit', 'Rename', 'Add to new folder'])
+      expect(screen.queryByRole('menuitem', { name: gone })).toBeNull();
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Values' }));
+    expect(onValues).toHaveBeenCalledWith('e1');
+  });
+
+  it('a sketch has no Values item (sketch editing stays behind editSketches)', () => {
+    setup({ density: 'touch', actions: 'review', onValues: vi.fn() });
+    fireEvent.contextMenu(row(/Sketch 3/));
+    expect(menuNames()).not.toContain('Values');
+  });
+
   it('a folder only collapses: no menu, no actions button, no live grip, no rename', async () => {
     const { props } = setup({ density: 'touch', actions: 'review' });
     const folder = folderRow();

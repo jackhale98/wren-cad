@@ -89,7 +89,7 @@ const loading = <p className="p-6 text-center text-ui text-fg-muted">Loading…<
 
 /**
  * Phone shell (PLAN 9.1, viewer first): the viewport fills the screen; a bottom sheet with Parts /
- * Params / Measure / Section / Export tabs slides over it. Editing is limited to parameters.
+ * Params / Measure / Section / Export tabs slides over it. Editing is limited to values (parameters and a feature's numbers) when the device may edit values.
  */
 export function PhoneShell(props: ShellProps) {
   const { documentName, kernelStatus, viewport, onExport, paramsTable, onExportRequest } = props;
@@ -195,7 +195,10 @@ export function PhoneShell(props: ShellProps) {
                   <Suspense fallback={loading}>
                     {tab === 'parts' && props.parts ? <PartsPanel {...props.parts} /> : null}
                     {tab === 'history' && props.featureTree && open ? (
-                      <TreePanel {...props.featureTree} density="touch" />
+                      <>
+                        {props.featureValues}
+                        <TreePanel {...props.featureTree} density="touch" />
+                      </>
                     ) : null}
                     {tab === 'measure' && props.measure ? (
                       <MeasurePanel {...props.measure} />

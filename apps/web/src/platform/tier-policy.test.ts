@@ -59,13 +59,13 @@ describe('capabilitiesFor (ADR-101)', () => {
       editDrawings: true,
     });
   });
-  it('phone: review layout, nothing editable yet', () => {
+  it('phone: review layout, values editable, nothing structural', () => {
     expect(capabilitiesFor('phone', off)).toEqual({
       layout: 'review',
       density: 'touch',
       editSketches: false,
       editFeatures: false,
-      editValues: false,
+      editValues: true,
       editDrawings: false,
     });
   });

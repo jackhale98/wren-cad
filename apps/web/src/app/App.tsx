@@ -23,7 +23,9 @@ import { isFeatureTool } from '../features/factories';
 import { getDiagnostics } from '../platform/diagnostics';
 import { getRuntimeState, subscribeRuntimeState } from '../platform/runtime-state';
 import { applySwUpdate, checkForSwUpdateNow, onSwUpdateAvailable } from '../platform/sw-register';
+import { paramsModeFor } from '../platform/value-edit';
 import { Inspector, useDoc } from '../ui/Inspector';
+import { useFeatureValues } from '../ui/phone-values';
 import { useStatuses } from '../ui/ref-status';
 import {
   useBracketTutorial,
@@ -302,7 +304,9 @@ export function App({ wb }: { wb: Workbench }) {
     setNestSketches,
     statuses,
     actions: caps.editFeatures ? 'full' : 'review',
+    values: caps.editValues && !caps.editFeatures,
   });
+  const featureValues = useFeatureValues(wb, doc, caps);
   const allCommands = useMemo(() => [...commands, ...tree.commands], [commands, tree.commands]);
   const canUndo = wb.store.canUndo();
   const canRedo = wb.store.canRedo();
@@ -395,6 +399,7 @@ export function App({ wb }: { wb: Workbench }) {
           {...(canUndo ? { onUndo: () => wb.undo() } : {})}
           {...(canRedo ? { onRedo: () => wb.redo() } : {})}
           {...(tree.featureTree ? { featureTree: tree.featureTree } : {})}
+          {...(featureValues ? { featureValues } : {})}
           paramsTable={{
             params: doc.params,
             ...(configs.length > 0
@@ -430,6 +435,7 @@ export function App({ wb }: { wb: Workbench }) {
               void import('./param-actions').then((m) => m.selectParamUse(wb, use)),
             onMake: (name, expr) => wb.makeParameter(name, expr),
             onMakeDone: () => wb.endMakeParameter(),
+            mode: paramsModeFor(caps),
             density,
           }}
           inspector={<Inspector wb={wb} density={density} measure={measure} section={section} />}

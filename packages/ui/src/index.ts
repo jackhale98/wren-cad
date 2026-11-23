@@ -250,6 +250,12 @@ export {
   HoleWizard,
 } from './inspector/FeatureInspector';
 export { FeatureLineage, type FeatureLineageProps } from './inspector/FeatureLineage';
+export {
+  type FeatureValueField,
+  FeatureValues,
+  type FeatureValuesProps,
+  featureValueLabel,
+} from './inspector/FeatureValues';
 export type { FieldConfigCtx } from './inspector/fieldKit';
 export {
   type ResolvedDim,
