@@ -17,6 +17,10 @@
         "id": {
           "$ref": "#/definitions/Id"
         },
+        "inspection": {
+          "description": "Inspection dimension (owner, 2026-11-23): the value, with its tolerance, is drawn in a frame with rounded ends (ISO 129-1), marking a dimension to be checked at inspection. Independent of `tolerance`, except that a `reference` dimension is not an inspection dimension (the document layer's rules report the pair). Absent = false.",
+          "type": "boolean"
+        },
         "kind": {
           "const": "aligned",
           "type": "string"
@@ -136,6 +140,10 @@
         },
         "id": {
           "$ref": "#/definitions/Id"
+        },
+        "inspection": {
+          "description": "Inspection dimension (owner, 2026-11-23): the value, with its tolerance, is drawn in a frame with rounded ends (ISO 129-1), marking a dimension to be checked at inspection. Independent of `tolerance`, except that a `reference` dimension is not an inspection dimension (the document layer's rules report the pair). Absent = false.",
+          "type": "boolean"
         },
         "kind": {
           "const": "angle",
@@ -858,6 +866,10 @@
         "id": {
           "$ref": "#/definitions/Id"
         },
+        "inspection": {
+          "description": "Inspection dimension (owner, 2026-11-23): the value, with its tolerance, is drawn in a frame with rounded ends (ISO 129-1), marking a dimension to be checked at inspection. Independent of `tolerance`, except that a `reference` dimension is not an inspection dimension (the document layer's rules report the pair). Absent = false.",
+          "type": "boolean"
+        },
         "kind": {
           "const": "chamfer",
           "type": "string"
@@ -1424,6 +1436,10 @@
         },
         "id": {
           "$ref": "#/definitions/Id"
+        },
+        "inspection": {
+          "description": "Inspection dimension (owner, 2026-11-23): the value, with its tolerance, is drawn in a frame with rounded ends (ISO 129-1), marking a dimension to be checked at inspection. Independent of `tolerance`, except that a `reference` dimension is not an inspection dimension (the document layer's rules report the pair). Absent = false.",
+          "type": "boolean"
         },
         "kind": {
           "const": "diameter",
@@ -3779,6 +3795,10 @@
         "id": {
           "$ref": "#/definitions/Id"
         },
+        "inspection": {
+          "description": "Inspection dimension (owner, 2026-11-23): the value, with its tolerance, is drawn in a frame with rounded ends (ISO 129-1), marking a dimension to be checked at inspection. Independent of `tolerance`, except that a `reference` dimension is not an inspection dimension (the document layer's rules report the pair). Absent = false.",
+          "type": "boolean"
+        },
         "kind": {
           "const": "linear",
           "type": "string"
@@ -4216,6 +4236,10 @@
         },
         "id": {
           "$ref": "#/definitions/Id"
+        },
+        "inspection": {
+          "description": "Inspection dimension (owner, 2026-11-23): the value, with its tolerance, is drawn in a frame with rounded ends (ISO 129-1), marking a dimension to be checked at inspection. Independent of `tolerance`, except that a `reference` dimension is not an inspection dimension (the document layer's rules report the pair). Absent = false.",
+          "type": "boolean"
         },
         "kind": {
           "const": "ordinate",
@@ -5245,6 +5269,10 @@
         },
         "id": {
           "$ref": "#/definitions/Id"
+        },
+        "inspection": {
+          "description": "Inspection dimension (owner, 2026-11-23): the value, with its tolerance, is drawn in a frame with rounded ends (ISO 129-1), marking a dimension to be checked at inspection. Independent of `tolerance`, except that a `reference` dimension is not an inspection dimension (the document layer's rules report the pair). Absent = false.",
+          "type": "boolean"
         },
         "kind": {
           "const": "radius",

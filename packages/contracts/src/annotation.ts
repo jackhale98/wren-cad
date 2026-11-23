@@ -143,6 +143,13 @@ interface DimensionBase extends AnnotationBase {
   nominal?: Expr;
   tolerance?: Tolerance;
   text?: DimensionText;
+  /**
+   * Inspection dimension (owner, 2026-11-23): the value, with its tolerance, is drawn in a frame
+   * with rounded ends (ISO 129-1), marking a dimension to be checked at inspection. Independent of
+   * `tolerance`, except that a `reference` dimension is not an inspection dimension (the document
+   * layer's rules report the pair). Absent = false.
+   */
+  inspection?: boolean;
 }
 
 /**
