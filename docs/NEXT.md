@@ -27,8 +27,8 @@ This file is the single state file: update it at every merge; a new session star
   - 2b merged: "Project folder" target in the export form (`packages/sync/src/project-folder.ts`),
     disabled with a reason where the File System Access API is missing; the git notice shows
     only for a project linked to a git connection (a browser cannot see where a download lands).
-    No E2E for the directory picker yet. Follow-ups: a palette and file-menu entry; the notice
-    on ⌘S; the write is not atomic across files (the manifest is written last).
+    Follow-ups: a palette and file-menu entry; the notice on ⌘S; the write is not atomic
+    across files (the manifest is written last; a part-way first save is retried with Replace).
   - 2c merged: the phone has `editValues`. A "Values" item in the phone tree's row menu opens
     the feature's values inline (`FeatureValues`, fields from the shared `exprFields`);
     parameters are editable by value only. The configuration switch and the versions panel
@@ -48,8 +48,18 @@ This file is the single state file: update it at every merge; a new session star
     feature kind". ui keeps its own label tables (pinned to the table by a web test).
     Proposed for 6.0: move labels and `isReference` into contracts. Silent `default`s remain
     in `construction.ts`, `generated.ts` and the radial `applies`.
-  - Open in Phase 2: CI on the
-    branch (E2E for 2a and 2c); then the reviewer gate and one main release.
+  - Reviewer gate (2026-11-23): pass with fixes. Fixed by the lead: the folder save removed
+    files it had not written (now only what the folder's own manifest names; a dropped
+    attachment under `imports/` stays, follow-up: list attachments in the manifest at 6.0), and
+    refused the same project saved from another copy (now refused first, then replaceable
+    inline). In progress (ui): the full editor's command bar is wider than a phone; a layout
+    switch mid-sketch; "Make parameter" in values mode; tier checks left in `Welcome`,
+    `ProjectPanel`, `regen-view`, `config-export`; E2E selector fixes.
+  - Open in Phase 2: those fixes; a green CI run on the branch (E2E for 2a, 2c; no E2E yet for
+    the directory picker or for compare and release on the phone); owner sign-off that the git
+    notice is driven by the connection only; then one main release. Also open: the GitHub Pages
+    deploy of `7bc8e3d` failed ("No artifacts named github-pages", looks transient; Cloudflare
+    deployed), so github.io is one release behind until that job is re-run or the next release.
   - Draft M6 contracts: `docs/m6-design.md` (three owner questions at its end).
 
 ## 1. Owner decisions (all approved 2026-11-23)
