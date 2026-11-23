@@ -1082,7 +1082,10 @@ export class RegenEngine {
       case 'thread':
         return planThread(this.core, ctx, f, values);
       default: {
-        const unknown = f as { type: string };
+        // Compile-time: a feature kind without a case above fails typecheck here. At run time a
+        // document from a newer build can still carry an unknown type.
+        const exhaustive: never = f;
+        const unknown = exhaustive as { type: string };
         return Promise.resolve({
           unresolved: [],
           taint: [],

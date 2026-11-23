@@ -21,6 +21,7 @@ export * from './drawing-hooks';
 export * from './evaluate';
 export * from './expressions';
 export * from './factory';
+export * from './feature-kinds';
 export * from './features';
 export * from './files';
 export * from './folders';

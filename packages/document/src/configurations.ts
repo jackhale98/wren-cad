@@ -31,43 +31,25 @@ import {
   annotationExprFields,
   annotationOptionAt,
 } from './annotation-fields';
+import { type ConfigurableOption, FEATURE_DEFS } from './feature-kinds';
 import { exprFields } from './features';
-import { HOLE_TABLES } from './hole-tables';
 import { applyPatch, diff, existsAt, getAt, parsePointer } from './patch';
 
 // ---------------------------------------------------------------------------------------------
 // Configurable fields (owner D2)
 // ---------------------------------------------------------------------------------------------
 
-/** A configurable option (enum / boolean) field of a feature type. */
-export interface ConfigurableOption {
-  /** JSON pointer inside the feature. */
-  pointer: string;
-  /** Short UI label. */
-  label: string;
-  /** The allowed values, or a function of the feature when they depend on it (hole sizes). */
-  values: readonly ConfiguredValue[] | ((feature: Feature) => readonly ConfiguredValue[]);
-}
+export type { ConfigurableOption } from './feature-kinds';
 
 /** A field a configuration may override. */
 export type ConfigurableField =
   | { kind: 'expr'; pointer: string; expected: NamedDimension }
   | { kind: 'option'; pointer: string; label: string; values: readonly ConfiguredValue[] };
 
-const OPS = ['new', 'add', 'cut', 'intersect'] as const;
-const DIRECTIONS = ['normal', 'reverse', 'symmetric'] as const;
-/** `upTo` needs a topological target, so it is not a configurable end kind. */
-const END_KINDS = ['blind', 'throughAll'] as const;
-const BOOLS = [true, false] as const;
-
-const holeSizes = (f: Feature): readonly ConfiguredValue[] =>
-  f.type === 'hole' || f.type === 'thread'
-    ? (HOLE_TABLES[f.standard]?.rows.map((r) => r.size) ?? [])
-    : [];
-
 /**
- * The option fields a configuration may override, by feature type (D2). Every `Expr` field of a
- * feature (see `exprFields`) is configurable in addition, except sketch dimensions (later).
+ * The option fields a configuration may override, by feature type (D2); the lists live in
+ * `FEATURE_DEFS`. Every `Expr` field of a feature (see `exprFields`) is configurable in addition,
+ * except sketch dimensions (later).
  *
  * A hole's "threaded" is its `kind: 'tapped'`; there is no separate flag. `standard` is not
  * configurable (it would change the meaning of `size`). Values that need a topological reference
@@ -75,35 +57,11 @@ const holeSizes = (f: Feature): readonly ConfiguredValue[] =>
  */
 export const CONFIGURABLE_OPTIONS: Readonly<
   Partial<Record<FeatureType, readonly ConfigurableOption[]>>
-> = {
-  primitive: [{ pointer: '/op', label: 'Operation', values: OPS }],
-  extrude: [
-    { pointer: '/end/kind', label: 'End type', values: END_KINDS },
-    { pointer: '/direction', label: 'Direction', values: DIRECTIONS },
-    { pointer: '/op', label: 'Operation', values: OPS },
-  ],
-  revolve: [
-    { pointer: '/direction', label: 'Direction', values: DIRECTIONS },
-    { pointer: '/op', label: 'Operation', values: OPS },
-  ],
-  boolean: [
-    { pointer: '/op', label: 'Operation', values: ['add', 'cut', 'intersect'] },
-    { pointer: '/keepTools', label: 'Keep tools', values: BOOLS },
-  ],
-  fillet: [{ pointer: '/propagate', label: 'Propagate', values: BOOLS }],
-  chamfer: [{ pointer: '/propagate', label: 'Propagate', values: BOOLS }],
-  hole: [
-    { pointer: '/size', label: 'Size', values: holeSizes },
-    {
-      pointer: '/kind',
-      label: 'Type',
-      values: ['simple', 'counterbore', 'countersink', 'tapped'],
-    },
-    { pointer: '/fit', label: 'Fit', values: ['close', 'normal', 'loose'] },
-    { pointer: '/end/kind', label: 'End type', values: END_KINDS },
-  ],
-  thread: [{ pointer: '/size', label: 'Size', values: holeSizes }],
-};
+> = Object.fromEntries(
+  Object.values(FEATURE_DEFS)
+    .filter((d) => d.options.length > 0)
+    .map((d) => [d.type, d.options]),
+);
 
 /** The allowed values of an option for this feature. */
 export function optionValues(

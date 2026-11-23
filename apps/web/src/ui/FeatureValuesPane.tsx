@@ -6,8 +6,8 @@
  */
 
 import type { Expr, Feature } from '@wren-cad/contracts';
-import { applyPatch, exprFields, getAt } from '@wren-cad/document';
-import { FeatureValues, featureValueLabel } from '@wren-cad/ui';
+import { applyPatch, exprFields, fieldLabel, getAt } from '@wren-cad/document';
+import { FeatureValues } from '@wren-cad/ui';
 import { useMemo } from 'react';
 import type { Workbench } from '../app/workbench';
 
@@ -35,7 +35,7 @@ export default function FeatureValuesPane({
             .filter((x) => !x.driven)
             .map((x) => ({
               pointer: x.pointer,
-              label: featureValueLabel(x.pointer),
+              label: fieldLabel(feature.type, x.pointer),
               value: String(getAt(feature, x.pointer)),
               expected: x.expected,
             })),

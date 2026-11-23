@@ -419,8 +419,24 @@ function promoteFeature(
     case 'circularPattern':
       no('', 'Pattern spacing is not promotable in M4: use the dimension tool');
       break;
-    default:
+    // Nothing to promote. Listed, not defaulted, so a new feature kind fails typecheck here.
+    case 'primitive':
+    case 'sketch':
+    case 'boolean':
+    case 'pushPull':
+    case 'plane':
+    case 'import':
+    case 'sweep':
+    case 'loft':
+    case 'mirror':
+    case 'thread':
+    case 'axis':
+    case 'point':
       break;
+    default: {
+      const _exhaustive: never = f;
+      return _exhaustive;
+    }
   }
   return out;
 }

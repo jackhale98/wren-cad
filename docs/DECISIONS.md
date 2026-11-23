@@ -3691,3 +3691,12 @@ CI on the orthographic view failed twice for one cause: an orthographic view str
 - **Could not read it:** drawing, io and ui do not depend on document (dependency direction), so they keep their own tables. Each is now complete at compile time (`Record<kind, ...>` or a switch with every kind listed and no `default`), and a web test pins io's names to the table. Proposed contract diff: move the pure-data half (`title`, `exportName`, `isDimension`, `valueForm`) into `packages/contracts`, which every package imports; then those three packages could drop their copies.
 - **Kept as code:** layout geometry, STEP mapping, inspector forms, creation ops, `annotationLabel` (value-dependent text).
 - **Files a new kind must touch:** 12, 10 of them compile-forced (the audit counted 13 to 19, with about 6 silent `default` fall-throughs); see CONTRIBUTING.md.
+
+### ADR-101 amendment: one definition table per feature kind (2026-11-23, document workstream, slice 2d, features)
+
+- **What.** `FEATURE_DEFS` (`packages/document/src/feature-kinds.ts`) holds, per `FeatureType`: display label, `isReference`, value labels by pointer, configurable options, expression fields and topology refs. It is a mapped type, so a missing entry fails typecheck. No behaviour, file format or UI change; existing tests pass unmodified.
+- **Read from the table:** document (`exprFields`, `entityRefs`, `CONFIGURABLE_OPTIONS`, which are now derived), web (`isReferenceFeature`, phone value labels via `fieldLabel`).
+- **Could not read it:** ui and drawing do not depend on document, so ui keeps `featureMeta`, `featureValueLabel` and `isReferenceType`; a web test pins all three to the table (the value labels were the drift risk). Proposed contract diff: move the pure data (`label`, `isReference`, `valueLabels`) into `packages/contracts`.
+- **Made exhaustive (no `default`):** `planFeature` (regen engine), `allBodiesFor`, the inspector form switch, `promoteFeature`, `consumedSketchRefs`. The regen engine keeps its run-time fallback for unknown types from newer documents.
+- **Left as is:** radial/gesture/tool-id code (tool ids are not feature types), C++ dispatch, exec plan functions.
+- **Files a new kind must touch:** 19, 9 compile-forced (before: 20 by the audit, 4 forced); see CONTRIBUTING.md.

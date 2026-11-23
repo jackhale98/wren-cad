@@ -200,6 +200,41 @@ drawing, io and ui cannot import `@wren-cad/document`, so they keep their own co
 `Record<kind, ...>` tables or exhaustive switches (no `default`), which is why they appear above.
 Never add a `default` branch to a switch over `a.kind`: list the kinds, so a new one fails typecheck.
 
+## Adding a feature kind
+
+Per-kind facts live in one table, `FEATURE_DEFS` in `packages/document/src/feature-kinds.ts`
+(ADR-101, slice 2d, features). It is typed `{ [K in FeatureType]: FeatureDef<K> }`. These places
+need an edit, 19 files. The 9 marked "forced" fail `pnpm typecheck` when forgotten (a mapped type,
+a `never` check in a switch with no `default`, or a complete `Record`); the rest are by hand:
+
+1. `packages/contracts/src/document.ts` (lead-owned): the interface and the `Feature` union.
+2. `packages/document/src/feature-kinds.ts` (forced): label, `isReference`, value labels,
+   configurable options, expression fields, topology refs.
+3. `packages/document/src/features.ts` (forced): add the type to `KNOWN_FEATURE_TYPES`.
+4. `packages/drawing/src/import/promote.ts` (forced): promotable or not.
+5. `packages/kernel-client/src/regen/engine.ts` (forced): `planFeature` dispatch.
+6. `packages/kernel-client/src/regen/exec-*.ts`: the plan function (by hand; `refs.ts` only when the
+   kind has special reference handling).
+7. `packages/kernel-client/src/regen/helpers.ts` (forced): `allBodiesFor`, the bodies a blocked
+   feature would have acted on.
+8. `packages/ui/src/features/featureMeta.tsx` (forced): label and icon. A web test pins the label to
+   the table.
+9. `packages/ui/src/inspector/FeatureInspector.tsx` (forced) and `m3Fields.tsx`: the form.
+10. `packages/ui/src/inspector/FeatureValues.tsx`: `LABELS` for new value pointers (by hand; a web
+    test pins every label to the table).
+11. `packages/ui/src/components/tools.ts`: tool entry and group (by hand).
+12. `apps/web/src/features/factories.ts` (forced via `consumedSketchRefs`; `FeatureTool`,
+    `BASE_NAMES`, `FEATURE_PICKS` and the factory are by hand).
+13. `apps/web/src/model/fake-modeling.ts` (forced).
+14. `apps/web/src/app/radial.ts`, `radial-config.ts` and `gestures.ts` (by hand: tool ids, not
+    feature types).
+15. The two C++ files: `packages/kernel/src/whittle_modeling.cpp` (dispatch by type string) and
+    `whittle_shape_ops.cpp` or the file that holds the exec (by hand, golden tests).
+
+That is 19 files (the radial trio and the two C++ files counted singly). drawing, io and ui cannot import `@wren-cad/document`, so they keep their own complete `Record<kind, ...>`
+tables or exhaustive switches. Never add a `default` branch to a switch over `f.type`: list the
+kinds, so a new one fails typecheck.
+
 ## Documentation to update with a change
 
 - **[`CHANGELOG.md`](CHANGELOG.md)**: add a line under "Unreleased" for each user-visible change.

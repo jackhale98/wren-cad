@@ -1,3 +1,5 @@
+import { isReferenceType } from '@wren-cad/document';
+
 /**
  * Names and storage for reference geometry (ADR-093): the small part the initial route needs
  * (selection, highlights, the tree). Drawing and visibility live in `references.ts`, loaded with
@@ -23,8 +25,7 @@ export const isDrawnReference = (
   (originOn && isOriginName(name)) || !!refs?.some((x) => `F${x.featureId}:${x.kind}` === name);
 
 /** Does the feature carry reference geometry? */
-export const isReferenceFeature = (f: { type: string }): boolean =>
-  f.type === 'plane' || f.type === 'axis' || f.type === 'point';
+export const isReferenceFeature = (f: { type: string }): boolean => isReferenceType(f.type);
 
 const ORIGIN_KEY = 'wren.view.originPlanes';
 
