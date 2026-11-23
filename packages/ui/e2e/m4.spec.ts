@@ -50,7 +50,7 @@ const STATES: Record<string, string[]> = {
     'radial',
     'text-moved',
   ],
-  'm4-tolerance': ['default', 'stored', 'fit'],
+  'm4-tolerance': ['default', 'stored', 'fit', 'deviation', 'inspection'],
   'm4-import': ['default', 'none', 'empty'],
   'm4-attention': ['default', 'selected', 'empty'],
   'm4-title': ['default', 'override', 'empty', 'warning', 'unused', 'inline'],
@@ -113,7 +113,7 @@ test.describe('m4 interactive states', () => {
     const tier = info.project.name as Tier;
     test.skip(tier !== 'desktop', 'desktop');
     await open(page, tier, 'light', 'm4-tolerance', 'default');
-    const input = page.getByRole('textbox', { name: 'Tolerance' });
+    const input = page.getByRole('textbox', { name: 'Type it' });
     await input.fill('+0.1/-0.05');
     await expect(page.getByTestId('tolerance-field')).toContainText('Reads as +0.1/-0.05');
     await expect(page.getByTestId('g-m4-tolerance')).toHaveScreenshot(

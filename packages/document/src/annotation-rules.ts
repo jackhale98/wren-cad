@@ -179,6 +179,32 @@ function extremePointProblem(a: Annotation): string | undefined {
 }
 
 /**
+ * Why an ISO 286 fit cannot go on this annotation: a fit is a size, so an angle, a chamfer and an
+ * ordinate dimension refuse it. The editor disables the Fit type with this message.
+ */
+export function fitRefusal(annotation: Annotation): string | undefined {
+  if (
+    annotation.kind === 'angle' ||
+    annotation.kind === 'chamfer' ||
+    annotation.kind === 'ordinate'
+  ) {
+    return `An ISO 286 fit applies to a size, not to a${annotation.kind === 'angle' ? 'n' : ''} ${annotation.kind} dimension`;
+  }
+  return undefined;
+}
+
+/**
+ * An inspection dimension (ISO 129-1) is a dimension to be checked; a reference dimension is
+ * information only and is never checked, so the pair is a contradiction. Dimensions only.
+ */
+export function inspectionRefusal(annotation: Annotation): string | undefined {
+  if (!('inspection' in annotation) || annotation.inspection !== true) return undefined;
+  if ('tolerance' in annotation && annotation.tolerance?.kind === 'reference')
+    return 'A reference dimension is not an inspection dimension: it is not checked';
+  return undefined;
+}
+
+/**
  * Semantic problems of one annotation of a part, for the needs-attention panel. Pure.
  * `standard` is the standard of the displaying drawing (or the project default); an annotation's
  * own `standard` wins for legality, and a different one on the drawing is a `standardMismatch`.
@@ -209,17 +235,12 @@ export function annotationIssues(
   const extremes = extremePointProblem(annotation);
   if (extremes !== undefined) issues.push({ kind: 'refsDoNotFit', message: extremes });
   if ('tolerance' in annotation && annotation.tolerance?.kind === 'fit') {
-    if (
-      annotation.kind === 'angle' ||
-      annotation.kind === 'chamfer' ||
-      annotation.kind === 'ordinate'
-    ) {
-      issues.push({
-        kind: 'refsDoNotFit',
-        message: `An ISO 286 fit applies to a size, not to a${annotation.kind === 'angle' ? 'n' : ''} ${annotation.kind} dimension`,
-      });
-    }
+    const fit = fitRefusal(annotation);
+    if (fit !== undefined) issues.push({ kind: 'refsDoNotFit', message: fit });
   }
+  const inspectionProblem = inspectionRefusal(annotation);
+  if (inspectionProblem !== undefined)
+    issues.push({ kind: 'refsDoNotFit', message: inspectionProblem });
 
   switch (annotation.kind) {
     case 'datumFeature': {

@@ -8,7 +8,7 @@
  */
 
 import type { Vec2 } from '@wren-cad/contracts';
-import type { Primitive } from './display';
+import { type Primitive, transformPrimitive } from './display';
 import type { Box2 } from './geom';
 import { placeSymbol, symbolGlyph } from './symbols';
 import { normalizeText, textWidth } from './text';
@@ -107,6 +107,7 @@ export function layoutLines(
  * upper one's baseline at 0.55 h, the lower one's at −0.35 h (provisional, ISO 129-1).
  */
 export function layoutDimensionLabel(label: DimensionLabel, h: number): TextBlock {
+  if (label.inspection && label.frame !== 'parens') return layoutInspection(label, h);
   const prims: Primitive[] = [];
   let x = 0;
   const pad = 0.3 * h;
@@ -194,4 +195,67 @@ export function layoutDimensionLabel(label: DimensionLabel, h: number): TextBloc
     bottom = Math.min(bottom, y - 0.25 * h);
   }
   return { prims, width, box: { min: [0, bottom], max: [width, top] } };
+}
+
+/**
+ * An inspection dimension (ISO 129-1): the size symbol, value and tolerance (with a basic box
+ * inside) in a frame with semicircular ends. The instance count and prefix sit before the frame
+ * and the suffix and lines below stay outside it: they are notes about the dimension, not part of
+ * what is inspected. The frame is two lines and two arcs, sized from the content's extent.
+ */
+function layoutInspection(label: DimensionLabel, h: number): TextBlock {
+  const leadN = Math.min(label.leadRuns ?? 0, label.main.length);
+  const leadRuns = label.main.slice(0, leadN);
+  const inner = layoutDimensionLabel(
+    {
+      ...label,
+      main: label.main.slice(leadN),
+      inspection: false,
+      suffix: undefined,
+      below: undefined,
+    } as DimensionLabel,
+    h,
+  );
+  const prims: Primitive[] = [];
+  let x0 = 0;
+  if (leadRuns.length > 0) {
+    const lead = layoutRuns(leadRuns, [0, 0], h);
+    prims.push(...lead.prims);
+    const last = leadRuns[leadRuns.length - 1];
+    x0 = lead.width + (last?.kind === 'text' && /\s$/.test(last.text) ? 0 : TOL_GAP * h);
+  }
+  const top = inner.box.max[1];
+  const bottom = inner.box.min[1];
+  const yTop = top + 0.3 * h;
+  const yBottom = bottom - 0.1 * h;
+  const r = (yTop - yBottom) / 2;
+  const cy = (yTop + yBottom) / 2;
+  const dy = (top - bottom) / 2;
+  // Inset so that the content's corners sit inside the end arcs, with a little air.
+  const off = r - Math.sqrt(Math.max(0, r * r - dy * dy)) + 0.2 * h;
+  const x1 = Math.max(x0 + 2 * off + inner.width, x0 + 2 * r);
+  const dx = x0 + off + (x1 - x0 - 2 * off - inner.width) / 2;
+  for (const p of inner.prims) prims.push(transformPrimitive(p, { at: [dx, 0] }));
+  prims.push(
+    { kind: 'line', a: [x0 + r, yTop], b: [x1 - r, yTop] },
+    { kind: 'line', a: [x0 + r, yBottom], b: [x1 - r, yBottom] },
+    { kind: 'arc', center: [x0 + r, cy], radius: r, start: Math.PI / 2, end: (3 * Math.PI) / 2 },
+    { kind: 'arc', center: [x1 - r, cy], radius: r, start: -Math.PI / 2, end: Math.PI / 2 },
+  );
+  let x = x1;
+  let bot = yBottom;
+  if (label.suffix) {
+    x += TOL_GAP * h;
+    const s = normalizeText(label.suffix);
+    prims.push(text([x, 0], s, h));
+    x += textWidth(s, h);
+  }
+  const width = x;
+  for (const [i, line] of (label.below ?? []).entries()) {
+    const s = normalizeText(line);
+    const y = -(i + 1) * 1.6 * h;
+    prims.push(text([(width - textWidth(s, h)) / 2, y], s, h));
+    bot = Math.min(bot, y - 0.25 * h);
+  }
+  return { prims, width, box: { min: [0, bot], max: [width, yTop] } };
 }

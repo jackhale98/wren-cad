@@ -15,6 +15,7 @@ import type { AttentionEntry, ImportPlan, TitleBlockCell } from '@wren-cad/drawi
 import type {
   AttentionRow,
   CharacteristicChoice,
+  FitSupport,
   ImportRow,
   TitleBlockRow,
   ViewRow,
@@ -268,3 +269,16 @@ export function problemsOf(b: Built, annotationId: Id): string[] {
     .filter((e) => e.subject.kind === 'annotation' && e.subject.annotationId === annotationId)
     .map((e) => e.message);
 }
+
+/** ISO 286 for the tolerance editor's fit pickers (the table lives in the document chunk). */
+export function fitSupport(): FitSupport {
+  const doc = drawingDocument();
+  return {
+    deviations: (cls, size) => doc.fitDeviations(cls, size),
+    choices: (side, size) => doc.fitClassChoices(side, size),
+    maxSize: doc.ISO286_MAX_SIZE,
+  };
+}
+
+/** Why a fit cannot go on this annotation (`annotationIssues`' rule), when it cannot. */
+export const fitRefusalOf = (a: Annotation): string | undefined => drawingDocument().fitRefusal(a);

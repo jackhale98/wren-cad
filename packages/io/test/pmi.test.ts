@@ -161,6 +161,22 @@ describe('annotations → PMI export items', () => {
     expect(d.item.tolerance.lower).toBeCloseTo(-Math.PI / 360, 12);
   });
 
+  it('an inspection dimension exports as a plain dimension, with a note (no STEP place for it)', () => {
+    const lin: Annotation = {
+      id: ids(5),
+      kind: 'linear',
+      origin: model,
+      refs: [face('a'), face('b')],
+      inspection: true,
+    };
+    const d = exportOne(lin, ok(lin.id, 10), [T(1), T(2)]);
+    expect(d).toMatchObject({ ok: true, item: { type: 'linearDistance', value: 10 } });
+    expect(d.ok && 'inspection' in d.item).toBe(false);
+    expect(d.ok && d.notes).toEqual([
+      'The inspection frame is a drawing mark and is not written to the STEP file',
+    ]);
+  });
+
   it('writes limits as deviations, and basic/reference without a tolerance but with a qualifier', () => {
     const lim: Annotation = {
       id: ids(5),

@@ -37,7 +37,7 @@ import {
   type SheetViewerApi,
   StandardChoice,
   TitleBlockEditor,
-  ToleranceField,
+  ToleranceEditor,
   ViewInspector,
   type ViewInspectorProps,
   ViewPicker,
@@ -641,20 +641,47 @@ function AnnotationInsp() {
   );
 }
 
-function Tolerance() {
+const GALLERY_FITS = {
+  maxSize: 500,
+  deviations: (c: string) =>
+    c === 'H7'
+      ? { ok: true as const, upper: 0.021, lower: 0 }
+      : c === 'g6'
+        ? { ok: true as const, upper: -0.007, lower: -0.02 }
+        : { ok: false as const, reason: `no value for ${c}` },
+  choices: (side: 'hole' | 'shaft') =>
+    side === 'hole'
+      ? [
+          { letter: 'G', grades: [6, 7, 8] },
+          { letter: 'H', grades: [6, 7, 8, 9, 11] },
+        ]
+      : [
+          { letter: 'f', grades: [6, 7] },
+          { letter: 'g', grades: [5, 6, 7] },
+          { letter: 'h', grades: [6, 7, 9] },
+        ],
+};
+
+function ToleranceFrame() {
   const s = state();
+  const value: import('@wren-cad/contracts').Tolerance | undefined =
+    s === 'stored'
+      ? { kind: 'symmetric', value: '0.1 mm' }
+      : s === 'fit'
+        ? { kind: 'fit', hole: 'H7', shaft: 'g6', show: 'symbolAndDeviations' }
+        : s === 'deviation' || s === 'inspection'
+          ? { kind: 'bilateral', upper: '0.2 mm', lower: '-0.1 mm' }
+          : undefined;
   return (
     <Frame id="g-m4-tolerance">
       <div className="p-4">
-        <ToleranceField
+        <ToleranceEditor
           size={size()}
-          value={
-            s === 'stored'
-              ? { kind: 'symmetric', value: '0.1 mm' }
-              : s === 'fit'
-                ? { kind: 'fit', hole: 'H7', shaft: 'g6', show: 'symbol' }
-                : undefined
-          }
+          value={value}
+          measured={20}
+          evaluate={evalOk}
+          fits={GALLERY_FITS}
+          inspection={{ checked: s === 'inspection', onChange: () => {} }}
           onCommit={() => {}}
         />
       </div>
@@ -664,7 +691,7 @@ function Tolerance() {
 
 function TolerancePreview() {
   // States with typed drafts: the field is controlled by user input, so the gallery types for it.
-  return <Tolerance />;
+  return <ToleranceFrame />;
 }
 
 function Import() {

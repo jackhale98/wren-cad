@@ -71,8 +71,8 @@ describe('ToleranceField', () => {
   it('reads what is typed, says what it understood, and commits on Enter', async () => {
     const onCommit = vi.fn();
     renderUI(<ToleranceField value={undefined} onCommit={onCommit} />);
-    const input = screen.getByRole('textbox', { name: 'Tolerance' });
-    expect(screen.getByTestId('tolerance-field')).toHaveTextContent('Type it as written');
+    const input = screen.getByRole('textbox', { name: 'Type it' });
+    expect(screen.getByTestId('tolerance-field')).toHaveTextContent('As written on a drawing');
     await userEvent.type(input, '+0.1/-0.05');
     expect(screen.getByTestId('tolerance-field')).toHaveTextContent('Reads as +0.1/-0.05');
     await userEvent.keyboard('{Enter}');
@@ -84,7 +84,7 @@ describe('ToleranceField', () => {
   it('refuses what it cannot read, with the reason, and Escape reverts', async () => {
     const onCommit = vi.fn();
     renderUI(<ToleranceField value={{ kind: 'symmetric', value: '0.1 mm' }} onCommit={onCommit} />);
-    const input = screen.getByRole('textbox', { name: 'Tolerance' });
+    const input = screen.getByRole('textbox', { name: 'Type it' });
     expect(input).toHaveValue('±0.1');
     await userEvent.clear(input);
     await userEvent.type(input, 'plus minus');
@@ -99,7 +99,7 @@ describe('ToleranceField', () => {
   it('an empty field clears the tolerance; fits and a stated nominal are read', async () => {
     const onCommit = vi.fn();
     renderUI(<ToleranceField value={{ kind: 'symmetric', value: '0.1 mm' }} onCommit={onCommit} />);
-    const input = screen.getByRole('textbox', { name: 'Tolerance' });
+    const input = screen.getByRole('textbox', { name: 'Type it' });
     await userEvent.clear(input);
     await userEvent.keyboard('{Enter}');
     expect(onCommit).toHaveBeenLastCalledWith({ tolerance: null });
@@ -862,7 +862,7 @@ describe('AnnotationInspector', () => {
     const stated = screen.getByRole('textbox', { name: 'Stated value' });
     await userEvent.type(stated, '80{Enter}');
     expect(onChange).toHaveBeenLastCalledWith({ ...dim, nominal: '80' });
-    await userEvent.type(screen.getByRole('textbox', { name: 'Tolerance' }), '±0.1{Enter}');
+    await userEvent.type(screen.getByRole('textbox', { name: 'Type it' }), '±0.1{Enter}');
     expect(onChange).toHaveBeenLastCalledWith({
       ...dim,
       tolerance: { kind: 'symmetric', value: '0.1 mm' },
@@ -894,6 +894,26 @@ describe('AnnotationInspector', () => {
     expect(onChange).toHaveBeenLastCalledWith({ ...dim, text: { count: true } });
   });
 
+  it('the tolerance is chosen by type; inspection is one document edit; a reference drops it', async () => {
+    const onChange = vi.fn();
+    const { rerender } = renderUI(<AnnotationInspector {...inspector({ onChange })} />);
+    await userEvent.click(screen.getByRole('radio', { name: 'Deviation' }));
+    expect(onChange).toHaveBeenLastCalledWith({
+      ...dim,
+      tolerance: { kind: 'bilateral', upper: '0.1 mm', lower: '-0.1 mm' },
+    });
+    await userEvent.click(screen.getByRole('switch', { name: 'Inspection dimension' }));
+    expect(onChange).toHaveBeenLastCalledWith({ ...dim, inspection: true });
+    // Off removes the key rather than storing false.
+    const on = { ...dim, inspection: true } as Annotation;
+    rerender(<AnnotationInspector {...inspector({ onChange, annotation: on })} />);
+    await userEvent.click(screen.getByRole('switch', { name: 'Inspection dimension' }));
+    expect(onChange).toHaveBeenLastCalledWith(dim);
+    // Reference and inspection exclude each other: one edit.
+    await userEvent.click(screen.getByRole('radio', { name: 'Reference' }));
+    expect(onChange).toHaveBeenLastCalledWith({ ...dim, tolerance: { kind: 'reference' } });
+  });
+
   it('a promoted dimension is read-only: no stated value, the source is named (D6)', () => {
     renderUI(
       <AnnotationInspector
@@ -911,7 +931,7 @@ describe('AnnotationInspector', () => {
     expect(screen.getByTestId('annotation-readonly')).toHaveTextContent('read from the model');
     expect(screen.getByTestId('annotation-source')).toHaveTextContent('Plate sketch');
     // The tolerance of a promoted dimension is still its own.
-    expect(screen.getByRole('textbox', { name: 'Tolerance' })).toBeEnabled();
+    expect(screen.getByRole('textbox', { name: 'Type it' })).toBeEnabled();
   });
 
   it('needs attention: no value anywhere, the reasons, and a reattach', async () => {

@@ -169,19 +169,26 @@ export function Switch({
   onChange,
   label,
   className,
+  disabled,
+  describedBy,
 }: {
   checked: boolean;
   onChange(v: boolean): void;
   label: string;
   className?: string;
+  disabled?: boolean;
+  /** The id of the text that explains the switch (why it is disabled). */
+  describedBy?: string;
 }) {
   return (
     <button
       type="button"
       role="switch"
       aria-checked={checked}
+      disabled={disabled}
+      aria-describedby={describedBy}
       onClick={() => onChange(!checked)}
-      className={cn('flex items-center gap-2.5 text-left text-ui', className)}
+      className={cn('flex items-center gap-2.5 text-left text-ui disabled:opacity-50', className)}
     >
       <span
         aria-hidden

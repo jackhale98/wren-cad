@@ -19,7 +19,9 @@ import {
   annotationRefsProblem,
   characteristicRefusal,
   datumLabelProblem,
+  fitClassChoices,
   fitDeviations,
+  fitRefusal,
   GEOMETRIC_CHARACTERISTICS,
   itMicrometres,
   parseFitClass,
@@ -227,6 +229,22 @@ describe(`GD&T legality per standard (${PROVISIONAL})`, () => {
   const frame = (over: Partial<GeometricToleranceAnnotation>): GeometricToleranceAnnotation => ({
     ...(at(905) as GeometricToleranceAnnotation),
     ...over,
+  });
+
+  it('a reference dimension is not an inspection dimension; inspection alone is fine', () => {
+    const doc = sampleDoc();
+    const dimension = at(900) as Extract<Annotation, { tolerance?: unknown }>;
+    const mk = (over: Record<string, unknown>) => ({ ...dimension, ...over }) as Annotation;
+    const kinds = (a: Annotation) =>
+      annotationIssues(doc, part(doc).id, a).filter((i) => i.kind === 'refsDoNotFit');
+    expect(kinds(mk({ inspection: true, tolerance: { kind: 'basic' } }))).toHaveLength(0);
+    expect(kinds(mk({ inspection: true, tolerance: { kind: 'reference' } }))).toHaveLength(1);
+    expect(kinds(mk({ inspection: false, tolerance: { kind: 'reference' } }))).toHaveLength(0);
+    expect(kinds(mk({ tolerance: { kind: 'reference' } }))).toHaveLength(0);
+    const [issue] = kinds(mk({ inspection: true, tolerance: { kind: 'reference' } }));
+    expect(issue).toMatchObject({ message: expect.stringMatching(/not an inspection dimension/) });
+    // The flag round-trips through validation like any other field.
+    expect(annotationExprFields(mk({ inspection: true }))).toEqual(annotationExprFields(dimension));
   });
 
   it('annotationIssues refuses and explains; it never converts', () => {
@@ -463,6 +481,25 @@ describe('hole callouts and sources', () => {
 });
 
 describe(`ISO 286 fits (${PROVISIONAL}; formulas, not copied tables)`, () => {
+  it('fitClassChoices lists only the classes that have a deviation at the size', () => {
+    const holes = fitClassChoices('hole', 20);
+    const h = holes.find((c) => c.letter === 'H');
+    expect(h?.grades).toContain(7);
+    for (const c of holes)
+      for (const g of c.grades) expect(fitDeviations(`${c.letter}${g}`, 20).ok).toBe(true);
+    // Letters without a closed formula (j, p, r) are not offered.
+    expect(holes.map((c) => c.letter)).not.toContain('J');
+    expect(holes.map((c) => c.letter)).toContain('JS');
+    const shafts = fitClassChoices('shaft', 20);
+    expect(shafts.find((c) => c.letter === 'g')?.grades).toContain(6);
+    expect(shafts.every((c) => c.letter === c.letter.toLowerCase())).toBe(true);
+    expect(fitRefusal(at(901))).toMatch(/not to an angle dimension/);
+    expect(fitRefusal(at(900))).toBeUndefined();
+    // Outside the table there is nothing to choose.
+    expect(fitClassChoices('hole', 600)).toEqual([]);
+    expect(fitClassChoices('shaft', 0)).toEqual([]);
+  });
+
   const um = (c: string, d: number) => {
     const r = fitDeviations(c, d);
     if (!r.ok) throw new Error(r.reason);

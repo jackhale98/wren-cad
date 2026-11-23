@@ -105,6 +105,42 @@ describe('the §5 table', () => {
     expect((annotationOf(r.doc, A_DIA) as { text?: unknown }).text).toEqual({ prefix: '4×' });
   });
 
+  it('inspection (a boolean field) merges by key: with a tolerance edit clean, against itself a conflict', () => {
+    const b = drawingDoc();
+    for (const r of both(
+      b,
+      editAnnotation(b, A_DIA, { inspection: true }),
+      editAnnotation(b, A_DIA, tolerance('0.2mm')),
+    )) {
+      expect(r.conflicts).toEqual([]);
+      const dia = annotationOf(r.doc, A_DIA) as Annotation & Record<string, unknown>;
+      expect(dia.inspection).toBe(true);
+      expect(dia.tolerance).toEqual({ kind: 'bilateral', upper: '0.2mm', lower: '-0.1mm' });
+      valid(r.doc);
+    }
+    // The same flag set to the same value on both sides is not a conflict.
+    const same = merge(
+      b,
+      editAnnotation(b, A_DIA, { inspection: true }),
+      editAnnotation(b, A_DIA, { inspection: true }),
+    );
+    expect(same.conflicts).toEqual([]);
+    // Cleared on one side, kept on the other (base had it): a real conflict at the field.
+    const on = editAnnotation(b, A_DIA, { inspection: true });
+    const r = merge(on, editAnnotation(on, A_DIA, { inspection: false }), on);
+    expect(r.conflicts).toEqual([]);
+    expect((annotationOf(r.doc, A_DIA) as { inspection?: boolean }).inspection).toBe(false);
+    const clash = merge(
+      b,
+      editAnnotation(b, A_DIA, { inspection: true }),
+      editAnnotation(b, A_DIA, { inspection: false }),
+    );
+    expect(conflictsOf(clash)).toEqual([
+      ['bothAdded', `/parts/${PART}/annotations/${A_DIA}/inspection`, 'annotation', 'Dimension Ø6'],
+    ]);
+    expect(conflictSummary(clash.conflicts[0] as StructuralMergeConflict)).toMatch(/inspection/);
+  });
+
   it('the same annotation field on both sides: bothModified', () => {
     const b = drawingDoc();
     const r = merge(

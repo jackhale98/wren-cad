@@ -90,6 +90,14 @@ export interface DimensionLabel {
   tolerance?: ToleranceBlock;
   /** `box`: basic (theoretically exact); `parens`: reference. */
   frame?: 'box' | 'parens';
+  /**
+   * Inspection dimension (ISO 129-1): the size symbol, value and tolerance sit in a frame with
+   * rounded ends. `leadRuns` is how many of `main`'s first runs (instance count, prefix) stay
+   * outside it, like the suffix. Never set together with a `parens` frame (a reference is not an
+   * inspection dimension).
+   */
+  inspection?: boolean;
+  leadRuns?: number;
   suffix?: string;
   /** Lines under the value (`TYP`). */
   below?: string[];
@@ -116,6 +124,8 @@ export interface DimensionLabelInput {
    * when it is more than 1. Absent with `text.count` set: no prefix (never a guessed count).
    */
   count?: number;
+  /** `DimensionBase.inspection`: the value and tolerance are drawn in a round-ended frame. */
+  inspection?: boolean;
 }
 
 const SIZE_RUNS: Record<SizeSymbol, TextRun[]> = {
@@ -137,6 +147,7 @@ export function dimensionLabel(input: DimensionLabelInput): DimensionLabel {
   if (input.text?.count && input.count !== undefined && input.count > 1)
     main.push({ kind: 'text', text: `${input.count}× ` });
   if (input.text?.prefix) main.push({ kind: 'text', text: input.text.prefix });
+  const leadRuns = main.length;
   if (input.size) main.push(...SIZE_RUNS[input.size]);
   const warnings: string[] = [];
   const label: DimensionLabel = { main, warnings };
@@ -148,6 +159,10 @@ export function dimensionLabel(input: DimensionLabelInput): DimensionLabel {
     return label;
   }
   const tol = input.tolerance;
+  if (input.inspection && tol?.kind !== 'reference') {
+    label.inspection = true;
+    label.leadRuns = leadRuns;
+  }
   const valueText = fmt(value);
   if (!tol) {
     main.push({ kind: 'text', text: valueText });
@@ -249,6 +264,13 @@ export function labelText(label: DimensionLabel): string {
     if (!runs.match(/\d/)) tol = tol.trimStart();
   }
   let out = `${runs}${tol}`;
+  if (label.inspection) {
+    const lead = label.main
+      .slice(0, label.leadRuns ?? 0)
+      .map((r) => (r.kind === 'text' ? r.text : `{${r.id}}`))
+      .join('');
+    out = `${lead}${lead && !/\s$/.test(lead) ? ' ' : ''}⟨${out.slice(lead.length)}⟩`;
+  }
   if (label.frame === 'box') out = `[${out}]`;
   if (label.frame === 'parens') out = `(${out})`;
   if (label.suffix) out += ` ${label.suffix}`;
