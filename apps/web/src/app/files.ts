@@ -356,6 +356,23 @@ export async function exportWren(wb: Workbench): Promise<void> {
   );
 }
 
+/**
+ * Save as project folder: the canonical files into a folder the user picks. A refusal (another
+ * project there, a folder it cannot write) is shown inline in the export form, never a dialog.
+ */
+export async function exportFolder(wb: Workbench): Promise<void> {
+  const { folderFiles, saveProjectFolder } = await import('../doc/project-folder');
+  wb.pruneAttachments();
+  wb.folderError.set(null);
+  const r = await saveProjectFolder(folderFiles(wb.doc, savedExtra(wb.extra, wb.doc)));
+  if (r.kind === 'refused') wb.folderError.set(r.message);
+  else if (r.kind === 'saved') {
+    const n = r.written + r.unchanged;
+    const gone = r.removed ? `, ${r.removed} stale removed` : '';
+    wb.toast(`Saved ${n} project ${n === 1 ? 'file' : 'files'} to “${r.folder}”${gone}.`, 'info');
+  }
+}
+
 export async function exportDoc(wb: Workbench, request: ExportRequest): Promise<void> {
   const part = wb.part;
   const view = wb.regen.get();
@@ -364,6 +381,7 @@ export async function exportDoc(wb: Workbench, request: ExportRequest): Promise<
   try {
     const lib = await import('../doc/library');
     if (request.target === 'wren') return await wb.exportWren();
+    if (request.target === 'folder') return await exportFolder(wb);
     const { exportAll, exportBase, refuseIssues, refuseMissing } = await import('./config-export');
     // M3.7: files are named by part number; a missing configuration is never exported as Default.
     if (refuseMissing(wb) || (request.configurations !== 'all' && refuseIssues(wb))) return;

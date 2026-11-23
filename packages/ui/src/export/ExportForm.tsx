@@ -14,6 +14,17 @@ import {
   type TessellationQuality,
 } from './types';
 
+export interface ExportFolderProps {
+  /** Why the last "Save as project folder" wrote nothing (shown inline, never as a dialog). */
+  error?: string;
+  /**
+   * The project is in a git repository (known from its connection, never guessed): while
+   * `.wrencad` is the chosen format, a dismissible inline notice offers the project folder.
+   * "Don't show again" is the host's to persist; absent: no notice.
+   */
+  gitNotice?: { onNeverShow(): void };
+}
+
 export interface ExportFormProps {
   onExport(request: ExportRequest): void;
   /** Bodies of the active part; with more than one, a body picker appears. */
@@ -32,6 +43,8 @@ export interface ExportFormProps {
   notes?: Partial<Record<ExportTarget, string>>;
   /** The chosen target, on mount and on every change (the host may start what it needs). */
   onTargetChange?(target: ExportTarget): void;
+  /** The project-folder target: its last refusal, and the git notice. */
+  folder?: ExportFolderProps;
   busy?: boolean;
   size?: 'md' | 'touch';
   className?: string;
@@ -50,10 +63,12 @@ export default function ExportForm({
   unavailable = {},
   notes = {},
   onTargetChange,
+  folder,
   busy,
   size = 'md',
   className,
 }: ExportFormProps) {
+  const [noticeShut, setNoticeShut] = useState(false);
   const [chosen, setTarget] = useState<ExportTarget>(defaultTarget);
   // A target that became unavailable is never shown checked-but-disabled: the first available
   // one is used instead (and choosing again is always possible).
@@ -76,7 +91,13 @@ export default function ExportForm({
   const meta = EXPORT_TARGETS.find((t) => t.id === target);
   const selected = bodies.filter((b) => !off.has(b.id)).map((b) => b.id);
   const tess = target === 'stl' || target === '3mf' || target === 'glb';
-  const bodyScoped = target !== 'wren';
+  const bodyScoped = target !== 'wren' && target !== 'folder';
+  const folderChoice = {
+    target: 'folder' as const,
+    stlBinary: binary,
+    stlPerBody: perBody,
+    quality,
+  };
   const none = bodyScoped && bodies.length > 0 && selected.length === 0;
 
   return (
@@ -127,6 +148,51 @@ export default function ExportForm({
           );
         })}
       </fieldset>
+
+      {target === 'wren' && folder?.gitNotice && !noticeShut && !unavailable.folder ? (
+        <div
+          role="note"
+          data-testid="export-git-notice"
+          className="flex flex-col gap-2 rounded-control bg-accent-soft p-2.5 text-2xs text-fg"
+        >
+          <p className="m-0">
+            This is a git repository. A project folder can be diffed and merged; a .wrencad cannot.
+          </p>
+          <div className="flex flex-wrap gap-1.5">
+            <Button
+              variant="secondary"
+              size={size}
+              disabled={busy}
+              onClick={() => onExport(buildExportRequest(folderChoice))}
+            >
+              Save as project folder
+            </Button>
+            <Button variant="ghost" size={size} onClick={() => setNoticeShut(true)}>
+              Dismiss
+            </Button>
+            <Button
+              variant="ghost"
+              size={size}
+              onClick={() => {
+                setNoticeShut(true);
+                folder.gitNotice?.onNeverShow();
+              }}
+            >
+              Don’t show again
+            </Button>
+          </div>
+        </div>
+      ) : null}
+
+      {target === 'folder' && folder?.error ? (
+        <p
+          role="alert"
+          data-testid="export-folder-error"
+          className="m-0 rounded-control bg-warning-soft p-2 text-2xs text-warning-text"
+        >
+          {folder.error}
+        </p>
+      ) : null}
 
       {target === 'stl' ? (
         <div className="flex flex-col gap-2.5">
@@ -289,7 +355,11 @@ export default function ExportForm({
           )
         }
       >
-        {busy ? 'Exporting…' : `Export ${meta?.label ?? ''}`}
+        {busy
+          ? 'Exporting…'
+          : target === 'folder'
+            ? 'Save as project folder'
+            : `Export ${meta?.label ?? ''}`}
       </Button>
       {none ? <p className="text-2xs text-danger-text">Select at least one body.</p> : null}
     </div>

@@ -6,7 +6,8 @@
   "type": "module",
   "description": "Connections, sync and version control (PLAN §8A): storage providers, credential vault, OAuth PKCE, the sync engine, structural merge and feature diff, snapshot and git history. Ported in part from Mycelium (GPL-3.0-or-later).",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./project-folder": "./src/project-folder.ts"
   },
   "scripts": {
     "typecheck": "tsc -p .",

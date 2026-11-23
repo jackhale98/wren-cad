@@ -39,6 +39,7 @@ import { onOverlayInsets, onSheetHeight, reframeSoon, syncFrameInsets } from './
 import { installKernelMemoryHook, readKernelMemory } from './kernel-memory';
 import { useObservable } from './observable';
 import type { EngineState } from './state';
+import { useExportFolder } from './use-export-folder';
 import { ViewportHost } from './ViewportHost';
 import type { Workbench } from './workbench';
 
@@ -99,6 +100,7 @@ export function App({ wb }: { wb: Workbench }) {
   const ui = useObservable(wb.ui);
   const regen = useObservable(wb.regen);
   const engine = useObservable(wb.engine);
+  const exportFolder = useExportFolder(wb);
   const part = doc.parts[0];
   const [updateReady, setUpdateReady] = useState(false);
   useEffect(() => onSwUpdateAvailable(() => setUpdateReady(true)), []);
@@ -434,9 +436,11 @@ export function App({ wb }: { wb: Workbench }) {
             id: b.id,
             name: `Body ${i + 1}`,
           }))}
-          {...(engineFailed
-            ? { exportUnavailable: { step: engineFailed, stl: engineFailed } }
-            : {})}
+          exportUnavailable={{
+            ...(engineFailed ? { step: engineFailed, stl: engineFailed } : {}),
+            ...exportFolder.unavailable,
+          }}
+          exportFolder={exportFolder.folder}
           {...(engineNote ? { exportNotes: { step: engineNote, stl: engineNote } } : {})}
           onExportTargetChange={(target) => {
             if (EXACT_EXPORTS.has(target)) wb.ensureKernel();

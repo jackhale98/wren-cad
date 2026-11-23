@@ -138,6 +138,7 @@ export {
   transposeGrid,
 } from './config/tsv';
 export {
+  type ExportFolderProps,
   type ExportFormProps,
   ExportMenu,
   type ExportMenuProps,

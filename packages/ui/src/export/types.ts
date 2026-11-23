@@ -1,7 +1,7 @@
 import type { ExportOptions } from '@wren-cad/contracts';
 
 /** Everything the Export menu can produce. `ExportFormat` in contracts covers step/stl/brep only. */
-export type ExportTarget = 'step' | 'stl' | '3mf' | 'glb' | 'wren';
+export type ExportTarget = 'step' | 'stl' | '3mf' | 'glb' | 'wren' | 'folder';
 
 export type TessellationQuality = 'coarse' | 'standard' | 'fine';
 
@@ -54,6 +54,12 @@ export const EXPORT_TARGETS: ReadonlyArray<{
   { id: '3mf', label: '3MF', ext: '.3mf', blurb: '3D printing with units and colour' },
   { id: 'glb', label: 'GLB', ext: '.glb', blurb: 'Web and AR viewers' },
   { id: 'wren', label: 'Wren project', ext: '.wrencad', blurb: 'Everything, with history' },
+  {
+    id: 'folder',
+    label: 'Project folder',
+    ext: 'folder',
+    blurb: 'Plain text files, for git to diff and merge',
+  },
 ];
 
 /**

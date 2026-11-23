@@ -217,6 +217,7 @@ export function PhoneShell(props: ShellProps) {
                         unavailable={props.exportUnavailable}
                         notes={props.exportNotes}
                         onTargetChange={props.onExportTargetChange}
+                        folder={props.exportFolder}
                         busy={props.exportBusy}
                         size="touch"
                       />
