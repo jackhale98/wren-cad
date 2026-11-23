@@ -7,6 +7,30 @@ import type { RenderBackend } from './viewport';
 
 export type DeviceTier = 'desktop' | 'tablet' | 'phone';
 
+/**
+ * What a device may do, independent of what it is called (ADR-101). The app derives this once from
+ * the tier and the user's settings (`apps/web/src/platform/tier-policy.ts`); code asks a
+ * capability, never `tier === 'phone'`. Additive: a new capability is a new optional field whose
+ * absence means "no".
+ */
+export interface DeviceCapabilities {
+  /**
+   * `full`: the desktop structure (top bar, side panels, command bar). `review`: viewer first,
+   * with a bottom sheet (PLAN §9.1 Phone).
+   */
+  layout: 'full' | 'review';
+  /** Control size: `touch` = 44 px targets. */
+  density: 'compact' | 'touch';
+  /** Create and edit sketches. */
+  editSketches: boolean;
+  /** Create, delete, reorder, rename and edit features and folders; the full tree actions. */
+  editFeatures: boolean;
+  /** Change existing values inline (parameters, feature values), switch configuration. */
+  editValues: boolean;
+  /** Edit drawings (views, dimensions, annotations); false = drawings are review-only. */
+  editDrawings: boolean;
+}
+
 export interface RuntimeDiagnostics {
   tier: DeviceTier;
   crossOriginIsolated: boolean;
