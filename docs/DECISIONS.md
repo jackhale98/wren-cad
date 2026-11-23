@@ -3700,3 +3700,9 @@ CI on the orthographic view failed twice for one cause: an orthographic view str
 - **Made exhaustive (no `default`):** `planFeature` (regen engine), `allBodiesFor`, the inspector form switch, `promoteFeature`, `consumedSketchRefs`. The regen engine keeps its run-time fallback for unknown types from newer documents.
 - **Left as is:** radial/gesture/tool-id code (tool ids are not feature types), C++ dispatch, exec plan functions.
 - **Files a new kind must touch:** 19, 9 compile-forced (before: 20 by the audit, 4 forced); see CONTRIBUTING.md.
+
+### ADR-101 amendment: what a project-folder save may remove or replace (2026-11-23, lead, after the Phase 2 review)
+
+- **Removes only what the folder's own manifest names.** The first version removed every file under `imports/` and every `parts|drawings|assemblies/*.json` the save did not write, once the project id matched, including files the user had put there. Now a save removes a file only if the manifest already in the folder names it (so Wren wrote it) and the new save does not have it. Cost: an attachment under `imports/` that the project dropped stays behind, because the manifest does not list attachments. Follow-up for 6.0 (file format): list attachments in the manifest so they can be removed too.
+- **Another project id is replaceable, by the user.** Opening a folder or a clone gives the project a new library id on each device (`splitProject`), so "a different id" also means "this project, from another copy", which is the main git case. The save is still refused first, the message names the project found, and an inline "Replace what is there" writes into the same folder (no second picker). The same action retries a first save that stopped part-way (files but no manifest). An unreadable manifest is never replaceable.
+- **The picker is the first thing awaited** after the click (no chunk load before it), so the user activation is still live.

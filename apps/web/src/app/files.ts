@@ -6,6 +6,7 @@ import type { Id, ProjectFiles, Vec3, WrenDoc } from '@wren-cad/contracts';
 import { ulid } from '@wren-cad/document';
 import type { ExportRequest } from '@wren-cad/ui';
 import { ensureDrawingSupport } from '../doc/drawing-support';
+import { folderFiles, saveProjectFolder } from '../doc/project-folder';
 import type { OpenedFile, ProjectBundle } from '../doc/library';
 import { pruneAttachments as pruneAttachmentFiles, savedExtra } from '../model/attachments';
 import { IMPORT_EXTENSIONS, importFeature, importFormat } from '../model/import';
@@ -360,13 +361,17 @@ export async function exportWren(wb: Workbench): Promise<void> {
  * Save as project folder: the canonical files into a folder the user picks. A refusal (another
  * project there, a folder it cannot write) is shown inline in the export form, never a dialog.
  */
-export async function exportFolder(wb: Workbench): Promise<void> {
-  const { folderFiles, saveProjectFolder } = await import('../doc/project-folder');
+export async function exportFolder(
+  wb: Workbench,
+  options: { replace?: boolean } = {},
+): Promise<void> {
+  // Nothing is awaited before the picker: a click's user activation does not survive a chunk load.
   wb.pruneAttachments();
   wb.folderError.set(null);
-  const r = await saveProjectFolder(folderFiles(wb.doc, savedExtra(wb.extra, wb.doc)));
-  if (r.kind === 'refused') wb.folderError.set(r.message);
-  else if (r.kind === 'saved') {
+  const r = await saveProjectFolder(folderFiles(wb.doc, savedExtra(wb.extra, wb.doc)), options);
+  if (r.kind === 'refused') {
+    wb.folderError.set({ message: r.message, replaceable: r.replaceable === true });
+  } else if (r.kind === 'saved') {
     const n = r.written + r.unchanged;
     const gone = r.removed ? `, ${r.removed} stale removed` : '';
     wb.toast(`Saved ${n} project ${n === 1 ? 'file' : 'files'} to “${r.folder}”${gone}.`, 'info');
@@ -379,9 +384,9 @@ export async function exportDoc(wb: Workbench, request: ExportRequest): Promise<
   if (!part) return;
   wb.patchUi({ exporting: true });
   try {
+    if (request.target === 'folder') return await exportFolder(wb);
     const lib = await import('../doc/library');
     if (request.target === 'wren') return await wb.exportWren();
-    if (request.target === 'folder') return await exportFolder(wb);
     const { exportAll, exportBase, refuseIssues, refuseMissing } = await import('./config-export');
     // M3.7: files are named by part number; a missing configuration is never exported as Default.
     if (refuseMissing(wb) || (request.configurations !== 'all' && refuseIssues(wb))) return;

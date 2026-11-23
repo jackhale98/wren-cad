@@ -7,6 +7,7 @@ import {
   showGitNotice,
   silenceGitNotice,
 } from './folder-notice';
+import { exportFolder } from './files';
 import { useObservable } from './observable';
 import type { Workbench } from './workbench';
 
@@ -23,7 +24,8 @@ export function useExportFolder(wb: Workbench): {
   return {
     unavailable: supported ? {} : { folder: FOLDER_UNSUPPORTED },
     folder: {
-      ...(error ? { error } : {}),
+      ...(error ? { error: error.message } : {}),
+      ...(error?.replaceable ? { onReplace: () => void exportFolder(wb, { replace: true }) } : {}),
       ...(notice
         ? {
             gitNotice: {

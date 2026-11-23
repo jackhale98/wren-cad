@@ -18,6 +18,11 @@ export interface ExportFolderProps {
   /** Why the last "Save as project folder" wrote nothing (shown inline, never as a dialog). */
   error?: string;
   /**
+   * Present when the refusal can be overridden (the folder holds another copy's project, or
+   * files at the project's paths): the inline "Replace what is there" action.
+   */
+  onReplace?: () => void;
+  /**
    * The project is in a git repository (known from its connection, never guessed): while
    * `.wrencad` is the chosen format, a dismissible inline notice offers the project folder.
    * "Don't show again" is the host's to persist; absent: no notice.
@@ -185,13 +190,26 @@ export default function ExportForm({
       ) : null}
 
       {target === 'folder' && folder?.error ? (
-        <p
+        <div
           role="alert"
           data-testid="export-folder-error"
-          className="m-0 rounded-control bg-warning-soft p-2 text-2xs text-warning-text"
+          className="flex flex-col gap-2 rounded-control bg-warning-soft p-2 text-2xs text-warning-text"
         >
-          {folder.error}
-        </p>
+          <p className="m-0">{folder.error}</p>
+          {folder.onReplace ? (
+            <div>
+              <Button
+                variant="secondary"
+                size={size}
+                disabled={busy}
+                data-testid="export-folder-replace"
+                onClick={folder.onReplace}
+              >
+                Replace what is there
+              </Button>
+            </div>
+          ) : null}
+        </div>
       ) : null}
 
       {target === 'stl' ? (

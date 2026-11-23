@@ -145,7 +145,7 @@ export class Workbench {
   /** Successful exports (the tutorial's last step). */
   readonly exports = observable(0);
   /** Why the last "Save as project folder" wrote nothing (shown inline in the export form). */
-  readonly folderError = observable<string | null>(null);
+  readonly folderError = observable<{ message: string; replaceable: boolean } | null>(null);
   /** "Take the tour" requests (welcome card, ⌘K); the app runs the tutorial on a new part. */
   readonly tourRequests = observable(0);
   readonly pushPull: PushPullTool;

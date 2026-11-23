@@ -48,30 +48,65 @@ describe('planProjectFolder', () => {
     }
   });
 
-  it('removes stale project files of the same project and nothing else', () => {
+  it('removes only the files the old manifest names, never anything else', () => {
+    const doc = makeDoc();
+    const renamed = structuredClone(doc);
+    (renamed.parts[0] as { name: string }).name = 'Housing';
     const plan = planProjectFolder(
       {
         paths: [
           'wren.project.json',
           'params.json',
-          'parts/old-name.part.json',
+          'parts/bracket.part.json',
+          // Not named by the old manifest: someone else's, even inside the project's folders.
+          'parts/notes.json',
+          'imports/vendor/datasheet.pdf',
+          'imports/.gitkeep',
           'imports/F1.step',
           'previews/bracket.stl',
           'releases/rev-a/x.step',
           'README.md',
         ],
-        manifest,
+        manifest: filesOf(doc).get('wren.project.json'),
       },
-      files,
+      filesOf(renamed),
     );
     if (!('ok' in plan)) throw new Error(plan.message);
-    expect(plan.deletes).toEqual(['imports/F1.step', 'parts/old-name.part.json']);
+    expect(plan.deletes).toEqual(['parts/bracket.part.json']);
   });
 
-  it('refuses a folder with a different project', () => {
-    const other = filesOf(makeDoc()).get('wren.project.json');
-    const r = planProjectFolder({ paths: ['wren.project.json'], manifest: other }, files);
-    expect('code' in r && r.code).toBe('OTHER_PROJECT');
+  it('refuses a folder with another project id, names it, and replaces it only when told to', () => {
+    const theirs = makeDoc();
+    theirs.meta.name = 'Gearbox';
+    const existing = {
+      paths: ['wren.project.json', 'params.json', 'parts/bracket.part.json', 'parts/notes.json'],
+      manifest: filesOf(theirs).get('wren.project.json'),
+    };
+    const r = planProjectFolder(existing, files);
+    expect(r).toMatchObject({ code: 'OTHER_PROJECT', replaceable: true, name: 'Gearbox' });
+    if ('code' in r) expect(r.message).toContain('Gearbox');
+    // The same project opened from a folder or a clone has a new id on each device: the user says
+    // so, and only what the old manifest names (and the save drops) goes.
+    const ok = planProjectFolder(existing, files, { replace: true });
+    if (!('ok' in ok)) throw new Error(ok.message);
+    expect(ok.deletes).toEqual([]);
+    const renamed = structuredClone(theirs);
+    renamed.meta.id = ulid();
+    (renamed.parts[0] as { name: string }).name = 'Housing';
+    const moved = planProjectFolder(existing, filesOf(renamed), { replace: true });
+    if (!('ok' in moved)) throw new Error(moved.message);
+    expect(moved.deletes).toEqual(['parts/bracket.part.json']);
+  });
+
+  it('a first save that stopped part-way can be retried with replace', () => {
+    const partial = { paths: ['params.json', 'parts/bracket.part.json'] };
+    expect(planProjectFolder(partial, files)).toMatchObject({
+      code: 'FOREIGN_FILES',
+      replaceable: true,
+    });
+    const retry = planProjectFolder(partial, files, { replace: true });
+    expect('ok' in retry).toBe(true);
+    if ('ok' in retry) expect(retry.deletes).toEqual([]);
   });
 
   it('refuses an unreadable manifest and foreign files at the paths it would write', () => {
@@ -148,9 +183,31 @@ describe('writeProjectFolder', () => {
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.refusal.code).toBe('OTHER_PROJECT');
     expect(await snapshot(dir)).toEqual(before);
+    // Unreadable manifests are never replaceable.
+    const bad = planProjectFolder(
+      { paths: ['wren.project.json'], manifest: enc('[]') },
+      filesOf(makeDoc()),
+      { replace: true },
+    );
+    expect('code' in bad && bad.code).toBe('UNREADABLE_MANIFEST');
   });
 
-  it('drops a folder it emptied (imports/) but keeps unrelated folders', async () => {
+  it('with replace, writes over another copy of the project and keeps unknown files', async () => {
+    const dir = new FakeDir();
+    const theirs = makeDoc();
+    await writeProjectFolder(dir, filesOf(theirs));
+    await dir.put('/imports/vendor/datasheet.pdf', 'pdf');
+    await dir.put('/parts/notes.json', '{}');
+    const mine = structuredClone(theirs);
+    mine.meta.id = ulid();
+    const r = await writeProjectFolder(dir, filesOf(mine), { replace: true });
+    expect(r).toMatchObject({ ok: true, removed: [] });
+    expect(await dir.text('/imports/vendor/datasheet.pdf')).toBe('pdf');
+    expect(await dir.text('/parts/notes.json')).toBe('{}');
+    expect(JSON.parse((await dir.text('/wren.project.json')) ?? '').meta.id).toBe(mine.meta.id);
+  });
+
+  it('leaves an attachment the project no longer has (the manifest does not name attachments)', async () => {
     const doc = makeDoc();
     const files = filesOf(doc);
     files.set('imports/F1.step', enc('step'));
@@ -158,8 +215,9 @@ describe('writeProjectFolder', () => {
     await dir.put('/docs/a.md', 'a');
     await writeProjectFolder(dir, files);
     expect(paths(dir)).toContain('imports/F1.step');
-    await writeProjectFolder(dir, filesOf(doc));
-    expect(paths(dir).some((p) => p.startsWith('imports/'))).toBe(false);
+    const r = await writeProjectFolder(dir, filesOf(doc));
+    expect(r).toMatchObject({ ok: true, removed: [] });
+    expect(paths(dir)).toContain('imports/F1.step');
     expect(paths(dir)).toContain('docs/a.md');
   });
 });

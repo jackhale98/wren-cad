@@ -33,6 +33,17 @@ describe('Save as project folder', () => {
     });
     expect(screen.getByTestId('export-folder-error')).toHaveTextContent('different Wren project');
     expect(document.querySelector('[aria-modal="true"]')).toBeNull();
+    expect(screen.queryByTestId('export-folder-replace')).toBeNull();
+  });
+
+  it('offers Replace inline only when the host says the refusal can be overridden', async () => {
+    const onReplace = vi.fn();
+    await open({
+      defaultTarget: 'folder',
+      folder: { error: 'This folder already holds the Wren project “Gearbox”.', onReplace },
+    });
+    await userEvent.click(screen.getByRole('button', { name: 'Replace what is there' }));
+    expect(onReplace).toHaveBeenCalledTimes(1);
   });
 });
 

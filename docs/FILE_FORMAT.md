@@ -112,10 +112,12 @@ A standard ZIP (PKWARE appnote 6.3.x, DEFLATE), written with `fflate`:
 
 "Save as project folder" writes the files of §1 (the same canonical bytes as the archive entries,
 including `imports/`) into a folder. Never written: `.wren/`, `.wren-history/`, `.git/`. A save
-replaces project files; with the same `meta.id` in `wren.project.json`, project files the new save
-lacks (`parts/`, `drawings/`, `assemblies/`, `imports/`) are removed; `previews/`, `releases/` and
-everything else are untouched. A folder with another project id, an unreadable manifest, or foreign
-files at the paths to be written is refused. The manifest is written last. Files already identical
+replaces project files. It removes a file only if the manifest already in the folder names it
+(under `parts/`, `drawings/`, `assemblies/`) and the new save lacks it; attachments under
+`imports/` are not listed in the manifest, so one the project dropped stays. Everything else is
+untouched. A folder with another `meta.id` in `wren.project.json` (another project, or this one
+saved from another copy, which has its own library id), or with other files at the paths to be
+written, is refused unless the user chooses to replace it. An unreadable manifest is always refused. The manifest is written last. Files already identical
 are not rewritten. Saving the same document twice leaves the folder byte-identical.
 
 ## 4. Files

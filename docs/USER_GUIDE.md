@@ -859,11 +859,13 @@ A `.wrencad` is a zip, so git cannot show what changed in it or merge two edits.
 folder → Save as project folder** writes the project as plain text files into a folder you pick:
 the same bytes every time, so a commit shows only what you changed.
 
-- Saving again into the same folder replaces the project files and removes the ones the project no
-  longer has (a part you renamed or deleted). Other files in the folder, `.git` and the version
-  history are left alone.
-- A folder that holds a different Wren project, or files Wren would overwrite, is refused with a
-  message in the export panel. Nothing is written.
+- Saving again into the same folder replaces the project files and removes the part and drawing
+  files the project no longer has (one you renamed or deleted). Everything else in the folder is
+  left alone, including `.git`, the version history and any file you added yourself. An imported
+  file the project no longer uses is also left; delete it by hand.
+- A folder that already holds a Wren project saved from another copy (a clone, another device, or
+  a different project), or files Wren would overwrite, is refused first with a message in the
+  export panel that names the project found. **Replace what is there** then writes into it.
 - Open the folder again by connecting it as a folder in **Connections**.
 - Where the browser cannot pick a folder (Safari, Firefox), the option is greyed out with a note;
   connect a git host or a cloud drive instead.

@@ -5,26 +5,33 @@
  *
  * `planProjectFolder` is pure: an existing listing plus the new files give the writes, the
  * deletes or a refusal. `writeProjectFolder` is the thin File System Access half. Rules:
- *  - project files are replaced; stale project files of a previous save of the *same* project
- *    (same `meta.id` in `wren.project.json`) are removed; everything else is left untouched;
- *  - a folder holding a different project, an unreadable manifest, or foreign files at paths the
- *    save would write is refused (never a silent overwrite);
+ *  - project files are replaced; the only files ever removed are those the folder's *own*
+ *    manifest names (parts, drawings, assemblies) and the new save no longer has. A file Wren
+ *    cannot prove it wrote (an attachment under `imports/`, a note someone added) is never
+ *    removed, so a stale attachment can stay behind;
+ *  - a folder whose manifest has another project id, or (no manifest) files at paths the save
+ *    would write, is refused unless the caller passes `replace` (the user said so, inline). An
+ *    id differs for a different project, but also for the same project opened from a folder or
+ *    a clone, which gets a new library id on each device; so the refusal names the project
+ *    found and is replaceable. An unreadable manifest is always refused;
  *  - never written, read or deleted: `.git/`, `.wren/` (cache), `.wren-history/`.
  */
 
 import type { ProjectFiles } from '@wren-cad/contracts';
 import { MANIFEST_FILE, PARAMS_FILE } from '@wren-cad/document';
+import { manifestRefs } from './paths';
 import type { FolderFileHandle, FolderHandle } from './providers/folder';
 
 /** Folders a save looks into (and nowhere else): the document's folders and its attachments. */
 const PROJECT_DIRS = ['parts', 'drawings', 'assemblies', 'imports', 'previews', 'releases'];
 /** Of these, the folders whose files a later save may remove when the project no longer has them. */
-const OWNED_DIRS = ['parts', 'drawings', 'assemblies', 'imports'];
+const OWNED_DIRS = ['parts', 'drawings', 'assemblies'];
 
 export type FolderRefusal =
-  | { code: 'OTHER_PROJECT'; message: string }
+  /** `replaceable`: the same save with `replace: true` goes through. `name`: the project found. */
+  | { code: 'OTHER_PROJECT'; message: string; replaceable: true; name?: string }
   | { code: 'UNREADABLE_MANIFEST'; message: string }
-  | { code: 'FOREIGN_FILES'; message: string; paths: string[] }
+  | { code: 'FOREIGN_FILES'; message: string; paths: string[]; replaceable: true }
   | { code: 'UNSAFE_PATH'; message: string; paths: string[] };
 
 export interface FolderPlan {
@@ -49,18 +56,29 @@ const safe = (p: string): boolean =>
   !p.split('/').some((s) => s === '' || s === '.' || s === '..') &&
   !/^\.(git|wren|whittle|wren-history)(\/|$)/.test(p);
 
-const isModelFile = (p: string): boolean =>
-  /^(parts|drawings|assemblies)\/[^/]+\.json$/.test(p) || p.startsWith('imports/');
+const isModelFile = (p: string): boolean => /^(parts|drawings|assemblies)\/[^/]+\.json$/.test(p);
 
-function projectId(bytes: Uint8Array | null | undefined): string | null | 'unreadable' {
-  if (!bytes) return null;
+function projectIdentity(
+  bytes: Uint8Array | null | undefined,
+): { id: string | null; name?: string } | 'unreadable' {
+  if (!bytes) return { id: null };
   try {
-    const m = JSON.parse(new TextDecoder().decode(bytes)) as { meta?: { id?: unknown } } | null;
-    if (!m || typeof m !== 'object') return 'unreadable';
-    return typeof m.meta?.id === 'string' && m.meta.id !== '' ? m.meta.id : null;
+    const m = JSON.parse(new TextDecoder().decode(bytes)) as {
+      meta?: { id?: unknown; name?: unknown };
+    } | null;
+    if (!m || typeof m !== 'object' || Array.isArray(m)) return 'unreadable';
+    const id = typeof m.meta?.id === 'string' && m.meta.id !== '' ? m.meta.id : null;
+    return typeof m.meta?.name === 'string' && m.meta.name !== ''
+      ? { id, name: m.meta.name }
+      : { id };
   } catch {
     return 'unreadable';
   }
+}
+
+export interface FolderPlanOptions {
+  /** The user chose to replace what the folder holds (another project id, or clashing files). */
+  replace?: boolean;
 }
 
 /** Orders writes: referenced files, then params, the manifest last. */
@@ -69,6 +87,7 @@ const rank = (p: string): number => (p === MANIFEST_FILE ? 2 : p === PARAMS_FILE
 export function planProjectFolder(
   existing: ExistingFolder,
   files: ProjectFiles,
+  options: FolderPlanOptions = {},
 ): FolderPlan | FolderRefusal {
   const bad = [...files.keys()].filter((p) => !safe(p));
   if (bad.length) {
@@ -81,32 +100,35 @@ export function planProjectFolder(
   const have = new Set(existing.paths);
   const hasManifest = have.has(MANIFEST_FILE);
   const nextManifest = files.get(MANIFEST_FILE);
-  let same = false;
   if (hasManifest) {
-    const theirs = projectId(existing.manifest);
-    const ours = projectId(nextManifest);
+    const theirs = projectIdentity(existing.manifest);
+    const ours = projectIdentity(nextManifest);
     if (theirs === 'unreadable') {
       return {
         code: 'UNREADABLE_MANIFEST',
         message: `This folder has a ${MANIFEST_FILE} that Wren cannot read, so it was left alone. Pick an empty folder.`,
       };
     }
-    if (theirs === null || ours === null || ours === 'unreadable' || ours !== theirs) {
+    const same =
+      ours !== 'unreadable' && ours.id !== null && theirs.id !== null && ours.id === theirs.id;
+    if (!same && !options.replace) {
+      const found = theirs.name ? `the Wren project “${theirs.name}”` : 'a Wren project';
       return {
         code: 'OTHER_PROJECT',
-        message:
-          'This folder holds a different Wren project, so nothing was written. Pick an empty folder or the folder of this project.',
+        message: `This folder already holds ${found}, saved from another copy, so nothing was written. Replace it if it is this project; otherwise pick another folder.`,
+        replaceable: true,
+        ...(theirs.name ? { name: theirs.name } : {}),
       };
     }
-    same = true;
-  } else {
+  } else if (!options.replace) {
     // Not a Wren project: files the save would overwrite are someone else's.
     const clash = [...files.keys()].filter((p) => have.has(p)).sort();
     if (clash.length) {
       return {
         code: 'FOREIGN_FILES',
-        message: `This folder is not a Wren project but already has ${clash.slice(0, 3).join(', ')}${clash.length > 3 ? ' and more' : ''}, so nothing was written. Pick an empty folder.`,
+        message: `This folder is not a Wren project but already has ${clash.slice(0, 3).join(', ')}${clash.length > 3 ? ' and more' : ''}, so nothing was written. Replace those files, or pick an empty folder.`,
         paths: clash,
+        replaceable: true,
       };
     }
   }
@@ -115,8 +137,11 @@ export function planProjectFolder(
     .sort(
       (a, b) => rank(a.path) - rank(b.path) || (a.path < b.path ? -1 : a.path > b.path ? 1 : 0),
     );
-  const deletes = same
-    ? [...have].filter((p) => !files.has(p) && isModelFile(p) && safe(p)).sort()
+  // Only what the folder's own manifest names: Wren wrote those. Nothing else is ever removed.
+  const deletes = hasManifest
+    ? [...new Set(manifestRefs(existing.manifest))]
+        .filter((p) => have.has(p) && !files.has(p) && isModelFile(p) && safe(p))
+        .sort()
     : [];
   return { ok: true, writes, deletes };
 }
@@ -184,9 +209,10 @@ export type FolderSaveOutcome =
 export async function writeProjectFolder(
   root: FolderHandle,
   files: ProjectFiles,
+  options: FolderPlanOptions = {},
 ): Promise<FolderSaveOutcome> {
   try {
-    const plan = planProjectFolder(await listProjectFolder(root), files);
+    const plan = planProjectFolder(await listProjectFolder(root), files, options);
     if (!('ok' in plan)) return { ok: false, refusal: plan };
     let written = 0;
     let unchanged = 0;
