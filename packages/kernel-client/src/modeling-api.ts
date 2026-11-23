@@ -35,6 +35,7 @@ import {
   type RegenOutput,
   type SketchSolve,
 } from './regen/engine';
+import type { SketchGenerated } from './regen/generated';
 import type { ReprojectLinked } from './regen/linked';
 import { reprojectLinkedSketch } from './regen/linked-sketch';
 import type { ImportedPmi } from './regen/pmi';
@@ -53,6 +54,17 @@ export type ModelingWorkerApi = Omit<ModelingApi, 'regenerate' | 'compare'> &
      * for the app to make part annotations. `supported: false` when the kernel reads no PMI.
      */
     importedPmi(partId: Id, featureId: Id, slot?: RegenSlot): Promise<Result<ImportedPmi>>;
+    /**
+     * ADR-101 (proposed for the contract): what a sketch entity generated in the latest regen of
+     * `slot` (default `'main'`): each consuming feature's faces, edges or vertices by persistent
+     * name, followed to the final state, and whether that is exactly one sub-shape. Never a guess.
+     */
+    sketchGenerated(
+      partId: Id,
+      sketchId: Id,
+      entityId: Id,
+      slot?: RegenSlot,
+    ): Promise<Result<SketchGenerated>>;
     /** E2E only: see `KernelLowLevelApi.debugPmiFacade`. */
     debugPmiFacade(mode: 'off' | 'geometryOnly'): Promise<void>;
     /** `GeometricDiff` plus `warnings` for bodies left out (proposed for the contract). */
@@ -172,6 +184,8 @@ export function createModelingApi(deps: ModelingApiDeps): ModelingApiImpl {
       return r.ok ? transfer(r, [r.bytes.buffer as ArrayBuffer]) : r;
     },
     importedPmi: (partId, featureId, slot) => engine.importedPmi(partId, featureId, slot),
+    sketchGenerated: (partId, sketchId, entityId, slot) =>
+      engine.sketchGenerated(partId, sketchId, entityId, slot),
     async importFile(bytes, format) {
       const r = await engine.importFile(bytes, format);
       return r.ok ? transfer(r, meshListTransferables(r.bodies.map((b) => b.mesh))) : r;

@@ -37,4 +37,13 @@ export type {
   RegenSlotStats,
   RegenUnresolvedRef,
 } from './regen/engine';
+export type {
+  GeneratedConsumer,
+  GeneratedNow,
+  GeneratedOutcome,
+  GeneratedSub,
+  GeneratedTarget,
+  NothingWhy,
+  SketchGenerated,
+} from './regen/generated';
 export type { ImportedPmi } from './regen/pmi';

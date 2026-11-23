@@ -21,11 +21,13 @@ import type {
   Expr,
   GeometricCharacteristic,
   Id,
+  LinearDimension,
   PmiImportItem,
   PmiImportResult,
   PmiTarget,
   PmiToleranceType,
   Tolerance,
+  Vec3,
 } from '@wren-cad/contracts';
 import { PMI_TOLERANCE_TYPES } from './export-map';
 
@@ -317,6 +319,15 @@ function dimensionAnnotation(
     case 'linearDistance':
       if (refs.length !== 2) {
         return { reason: `A distance on ${refs.length} entities has no Wren equivalent` };
+      }
+      // v2 (ADR-101): measured along a direction.
+      if (item.direction) {
+        const linear: Omit<LinearDimension, 'id'> = {
+          ...base,
+          kind: 'linear',
+          direction: [...item.direction] as Vec3,
+        };
+        return linear;
       }
       return { ...base, kind: 'linear' };
     case 'size':

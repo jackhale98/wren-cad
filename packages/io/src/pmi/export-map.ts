@@ -26,6 +26,7 @@ import type {
   PmiTarget,
   PmiToleranceType,
   Tolerance,
+  Vec3,
 } from '@wren-cad/contracts';
 
 /** Evaluates an annotation `Expr`: lengths in mm, angles in rad; undefined when it fails. */
@@ -202,6 +203,9 @@ function dimensionItem(
     targets,
     value,
     ...(tol.tolerance ? { tolerance: tol.tolerance } : {}),
+    // v2 (ADR-101): the direction a linear distance is measured along (sketch hDistance /
+    // vDistance, drawing dimensions picked horizontal or vertical).
+    ...(a.kind === 'linear' && a.direction ? { direction: [...a.direction] as Vec3 } : {}),
   };
   return { ok: true, item, notes };
 }

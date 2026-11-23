@@ -92,6 +92,31 @@ describe('annotations → PMI export items', () => {
     }
   });
 
+  it('writes a linear dimension’s direction (v2), and none for aligned or without one', () => {
+    const lin = {
+      id: ids(1),
+      kind: 'linear',
+      origin: model,
+      refs: [edge('a'), edge('b')],
+      direction: [0, 1, 0],
+    } as Annotation;
+    const d = exportOne(lin, ok(lin.id, 8), [T(3, 'edge'), T(7, 'edge')]);
+    expect(d.ok && d.item).toEqual({
+      annotationId: lin.id,
+      kind: 'dimension',
+      type: 'linearDistance',
+      targets: [T(3, 'edge'), T(7, 'edge')],
+      value: 8,
+      direction: [0, 1, 0],
+    });
+    const free = { ...lin, direction: undefined } as Annotation;
+    const f = exportOne(free, ok(free.id, 8), [T(3), T(7)]);
+    expect(f.ok && 'direction' in f.item).toBe(false);
+    const aligned = { id: ids(2), kind: 'aligned', origin: model, refs: lin.refs } as Annotation;
+    const g = exportOne(aligned, ok(aligned.id, 8), [T(3), T(7)]);
+    expect(g.ok && 'direction' in g.item).toBe(false);
+  });
+
   it('maps diameter, radius and angle, and their tolerances', () => {
     const dia: Annotation = {
       id: ids(2),
@@ -708,6 +733,14 @@ describe('export → import → export is a fixpoint', () => {
         targets: [T(3)],
         value: 6,
         tolerance: { kind: 'deviation', upper: 0.012, lower: 0 },
+      },
+      {
+        annotationId: ids(66),
+        kind: 'dimension',
+        type: 'linearDistance',
+        targets: [T(4), T(5)],
+        value: 8,
+        direction: [0, 1, 0],
       },
       { annotationId: ids(62), kind: 'datum', label: 'A', targets: [T(1)] },
       { annotationId: ids(63), kind: 'datum', label: 'B', targets: [T(3)] },
