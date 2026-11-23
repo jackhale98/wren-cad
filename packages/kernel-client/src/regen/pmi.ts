@@ -40,7 +40,7 @@ import type {
 } from '@wren-cad/contracts';
 import { expressionEngine, scopeOf } from '@wren-cad/document';
 import { fitToleranceDeviations } from '@wren-cad/document/drawing';
-import { annotationPresentations, strokeFont } from '@wren-cad/drawing/pmi';
+import { annotationPresentations, profileLineAcross, strokeFont } from '@wren-cad/drawing/pmi';
 import {
   type PmiExportNote,
   type PmiImportEntry,
@@ -50,7 +50,8 @@ import {
 import { type AnnotationRefTarget, annotationRefTargets, resolveAnnotations } from './annotations';
 import type { EngineCore } from './core';
 import { importedBodyNaming } from './exec-import';
-import { generatedReason, sketchEntityGenerated } from './generated';
+import { generatedReason, regionCurves, sketchEntityGenerated } from './generated';
+import { dot, frameY, normalize } from './geometry';
 import { kerr } from './helpers';
 import { fingerprintOf } from './refs';
 import { type BodyState, type PartCache, primaryNaming, type WalkContext } from './state';
@@ -110,7 +111,8 @@ export async function planStepPmi(
     const out: PmiTargetOrWhy[] = [];
     for (let i = 0; i < raw.length; i++) {
       const ref = a.refs[i] as EntityRef;
-      const g = sketchTarget(final, ref, a.at?.[i] ?? 'self');
+      const direction = a.kind === 'linear' || a.kind === 'ordinate' ? a.direction : undefined;
+      const g = sketchTarget(final, ref, a.at?.[i] ?? 'self', direction);
       const t = g ?? (raw[i] as AnnotationRefTarget);
       if (g && 'note' in g && g.note)
         sketchNotes.set(a.id, [...(sketchNotes.get(a.id) ?? []), g.note]);
@@ -212,6 +214,7 @@ function sketchTarget(
   final: WalkContext,
   ref: EntityRef,
   at: RefPoint,
+  direction?: Vec3,
 ):
   | AnnotationRefTarget
   | (Extract<AnnotationRefTarget, { owner: string }> & { note?: string })
@@ -232,6 +235,9 @@ function sketchTarget(
   }
   const g = sketchEntityGenerated(final, sketchId, entityId);
   const o = g.outcome;
+  if (o.kind === 'removed' && g.entity === 'point' && direction) {
+    return besideRemovedCorner(final, name, g, o, direction);
+  }
   if (o.kind !== 'unique') {
     return { reason: generatedReason(final, name, g) ?? `${name} generated nothing` };
   }
@@ -247,6 +253,63 @@ function sketchTarget(
   return {
     ...t,
     note: `${name}: exported on ${o.target.name}, which ${by ? `‘${by.name}’` : 'a boolean'} merged its ${o.target.kind} ${o.name} into`,
+  };
+}
+
+/**
+ * A corner whose swept edge a later feature removed (a fillet, a chamfer, a cut), measured along
+ * `direction`: the distance from it along `direction` is the distance from the profile line
+ * through it that runs across `direction` (`profileLineAcross`, the drawing import's rule), so the
+ * dimension is attached to the planar side face that line generated, with a note. Only when that
+ * line is one line of the consumer's profile and its face is `unique` and present (not merged);
+ * otherwise the corner's own reason, and why the face beside it does not stand in.
+ */
+function besideRemovedCorner(
+  final: WalkContext,
+  name: string,
+  g: ReturnType<typeof sketchEntityGenerated>,
+  o: Extract<ReturnType<typeof sketchEntityGenerated>['outcome'], { kind: 'removed' }>,
+  direction: Vec3,
+): AnnotationRefTarget | (Extract<AnnotationRefTarget, { owner: string }> & { note: string }) {
+  const gone = generatedReason(final, name, g) ?? `${name} generated nothing`;
+  const s = final.state.sketches.get(g.sketchId);
+  const k = final.index.get(o.featureId);
+  const consumer = k === undefined ? undefined : final.part.features[k];
+  if (!s || !consumer) return { reason: gone };
+  // The measuring direction in the sketch's u/v; it must lie in the sketch plane.
+  const d = normalize(direction);
+  const along: [number, number] = [dot(d, s.frame.x), dot(d, frameY(s.frame))];
+  const inPlane = Math.abs(dot(d, normalize(s.frame.z))) <= 1e-9;
+  const across = `no single line of its profile through it runs across the dimension’s direction`;
+  if (!inPlane) return { reason: `${gone}; ${across}` };
+  const profiles =
+    consumer.type === 'extrude' || consumer.type === 'revolve' || consumer.type === 'sweep'
+      ? consumer.profile
+      : consumer.type === 'loft'
+        ? consumer.sections
+        : [];
+  const loop = new Set<Id>();
+  for (const r of profiles) for (const c of regionCurves(r.name, g.sketchId) ?? []) loop.add(c);
+  const line = profileLineAcross(s.entities, loop, g.entityId, along);
+  if (line === undefined) return { reason: `${gone}; ${across}` };
+  const lineName = `S${g.sketchId}:e(${line})`;
+  const face = sketchEntityGenerated(final, g.sketchId, line);
+  const f = face.outcome;
+  if (f.kind !== 'unique' || f.merged || f.featureId !== o.featureId) {
+    const why =
+      f.kind === 'unique'
+        ? `the face made from ${lineName} is merged into ${f.target.name}`
+        : (generatedReason(final, lineName, face) ?? `${lineName} generated nothing`);
+    return { reason: `${gone}; the face beside it does not stand in: ${why}` };
+  }
+  const by = o.by === null ? undefined : final.index.get(o.by);
+  const remover = by === undefined ? undefined : final.part.features[by];
+  return {
+    owner: f.target.owner,
+    kind: f.target.kind,
+    index: f.target.index,
+    name: f.target.name,
+    note: `${name}: its corner edge was removed by ${remover ? `‘${remover.name}’` : 'a later feature'}; attached to ${f.target.name}, the face of ${lineName} next to the removed corner`,
   };
 }
 

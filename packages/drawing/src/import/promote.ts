@@ -19,6 +19,7 @@ import type {
   SketchFeature,
   Vec3,
 } from '@wren-cad/contracts';
+import { profileLineAcross } from './profile-line';
 
 export interface SketchFrame {
   origin: Vec3;
@@ -269,25 +270,10 @@ function copiedProfileRefs(
       : undefined;
   }
   if (c.kind !== 'hDistance' && c.kind !== 'vDistance') return undefined;
-  const pt = (id: Id) => {
-    const e = byId.get(id);
-    return e?.kind === 'point' ? e : undefined;
-  };
+  const pt = (id: Id) => byId.get(id)?.kind === 'point';
   // hDistance measures along the sketch x: the lines that give it are vertical.
-  const across = c.kind === 'hDistance' ? 'x' : 'y';
-  const through = (p: Id): Id | undefined => {
-    const lines: Id[] = [];
-    for (const e of f.entities) {
-      if (e.kind !== 'line' || !loop.has(e.id) || (e.start !== p && e.end !== p)) continue;
-      const a = pt(e.start);
-      const b = pt(e.end);
-      if (!a || !b) continue;
-      const d = across === 'x' ? Math.abs(a.x - b.x) : Math.abs(a.y - b.y);
-      const l = Math.hypot(a.x - b.x, a.y - b.y);
-      if (l > 0 && d <= 1e-9 * Math.max(1, l)) lines.push(e.id);
-    }
-    return lines.length === 1 ? lines[0] : undefined;
-  };
+  const along: [number, number] = c.kind === 'hDistance' ? [1, 0] : [0, 1];
+  const through = (p: Id) => profileLineAcross(f.entities, loop, p, along);
   const la = pt(c.a) ? through(c.a) : undefined;
   const lb = pt(c.b) ? through(c.b) : undefined;
   return la && lb && la !== lb ? [face(la), face(lb)] : undefined;

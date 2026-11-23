@@ -29,9 +29,11 @@ import { reprojectLinkedSketch } from '../../src/regen/linked-sketch';
 import {
   built,
   describeFailures,
+  edge,
   edgeName,
   extrude,
   fid,
+  fillet,
   makeDoc,
   part,
   region,
@@ -45,6 +47,11 @@ import {
 const S = fid('QS1');
 const E = fid('QE1');
 const S2 = fid('QS2');
+const S4 = fid('QS4');
+const E4 = fid('QE4');
+const FL = fid('QF4');
+const SN = fid('QSN');
+const EN = fid('QEN');
 const E2 = fid('QE2');
 const E3 = fid('QE3');
 const PART = fid('QPART');
@@ -174,15 +181,43 @@ describe.skipIf(!built)(`STEP AP242 PMI of sketch dimensions${skipNote}`, () => 
     // Sketch 1: one extrude. Sketch 2 (same outline, beside it): its region extruded twice.
     const s2 = outline();
     for (const e of s2.entities) if (e.kind === 'point') e.y -= 40;
+    // Sketch 4: a block whose corner pa the fillet removes and whose left face (L4, the line
+    // through pa across x) a notch splits: the face beside the corner cannot stand in.
+    const s4 = new Sk();
+    s4.rect('p', 'L', 100, 0, 120, 10);
+    const notch = new Sk();
+    notch.rect('n', 'N', 99, 4, 103, 6);
+    for (const k of [s4, notch])
+      for (const e of k.entities) if (e.kind === 'point') k.geo({ kind: 'fix', entity: e.id });
+    const block = (e: string) => side(E4, S4, e);
     const features: Feature[] = [
       outline().feature(S),
       extrude(E, [region(S, PROFILE)], '5'),
       s2.feature(S2),
       { ...extrude(E2, [region(S2, PROFILE)], '5'), name: 'Upper' },
       { ...extrude(E3, [region(S2, PROFILE)], '3', 'new', 'reverse'), name: 'Lower' },
+      s4.feature(S4),
+      extrude(E4, [region(S4, 'L1,L2,L3,L4')], '5'),
+      fillet(FL, [edge(edgeName(block('L1'), block('L4')))], '1 mm'),
+      notch.feature(SN),
+      { ...extrude(EN, [region(SN, 'N1,N2,N3,N4')], '20', 'cut', 'symmetric'), name: 'Notch' },
     ];
     const doc: WrenDoc = makeDoc({}, features, PART);
-    part(doc).annotations = [...annotations(S, 0), ...annotations(S2, 10)];
+    const corner = (n: number, direction: [number, number, number], to: string): Annotation =>
+      ({
+        id: id(n),
+        kind: 'linear',
+        origin: model,
+        refs: [sk(S4, 'pa', true), sk(S4, to, true)],
+        direction,
+        nominal: '20 mm',
+      }) as Annotation;
+    part(doc).annotations = [
+      ...annotations(S, 0),
+      ...annotations(S2, 10),
+      corner(21, [1, 0, 0], 'pb'),
+      corner(22, [0.6, 0.8, 0], 'pc'),
+    ];
     regen = await engine.regenerate({ doc, partId: PART, quality: 'coarse', annotations: true });
     expect(states(regen), describeFailures(regen)).toEqual(features.map(() => 'ok'));
     const r = await engine.exportPart(PART, 'step', { pmi: { presentation: false } });
@@ -252,6 +287,20 @@ describe.skipIf(!built)(`STEP AP242 PMI of sketch dimensions${skipNote}`, () => 
     expect(skipped.get(id(13))).toBe(what('A1', 'face'));
     expect(skipped.get(id(15))).toBe(what('a', 'edge'));
     expect(report?.exported).toBe(5);
+    // Only the corner fallback could note anything; nothing here used it.
     expect(report?.notes).toBeUndefined();
+  });
+
+  it('a removed corner whose neighbouring face is not unique, or has none across: skipped', () => {
+    const skipped = new Map((report?.skipped ?? []).map((s) => [s.annotationId, s.reason]));
+    const gone = `The edge ‘Extrude’ made from S${S4}:p(pa) was removed by ‘Fillet’`;
+    expect(item(21)).toBeUndefined();
+    expect(skipped.get(id(21))).toBe(
+      `${gone}; the face beside it does not stand in: The face ‘Extrude’ made from S${S4}:e(L4) was split into 2 by ‘Notch’`,
+    );
+    expect(item(22)).toBeUndefined();
+    expect(skipped.get(id(22))).toBe(
+      `${gone}; no single line of its profile through it runs across the dimension’s direction`,
+    );
   });
 });

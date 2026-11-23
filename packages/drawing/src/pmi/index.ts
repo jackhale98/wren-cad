@@ -12,4 +12,5 @@ export {
   strokeFont,
   strokeText,
 } from '../font/glyph-outlines';
+export { profileLineAcross } from '../import/profile-line';
 export * from './presentation';

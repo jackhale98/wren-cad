@@ -4,7 +4,7 @@
  * and a section, "Import model annotations" planned with the kernel's anchors, plus datums A, B
  * (and C on the hole's size), a flatness, a perpendicularity and a position frame, and tolerances.
  *
- * Checks: 26 items; every item is one of the drawing's annotations with the same id, kind and
+ * Checks: 28 items; every item is one of the drawing's annotations with the same id, kind and
  * value; every annotation the export leaves out says why; each target is the face the
  * annotation's ref resolves to (by name, never guessed); presentation comes from the drawing
  * views; the plan is deterministic.
@@ -12,9 +12,11 @@
  * Sketch dimensions (ADR-101 phase 1c): the import-planned dimensions whose refs are sketch
  * entities export on what those entities generated (`sketchEntityGenerated`): the hole circles'
  * diameters on the cut's cylinders, the upright's thickness between the edges swept from its
- * corners (both merged into the plate's faces by the add: exported on the survivors, noted). The
- * rest stay skipped, each with its own reason: the plate's width and depth (their corner edges
- * were removed by the corner fillet) and every dimension from a sketch's construction origin.
+ * corners (both merged into the plate's faces by the add: exported on the survivors, noted), and
+ * the plate's width and depth: their corner edges were removed by the corner fillet, so each such
+ * corner is attached to the side face of the profile line through it across the dimension's
+ * direction (the drawing import's rule, `profileLineAcross`), noted. Every dimension from a
+ * sketch's construction origin stays skipped with that reason.
  *
  * Round trip (simulated façade, see `fakeFacade`): the items are written with a real AP242 file of
  * the shapes, read back as `PmiImportItem`s on the re-read body, mapped to the import feature's
@@ -574,14 +576,22 @@ describe.skipIf(!built)(`STEP AP242 PMI export of the M4 bracket${skipNote}`, ()
       direction: [0, 1, 0],
     });
     expect(item(upright)?.targets.map((t) => t.kind)).toEqual(['edge', 'edge']);
+    // Plate width and depth: corners whose edges the fillet removed stand in by the face beside.
+    expect(item(fromSketch(B.S1, 'd5'))).toMatchObject({
+      type: 'linearDistance',
+      value: 80,
+      direction: [1, 0, 0],
+    });
+    expect(item(fromSketch(B.S1, 'd5'))?.targets.map((t) => t.kind)).toEqual(['face', 'face']);
+    expect(item(fromSketch(B.S1, 'd6'))).toMatchObject({
+      type: 'linearDistance',
+      value: 50,
+      direction: [0, 1, 0],
+    });
+    // pb's edge is gone (the face beside it), pc's is there (its own edge).
+    expect(item(fromSketch(B.S1, 'd6'))?.targets.map((t) => t.kind)).toEqual(['face', 'edge']);
     // Skipped, each with its own reason.
     const reason = (s: Id, c: string) => skipped.get(fromSketch(s, c).id);
-    expect(reason(B.S1, 'd5')).toBe(
-      `The edge ‘Extrude’ made from S${B.S1}:p(pa) was removed by ‘Fillet’`,
-    );
-    expect(reason(B.S1, 'd6')).toBe(
-      `The edge ‘Extrude’ made from S${B.S1}:p(pb) was removed by ‘Fillet’`,
-    );
     for (const c of ['d3', 'd4', 'd6'])
       expect(reason(B.S2, c)).toBe(
         `S${B.S2}:p(o) is construction geometry: it generated no face or edge`,
@@ -589,9 +599,10 @@ describe.skipIf(!built)(`STEP AP242 PMI export of the M4 bracket${skipNote}`, ()
     expect(reason(B.S3, 'd9')).toBe(
       `S${B.S3}:p(o) is construction geometry: it generated no face or edge`,
     );
-    // 23 exported from face annotations alone before; now 26.
-    expect(items.length).toBe(26);
-    expect(exported.pmi?.exported).toBe(26);
+    // 23 exported from face annotations alone before 1c; 26 with sketch refs; 28 with the
+    // face beside a removed corner.
+    expect(items.length).toBe(28);
+    expect(exported.pmi?.exported).toBe(28);
   });
 
   it('targets are the faces the refs resolve to, and frames follow their datums and dimensions', async () => {
@@ -645,6 +656,8 @@ describe.skipIf(!built)(`STEP AP242 PMI export of the M4 bracket${skipNote}`, ()
       edgeName(plateRight, uprightFront),
       edgeName(plateRight, plateBack),
     ]);
+    expect(names(fromSketch(B.S1, 'd5').id)).toEqual([plateLeft, plateRight]);
+    expect(names(fromSketch(B.S1, 'd6').id)).toEqual([plateFront, edgeName(plateRight, plateBack)]);
   });
 
   it('every item has presentation from its drawing view, on the view’s plane', () => {
@@ -677,14 +690,22 @@ describe.skipIf(!built)(`STEP AP242 PMI export of the M4 bracket${skipNote}`, ()
         }
       }
     }
-    // The only notes: the upright's corner edges are on the plate's faces the add merged them into.
+    // The only notes: the upright's corner edges are on the plate's faces the add merged them
+    // into; the plate's width and depth are on the faces next to the corners the fillet removed.
     const upright = fromSketch(B.S3, 'd7').id;
+    const width = fromSketch(B.S1, 'd5').id;
+    const depth = fromSketch(B.S1, 'd6').id;
     const notes = exported.pmi?.notes ?? [];
-    expect(notes.map((n) => n.annotationId)).toEqual([upright, upright]);
-    expect(notes[0]?.note).toBe(
+    const of = (id: Id) => notes.filter((n) => n.annotationId === id).map((n) => n.note);
+    expect(new Set(notes.map((n) => n.annotationId))).toEqual(new Set([upright, width, depth]));
+    expect(of(upright)[0]).toBe(
       `S${B.S3}:p(qb): exported on ${edgeName(plateRight, uprightFront)}, which ‘Extrude’ merged its edge ${edgeName(uprightFront, side(B.E3, B.S3, 'M2'))} into`,
     );
-    expect(notes[1]?.note).toMatch(/^S[0-9A-Z]+:p\(qc\): exported on edge\(/);
+    expect(of(upright)[1]).toMatch(/^S[0-9A-Z]+:p\(qc\): exported on edge\(/);
+    const beside = (p: string, line: string, face: string) =>
+      `S${B.S1}:p(${p}): its corner edge was removed by ‘Fillet’; attached to ${face}, the face of S${B.S1}:e(${line}) next to the removed corner`;
+    expect(of(width)).toEqual([beside('pa', 'L4', plateLeft), beside('pb', 'L2', plateRight)]);
+    expect(of(depth)).toEqual([beside('pb', 'L1', plateFront)]);
   });
 
   it('is deterministic, and the presentation can be left out', async () => {

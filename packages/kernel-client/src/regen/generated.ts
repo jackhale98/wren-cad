@@ -128,7 +128,7 @@ export interface SketchGenerated {
 const isBody = (c: WalkContainer) => !c.id.includes(':');
 
 /** `S<sk>:region(a,b|c)` → its curve ids without split suffixes, or null for another name. */
-function regionCurves(name: string, sketchId: Id): Set<string> | null {
+export function regionCurves(name: string, sketchId: Id): Set<string> | null {
   const prefix = `S${sketchId}:region(`;
   if (!name.startsWith(prefix)) return null;
   const close = name.lastIndexOf(')');
