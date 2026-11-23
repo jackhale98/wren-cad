@@ -202,6 +202,22 @@ describe('dimension labels', () => {
     expect(labelText(fit('symbolAndDeviations'))).toBe('Ø20 H7 (+0.021/0)');
     expect(labelText(fit('limitsAndSymbol'))).toBe('Ø20.021/20 (H7)');
     expect(labelText(fit('symbolAndDeviations', 'g6'))).toContain('H7/g6');
+    // At the usual two decimals the deviations and limits still show micrometres: +0.021 is not
+    // +0.02, and −0.007 is not −0.01.
+    const coarse = (show: 'symbolAndDeviations' | 'limitsAndSymbol', shaft?: string) =>
+      labelText(
+        dimensionLabel({
+          value: 20,
+          quantity: 'length',
+          size: 'diameter',
+          numbers: { ...iso, lengthPrecision: 2 },
+          tolerance: { kind: 'fit', hole: 'H7', ...(shaft ? { shaft } : {}), show },
+          fitDeviations: table,
+        }),
+      );
+    expect(coarse('symbolAndDeviations')).toBe('Ø20 H7 (+0.021/0)');
+    expect(coarse('symbolAndDeviations', 'g6')).toBe('Ø20 H7/g6 (+0.021/0 ; -0.007/-0.02)');
+    expect(coarse('limitsAndSymbol')).toBe('Ø20.021/20 (H7)');
   });
   it('falls back to the symbol and warns when the table has no entry', () => {
     const l = dimensionLabel({

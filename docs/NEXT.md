@@ -188,8 +188,22 @@ report and v2 mapping (app). Details: ADR-101 and its amendments, `PMI_VALIDATIO
   `setFeatureTint` and `setRegionPrism` on the viewport contract (today optional engine
   methods). `pnpm --filter @wren-cad/viewport perf`: 8 of 9; the 1M-triangle wheel burst fails
   the same way without the change (software rendering in the container).
-- In progress (drawing): the tolerance editor redesign and inspection dimensions (owner,
-  2026-11-23; `inspection?: boolean` added to the dimension contract).
+- Tolerance editor merged on the session branch (ADR-092 amendment; owner, 2026-11-23): the
+  dimension inspector and the hole callout's diameter tolerance choose a type first (None,
+  Symmetric, Deviation, Limits, Fit, Basic, Reference, each drawn as on the sheet), then show
+  that type's fields; fit classes come from pickers with live deviations; a preview shows the
+  text as the sheet draws it; typing it as written stays as a quick entry. Inspection
+  dimensions (`inspection?: boolean` on dimensions; the owner's "circled") draw a round-ended
+  frame on the sheet and in SVG, PDF and DXF; not written to STEP (no field for it, the export
+  says so). Lead fix: fit deviations and limits show at least three decimals (H7 on 20 mm was
+  +0.02, is +0.021). Open: what the frame encloses follows the common reading of ISO 129-1,
+  not checked against the text; ISO 286 values are still computed from the formulas
+  ("provisional"); proposed for 6.0: `inspection` on hole callouts, an `inspectionConflict`
+  issue kind.
+- UI harness screenshots (`packages/ui/e2e`, which CI runs with `--ignore-snapshots`): 23
+  baselines in `motion`, `m37` and `interactions` no longer match (panels render taller; the
+  3D mouse text and the export menu changed today, the rest is not explained yet). Not
+  regenerated: look at each before blessing it.
 - Next: Phase 3 starting with the 6.0 contract revision. Open: the first nightly Soak result.
 - Local E2E and agents: Playwright reuses a server on port 4173. An agent running E2Es in a
   worktree and the lead clash on it and each tests the other's build. Give every runner its

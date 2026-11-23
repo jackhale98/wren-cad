@@ -338,7 +338,7 @@ describe('ToleranceEditor: fits', () => {
 
   it('the preview shows the fit as the sheet draws it', async () => {
     setup({ value: { kind: 'fit', hole: 'H7', shaft: 'g6', show: 'symbolAndDeviations' } });
-    expect(previewText()).toBe('20 H7/g6 (+0.02/0 ; -0.01/-0.02)');
+    expect(previewText()).toBe('20 H7/g6 (+0.021/0 ; -0.007/-0.02)');
   });
 });
 

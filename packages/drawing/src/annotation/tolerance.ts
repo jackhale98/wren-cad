@@ -192,9 +192,15 @@ export function dimensionLabel(input: DimensionLabelInput): DimensionLabel {
       main.push({ kind: 'text', text: valueText });
       label.frame = 'parens';
       break;
-    case 'fit':
-      fitLabel(label, value, valueText, tol, fmt, input.fitDeviations);
+    case 'fit': {
+      // ISO 286 deviations are given in micrometres: at the usual two decimals H7 on 20 mm
+      // (+0.021) reads +0.02 and g6's −0.007 reads −0.01. They get at least three decimals.
+      const fine = Math.max(precision ?? numbers.lengthPrecision, 3);
+      const fmtFit = (x: number, sign = false) =>
+        formatLength(x, numbers, { precision: fine, sign });
+      fitLabel(label, value, valueText, tol, fmtFit, input.fitDeviations);
       break;
+    }
   }
   return label;
 }
