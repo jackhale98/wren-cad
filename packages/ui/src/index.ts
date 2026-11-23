@@ -143,7 +143,19 @@ export {
   type ExportMenuProps,
   ExportPanel,
 } from './export/ExportMenu';
-export { PmiReport, type PmiReportEntry, type PmiReportProps } from './export/PmiReport';
+export {
+  groupIssues,
+  type IssueGroup,
+  type IssueSeverity,
+  type ReportIssue,
+  severityCounts,
+} from './export/groupIssues';
+export {
+  PmiReport,
+  type PmiReportEntry,
+  type PmiReportProps,
+  reportSummary,
+} from './export/PmiReport';
 export {
   buildExportRequest,
   EXPORT_TARGETS,

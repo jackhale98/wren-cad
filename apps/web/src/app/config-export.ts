@@ -225,6 +225,7 @@ export async function exportAll(wb: Workbench, request: ExportRequest): Promise<
       pmiReport: {
         ...(ui[0]?.ui as NonNullable<ReturnType<typeof pmi.exportReportUi>>),
         title: `Exported ${exported} annotations as PMI in ${pmiReports.length} files (AP242)`,
+        counts: { done: exported, verb: 'exported' },
         entries: ui.flatMap((u) =>
           u.ui.entries.map((e) => ({ ...e, label: `${u.name}: ${e.label}` })),
         ),

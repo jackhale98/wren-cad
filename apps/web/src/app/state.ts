@@ -208,7 +208,15 @@ export interface PmiReportUi {
   kind: 'export' | 'import';
   title: string;
   summary?: string;
-  entries: { label: string; reason: string; tone: 'skipped' | 'note' }[];
+  /** The summary line's done count (`12 imported · 3 not imported · …`); absent: `summary` only. */
+  counts?: { done: number; verb: 'imported' | 'exported' };
+  /** Issues; the report groups them by `code` (else `reason`) and ranks them by `severity` (absent = lost). */
+  entries: {
+    label: string;
+    reason: string;
+    code?: string;
+    severity?: 'lost' | 'approximated' | 'cosmetic';
+  }[];
 }
 
 /** Settings surface (a panel, never a dialog): which tab is showing. */

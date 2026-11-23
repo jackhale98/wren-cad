@@ -117,7 +117,7 @@ test('STEP export with PMI: on by default, then a non-modal summary with every r
     'Exported 3 annotations as PMI (AP242)',
     { timeout: 30_000 },
   );
-  await expect(report.getByTestId('pmi-report-summary')).toContainText('2 not included');
+  await expect(report.getByTestId('pmi-report-summary')).toHaveText('3 exported · 2 not exported');
   const entries = report.getByTestId('pmi-report-entries').getByRole('listitem');
   await expect(entries).toHaveCount(2);
   await expect(entries.filter({ hasText: 'Linear dimension' })).toContainText(/Needs attention/);

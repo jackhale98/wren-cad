@@ -685,6 +685,19 @@ describe.skipIf(!built)(`STEP AP242 PMI export of the M4 bracket${skipNote}`, ()
       t.kind === 'face'
         ? centroidKey(w.fingerprints[t.body]?.faces[t.index - 1]?.centroid as Vec3)
         : `${t.kind}${t.index}`;
+    // Contract v2 fields (ADR-101) the current kernel build does not write or read yet: dropped on
+    // both sides until it does (then delete this list; the io tests cover the mapping itself).
+    const V2_PENDING = [
+      'direction',
+      'at',
+      'qualifier',
+      'ordinate',
+      'spherical',
+      'modifiers',
+      'projected',
+      'unequal',
+      'allAround',
+    ];
     const norm = (w: Written, items: PmiExportItem[]) =>
       items.map((i) => {
         const { presentation: _p, ...rest } = i;
@@ -692,6 +705,7 @@ describe.skipIf(!built)(`STEP AP242 PMI export of the M4 bracket${skipNote}`, ()
           string,
           unknown
         >;
+        for (const key of V2_PENDING) delete r[key];
         if (i.kind !== 'datum') r.value = Math.round(i.value * 1e9) / 1e9;
         if (i.kind === 'dimension' && i.tolerance?.kind === 'deviation') {
           r.tolerance = {

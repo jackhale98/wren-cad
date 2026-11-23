@@ -87,6 +87,7 @@ describe('annotations → PMI export items', () => {
           type: 'linearDistance',
           targets: [T(3), T(7)],
           value: 42.5,
+          ...(kind === 'ordinate' ? { direction: [1, 0, 0], ordinate: true } : {}),
         },
       });
     }
@@ -135,7 +136,7 @@ describe('annotations → PMI export items', () => {
     expect(d.item.tolerance.lower).toBeCloseTo(-Math.PI / 360, 12);
   });
 
-  it('writes limits as deviations and basic/reference without a tolerance, with a note', () => {
+  it('writes limits as deviations, and basic/reference without a tolerance but with a qualifier', () => {
     const lim: Annotation = {
       id: ids(5),
       kind: 'linear',
@@ -153,7 +154,8 @@ describe('annotations → PMI export items', () => {
       const b: Annotation = { ...lim, tolerance: { kind } } as Annotation;
       const e = exportOne(b, ok(b.id, 10), [T(1), T(2)]);
       expect(e.ok && 'tolerance' in e.item).toBe(false);
-      expect(e.ok && e.notes[0]).toMatch(new RegExp(kind));
+      expect(e.ok && e.item.kind === 'dimension' && e.item.qualifier).toBe(kind);
+      expect(e.ok && e.notes).toEqual([]);
     }
   });
 
@@ -305,12 +307,9 @@ describe('annotations → PMI export items', () => {
       refs: [face('t')],
     };
     const cases: [Partial<Annotation>, RegExp][] = [
-      [{ zone: { value: '0.05 mm', shape: 'sphericalDiameter' } }, /spherical/],
-      [{ zone: { value: '0.05 mm', modifiers: ['freeState'] } }, /freeState/],
-      [{ zone: { value: '0.05 mm', projected: '10 mm' } }, /projected/],
-      [{ zone: { value: '0.05 mm', unequal: '0.01 mm' } }, /unequally/],
+      [{ zone: { value: '0.05 mm', projected: 'x' } }, /projected zone height/],
+      [{ zone: { value: '0.05 mm', unequal: 'x' } }, /unequal zone offset/],
       [{ zone: { value: '0.05 mm', perUnit: { value: '0.01 mm', length: '100 mm' } } }, /per-unit/],
-      [{ allAround: true }, /all around/],
       [{ datums: [{ datums: [{ label: 'A' }, { label: 'B' }] }] }, /common datum/],
       [{ datums: [{ datums: [{ label: 'Z' }] }] }, /not bound/],
       [{ zone: { value: 'x' } }, /does not evaluate/],
@@ -649,11 +648,23 @@ describe('PMI import items → annotations', () => {
     expect(report.presentationOnly).toEqual([{ name: 'Note 3' }]);
     expect(report.skipped).toEqual([
       { name: 'GT7', reason: 'Tolerance value could not be read' },
-      { name: 'X', reason: 'Curve length dimensions have no Wren equivalent yet' },
-      { name: 'Y', reason: 'A distance on 1 entities has no Wren equivalent' },
-      { name: 'Z', reason: 'Face 2 of body 1 is not in the imported shape' },
-      { name: 'V', reason: 'It is attached to no model geometry' },
-      { name: 'U', reason: '“Q99” is not an ISO 286 hole class' },
+      {
+        name: 'X',
+        reason: 'Curve length dimensions have no Wren equivalent yet',
+        code: 'unsupportedDimension',
+      },
+      {
+        name: 'Y',
+        reason: 'A distance on 1 entities has no Wren equivalent',
+        code: 'dimensionArity',
+      },
+      {
+        name: 'Z',
+        reason: 'Face 2 of body 1 is not in the imported shape',
+        code: 'targetNotInBodies',
+      },
+      { name: 'V', reason: 'It is attached to no model geometry', code: 'noGeometry' },
+      { name: 'U', reason: '“Q99” is not an ISO 286 hole class', code: 'badTolerance' },
       { name: 'W', reason: '“a” is not a datum letter' },
     ]);
   });

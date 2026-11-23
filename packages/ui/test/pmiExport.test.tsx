@@ -94,17 +94,14 @@ describe('PMI report', () => {
     renderUI(
       <PmiReport
         title="Exported 16 annotations as PMI"
-        summary="2 not included"
         entries={[
           {
             label: 'Linear dimension 20',
             reason: 'Its sketch point is not on the solid',
-            tone: 'skipped',
           },
           {
             label: 'Chamfer callout',
             reason: 'Chamfer callouts are not exported as PMI yet',
-            tone: 'skipped',
           },
         ]}
         onDismiss={onDismiss}
@@ -120,20 +117,61 @@ describe('PMI report', () => {
     expect(onDismiss).toHaveBeenCalled();
   });
 
-  it('collapses a long list and opens it in place', async () => {
+  it('groups a repeated cause into one line with a count', async () => {
     renderUI(
       <PmiReport
-        title="Imported 3 annotations from nist_ctc_01.step"
+        title="Imported 3 annotations from a.step"
         entries={Array.from({ length: 9 }, (_, i) => ({
           label: `GT${i}`,
           reason: 'Tolerance value could not be read',
-          tone: 'skipped' as const,
         }))}
         onDismiss={() => {}}
       />,
     );
-    expect(screen.queryByTestId('pmi-report-entries')).toBeNull();
-    await userEvent.click(screen.getByRole('button', { name: 'Show 9 items' }));
-    await waitFor(() => expect(screen.getAllByRole('listitem')).toHaveLength(9));
+    const rows = within(screen.getByTestId('pmi-report-entries')).getAllByRole('listitem');
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toHaveTextContent('9× Tolerance value could not be read');
+    expect(rows[0]).toHaveTextContent('GT0, GT1, GT2 and 6 more');
+    await userEvent.click(screen.getByRole('button', { name: 'Hide details' }));
+    await waitFor(() => expect(screen.queryByTestId('pmi-report-entries')).toBeNull());
+  });
+
+  it('shows summary counts, lost before approximated, cosmetic behind one line', async () => {
+    renderUI(
+      <PmiReport
+        title="Imported 12 annotations from a.step"
+        counts={{ done: 12, verb: 'imported' }}
+        entries={[
+          { label: 'F1', reason: 'Filled text', code: 'filledPresentation', severity: 'cosmetic' },
+          { label: 'F2', reason: 'Filled text', code: 'filledPresentation', severity: 'cosmetic' },
+          { label: 'A1', reason: 'Zone read as cylindrical', severity: 'approximated' },
+          { label: 'L1', reason: 'No value' },
+          { label: 'L2', reason: 'No geometry', code: 'datumNoGeometry', severity: 'lost' },
+          { label: 'L3', reason: 'No geometry', code: 'datumNoGeometry', severity: 'lost' },
+        ]}
+        onDismiss={() => {}}
+      />,
+    );
+    const report = screen.getByTestId('pmi-report');
+    expect(within(report).getByTestId('pmi-report-summary')).toHaveTextContent(
+      '12 imported · 3 not imported · 1 approximated · 2 cosmetic',
+    );
+    const rows = within(within(report).getByTestId('pmi-report-entries')).getAllByRole('listitem');
+    expect(rows.map((r) => r.getAttribute('data-severity'))).toEqual([
+      'lost',
+      'lost',
+      'approximated',
+    ]);
+    expect(rows[0]).toHaveTextContent('2× No geometry');
+    expect(within(report).queryByTestId('pmi-report-cosmetic')).toBeNull();
+    const toggle = within(report).getByTestId('pmi-report-cosmetic-toggle');
+    expect(toggle).toHaveTextContent('2 cosmetic differences');
+    await userEvent.click(toggle);
+    const cosmetic = within(report).getByTestId('pmi-report-cosmetic');
+    expect(within(cosmetic).getAllByRole('listitem')).toHaveLength(1);
+    // Non-modal, never takes focus.
+    expect(report.contains(document.activeElement) && document.activeElement !== toggle).toBe(
+      false,
+    );
   });
 });

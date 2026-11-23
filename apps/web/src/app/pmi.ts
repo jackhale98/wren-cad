@@ -70,13 +70,6 @@ export function exportReportUi(
 ): PmiReportUi {
   const byId = new Map(annotations.map((a) => [a.id, a]));
   const label = (id: Id) => annotationLabel(byId.get(id), id, values.get(id));
-  const parts = [
-    report.skipped.length > 0 ? `${report.skipped.length} not included` : null,
-    notes.length > 0 ? `${plural(notes.length, 'note')}` : null,
-    presentation
-      ? null
-      : 'Without presentation: viewers show no annotations, and re-importing makes new annotations (ids are kept only with presentation)',
-  ].filter((x): x is string => x !== null);
   return {
     id: ++seq,
     kind: 'export',
@@ -84,17 +77,23 @@ export function exportReportUi(
       report.exported === 0
         ? 'No annotations were exported as PMI'
         : `Exported ${plural(report.exported, 'annotation')} as PMI (AP242)`,
-    ...(parts.length > 0 ? { summary: parts.join(' · ') } : {}),
+    counts: { done: report.exported, verb: 'exported' },
+    ...(presentation
+      ? {}
+      : {
+          summary:
+            'Without presentation: viewers show no annotations, and re-importing makes new annotations (ids are kept only with presentation)',
+        }),
     entries: [
       ...report.skipped.map((s) => ({
         label: label(s.annotationId),
         reason: s.reason,
-        tone: 'skipped' as const,
+        severity: 'lost' as const,
       })),
       ...notes.map((n) => ({
         label: label(n.annotationId),
         reason: n.note,
-        tone: 'note' as const,
+        severity: 'approximated' as const,
       })),
     ],
   };
@@ -107,13 +106,6 @@ export function importReportUi(
   report: PmiImportReport,
 ): PmiReportUi {
   const byId = new Map(annotations.map((a) => [a.id, a]));
-  const parts = [
-    report.skipped.length > 0 ? `${report.skipped.length} not imported` : null,
-    report.presentationOnly.length > 0
-      ? `${report.presentationOnly.length} presentation only`
-      : null,
-    report.notes.length > 0 ? plural(report.notes.length, 'to check', 'to check') : null,
-  ].filter((x): x is string => x !== null);
   return {
     id: ++seq,
     kind: 'import',
@@ -121,22 +113,25 @@ export function importReportUi(
       report.imported.length === 0
         ? `No annotations were imported from ${file}`
         : `Imported ${plural(report.imported.length, 'annotation')} from ${file}`,
-    ...(parts.length > 0 ? { summary: parts.join(' · ') } : {}),
+    counts: { done: report.imported.length, verb: 'imported' },
+    // Grouped and ranked by the report component (`groupIssues`): code, else reason.
     entries: [
       ...report.skipped.map((s) => ({
         label: s.name ?? 'Unnamed entity',
         reason: s.reason,
-        tone: 'skipped' as const,
+        ...(s.code ? { code: s.code } : {}),
+        severity: s.severity ?? ('lost' as const),
       })),
       ...report.presentationOnly.map((p) => ({
         label: p.name ?? 'Unnamed annotation',
         reason: 'Presentation only (no semantics): shown in 3D once MBD display lands (M5b)',
-        tone: 'skipped' as const,
+        code: 'presentationOnly',
+        severity: 'lost' as const,
       })),
       ...report.notes.map((n) => ({
         label: annotationLabel(byId.get(n.annotationId), n.annotationId),
         reason: n.note,
-        tone: 'note' as const,
+        severity: 'approximated' as const,
       })),
     ],
   };
@@ -159,7 +154,7 @@ export function unreadReportUi(file: string, c: StepPmiCensus): PmiReportUi {
       {
         label: 'PMI in the file',
         reason: `${what.join(', ')} (STEP entities). This version of Wren's geometry kernel cannot read PMI yet.`,
-        tone: 'skipped',
+        severity: 'lost',
       },
     ],
   };
@@ -210,7 +205,7 @@ export async function importStepPmi(
               label: 'PMI in the file',
               reason:
                 'The kernel read no PMI from it. Check the file in the NIST STEP File Analyzer.',
-              tone: 'skipped',
+              severity: 'lost',
             },
           ],
         },
