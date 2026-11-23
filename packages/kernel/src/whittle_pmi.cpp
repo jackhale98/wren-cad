@@ -25,8 +25,14 @@
 //
 // Import (`importFile` STEP): every XCAF dimension, tolerance and datum becomes a contracts
 // `PmiImportItem` on the returned bodies' TopExp indices; what cannot be mapped or read becomes an
-// issue with what is known. OCCT 8.0.1 reads datums only through the tolerances that reference
-// them; a datum of the file that no tolerance uses is listed as an issue (model scan below).
+// issue with a stable `code` and a `severity` (lost, approximated, cosmetic). Where OCCT 8.0.1's
+// reader drops what the file states (datum faces given otherwise than by a
+// geometric_item_specific_usage, datums no tolerance references, measuring directions, typed
+// SET_REPRESENTATION_ITEM lists, complex GD&T entities it has no class for), the STEP model is
+// read directly (whittle_pmi_step.cpp); nothing is inferred from geometry.
+//
+// Contract v2 (ADR-101): written where XCAF or the STEP model can hold it (see the export
+// functions and applyPmiStepFixups), noted in the export report where not.
 
 // ---------------------------------------------------------------------------------------------
 // Shared
@@ -174,6 +180,29 @@ std::string fitClassText(bool hole, XCAFDimTolObjects_DimensionFormVariance vari
   return (hole ? letters : lowerAscii(letters)) + digits;
 }
 
+// Contracts RefPoint.
+const char* const kRefPoints[] = {"self", "center", "axis", "start", "end", "mid", "min", "max"};
+
+bool isRefPoint(const std::string& s) {
+  for (const char* p : kRefPoints) {
+    if (s == p) return true;
+  }
+  return false;
+}
+
+// Wren's own descriptions on a dimension (written by exportStepPmi) and the CAx-IF 'dimensional
+// note' (basic = 'theoretical', reference = 'auxiliary').
+constexpr const char* kWrenPointsDescription = "wren measured points";
+constexpr const char* kWrenFormDescription = "wren dimension form";
+constexpr const char* kDimensionalNote = "dimensional note";
+
+// A value as people write it in a message (0.05, not 0.050000000000000003).
+std::string shortNumber(double v) {
+  char buf[32];
+  std::snprintf(buf, sizeof buf, "%.6g", v);
+  return buf;
+}
+
 std::string hasciiText(const occ::handle<TCollection_HAsciiString>& s) {
   if (s.IsNull()) return std::string();
   return std::string(s->ToCString());
@@ -189,12 +218,21 @@ struct PmiExportReportData {
   std::vector<std::pair<std::string, std::string>> notes;    // annotation id, note
 };
 
+// What the XCAF writer cannot express, completed in the STEP model after transfer, by
+// annotation id (the id names the dimension's and tolerance's shape aspect).
+struct PmiStepFixups {
+  std::map<std::string, gp_Dir> orientation;  // linear distance → measuring direction
+  std::map<std::string, double> projected;    // tolerance → projected zone height, mm
+  std::set<std::string> allAround;            // tolerance → all around
+};
+
 struct PmiExportContext {
   const std::vector<ExportItem>& bodies;
   StepDocument& doc;
   occ::handle<XCAFDoc_DimTolTool> dimTol;
   bool presentation = true;
   std::map<std::string, std::string> datumOwner;  // datum label → annotation id
+  PmiStepFixups fixups;
 };
 
 struct PmiTargetInput {
@@ -205,7 +243,8 @@ struct PmiTargetInput {
 struct PmiPresentationInput {
   bool present = false;
   gp_Ax2 plane;
-  TopoDS_Shape shape;  // null when no polyline survived (nothing to draw)
+  TopoDS_Shape shape;  // null when nothing survived (nothing to draw)
+  std::string note;    // what could not be written
 };
 
 double pmiNumber(const Json& obj, const char* key, const char* what) {
@@ -346,8 +385,44 @@ PmiPresentationInput parsePmiPresentation(const Json& item) {
     builder.Add(compound, polylineEdge(pts));
     ++edges;
   }
+  // v2 filled areas: one face holding only a triangulation, which OCCT's writer turns into a
+  // complex_triangulated_surface_set (STEPCAFControl_GDTProperty::GetTessellation).
+  int faces = 0;
+  const Json* tris = p->get("triangles");
+  if (tris != nullptr && tris->kind != Json::Kind::Null) {
+    if (!tris->isArray() || tris->array.size() % 3 != 0) {
+      skipPmi("presentation.triangles must hold three points per triangle");
+    }
+    std::vector<gp_Pnt> pts;
+    for (const JsonPtr& v : tris->array) pts.emplace_back(pmiVec3(*v, "a presentation triangle point"));
+    std::vector<int> keep;  // first point of each non-degenerate triangle
+    for (size_t t = 0; t + 2 < pts.size(); t += 3) {
+      const gp_Vec n = gp_Vec(pts[t], pts[t + 1]).Crossed(gp_Vec(pts[t], pts[t + 2]));
+      if (n.Magnitude() > 1e-18) keep.push_back(static_cast<int>(t));
+    }
+    if (!keep.empty() && edges == 0) {
+      // The writer's tessellated set always starts with the curve set; without a curve it
+      // would write a null item.
+      out.note = "filled presentation areas are written only with at least one polyline";
+    } else if (!keep.empty()) {
+      const int nodes = static_cast<int>(keep.size()) * 3;
+      occ::handle<Poly_Triangulation> mesh =
+          new Poly_Triangulation(nodes, static_cast<int>(keep.size()), false);
+      for (size_t k = 0; k < keep.size(); ++k) {
+        const int base = static_cast<int>(k) * 3;
+        for (int c = 0; c < 3; ++c) {
+          mesh->SetNode(base + c + 1, pts[static_cast<size_t>(keep[k] + c)]);
+        }
+        mesh->SetTriangle(static_cast<int>(k) + 1, Poly_Triangle(base + 1, base + 2, base + 3));
+      }
+      TopoDS_Face face;
+      builder.MakeFace(face, mesh);
+      builder.Add(compound, face);
+      ++faces;
+    }
+  }
   out.present = true;
-  if (edges > 0) out.shape = compound;
+  if (edges > 0 || faces > 0) out.shape = compound;
   return out;
 }
 
@@ -480,6 +555,64 @@ void exportPmiDimension(PmiExportContext& ctx, const Json& item, const std::stri
     }
   }
   const PmiPresentationInput prs = parsePmiPresentation(item);
+  // v2: measuring direction, measured points, basic/reference, ordinate, spherical.
+  bool hasDirection = false;
+  gp_Dir direction;
+  const Json* dirField = item.get("direction");
+  if (dirField != nullptr && dirField->kind != Json::Kind::Null) {
+    const gp_XYZ d = pmiVec3(*dirField, "the dimension direction");
+    if (d.Modulus() < 1e-12) skipPmi("the dimension direction must be a non-zero vector");
+    direction = gp_Dir(d);
+    hasDirection = true;
+  }
+  std::vector<std::string> at;
+  const Json* atField = item.get("at");
+  if (atField != nullptr && atField->kind != Json::Kind::Null) {
+    if (!atField->isArray()) skipPmi("the dimension's at must be an array");
+    for (const JsonPtr& q : atField->array) {
+      if (!q->isString() || !isRefPoint(q->string)) skipPmi("unknown point qualifier in at");
+      at.push_back(q->string);
+    }
+    if (at.size() > targets.size()) skipPmi("the dimension has more point qualifiers than targets");
+  }
+  bool measuredPoints = false;
+  for (const std::string& q : at) measuredPoints = measuredPoints || q != "self";
+  const std::string qualifier = optString(item, "qualifier", "");
+  if (!qualifier.empty() && qualifier != "basic" && qualifier != "reference") {
+    skipPmi("unknown dimension qualifier '" + qualifier + "'");
+  }
+  const bool ordinate = boolOption(item, "ordinate", false);
+  const bool spherical = boolOption(item, "spherical", false);
+  if (ordinate && (type != "linearDistance" || !hasDirection)) {
+    skipPmi("an ordinate is a linearDistance with a direction");
+  }
+  // Every input is valid from here on: notes and fixups belong to a written dimension.
+  if (spherical) {
+    if (type == "linearDiameter") {
+      xType = XCAFDimTolObjects_DimensionType_Size_SphericalDiameter;
+    } else if (type == "linearRadius") {
+      xType = XCAFDimTolObjects_DimensionType_Size_SphericalRadius;
+    } else {
+      report.notes.emplace_back(id, "spherical applies to a radius or a diameter; not written");
+    }
+  }
+  if (hasDirection && type != "linearDistance") {
+    report.notes.emplace_back(id, "a measuring direction is written for a linear distance only");
+  }
+  if (!qualifier.empty() && (deviation || fit)) {
+    report.notes.emplace_back(id, "a " + qualifier + " dimension has no tolerance: the tolerance is not written");
+    deviation = false;
+    fit = false;
+  }
+  if (measuredPoints) {
+    report.notes.emplace_back(id, "STEP has no point qualifiers OCCT can write: the measured points are a "
+                                  "Wren description; other systems measure between the faces");
+  }
+  if (ordinate) {
+    report.notes.emplace_back(id, "STEP has no ordinate dimension: written as a linear distance with a "
+                                  "Wren description; other systems read a linear distance");
+  }
+  if (!prs.note.empty()) report.notes.emplace_back(id, prs.note);
 
   const TDF_Label dimL = ctx.dimTol->AddDimension();
   nameGdtLabel(dimL, id);
@@ -492,6 +625,23 @@ void exportPmiDimension(PmiExportContext& ctx, const Json& item, const std::stri
     object->SetLowerTolValue(-lower);  // XCAF keeps the lower deviation as a magnitude
   }
   if (fit) object->SetClassOfTolerance(fitHole, variance, grade);
+  // Written as descriptive_representation_items of the dimension's representation, which the
+  // reader returns as descriptions: the CAx-IF 'dimensional note' for basic ('theoretical') and
+  // reference ('auxiliary'), Wren's own for the measured points and the ordinate form.
+  auto describe = [&](const char* key, const std::string& text) {
+    object->AddDescription(new TCollection_HAsciiString(text.c_str()), new TCollection_HAsciiString(key));
+  };
+  if (qualifier == "basic") describe(kDimensionalNote, "theoretical");
+  if (qualifier == "reference") describe(kDimensionalNote, "auxiliary");
+  if (measuredPoints) {
+    std::string list;
+    for (size_t i = 0; i < at.size(); ++i) list += (i > 0 ? "," : "") + at[i];
+    describe(kWrenPointsDescription, list);
+  }
+  if (ordinate) describe(kWrenFormDescription, "ordinate");
+  // OCCT 8.0.1 writes a direction only for its own oriented type (an unnamed
+  // dimensional_location): added to the 'linear distance' after transfer instead.
+  if (hasDirection && type == "linearDistance") ctx.fixups.orientation[id] = direction;
   applyPmiPresentation(ctx, prs, id, object);
   attr->SetObject(object);
   if (twoSided) {
@@ -502,7 +652,8 @@ void exportPmiDimension(PmiExportContext& ctx, const Json& item, const std::stri
   }
 }
 
-void exportPmiTolerance(PmiExportContext& ctx, const Json& item, const std::string& id) {
+void exportPmiTolerance(PmiExportContext& ctx, const Json& item, const std::string& id,
+                        PmiExportReportData& report) {
   const std::string type = optString(item, "type", "");
   XCAFDimTolObjects_GeomToleranceType xType = XCAFDimTolObjects_GeomToleranceType_None;
   for (const ToleranceTypeName& t : kToleranceTypes) {
@@ -544,6 +695,51 @@ void exportPmiTolerance(PmiExportContext& ctx, const Json& item, const std::stri
     }
   }
   const PmiPresentationInput prs = parsePmiPresentation(item);
+  // v2: spherical zone, zone modifiers, projected and unequal zones, all around. Notes are
+  // collected and reported only once every input is valid.
+  std::vector<std::string> notes;
+  const bool spherical = boolOption(item, "spherical", false);
+  if (spherical && !isDiameter) {
+    notes.push_back("a spherical zone is a diameter zone (SØ): spherical without diameter is not written");
+  }
+  std::vector<XCAFDimTolObjects_GeomToleranceModif> modifiers;
+  const Json* mods = item.get("modifiers");
+  if (mods != nullptr && mods->kind != Json::Kind::Null) {
+    if (!mods->isArray()) skipPmi("modifiers must be an array");
+    for (const JsonPtr& m : mods->array) {
+      const std::string name = m->isString() ? m->string : std::string();
+      XCAFDimTolObjects_GeomToleranceModif x;
+      if (name == "freeState") {
+        x = XCAFDimTolObjects_GeomToleranceModif_Free_State;
+      } else if (name == "tangentPlane") {
+        x = XCAFDimTolObjects_GeomToleranceModif_Tangent_Plane;
+      } else if (name == "statistical") {
+        x = XCAFDimTolObjects_GeomToleranceModif_Statistical_Tolerance;
+      } else if (name == "combinedZone") {
+        x = XCAFDimTolObjects_GeomToleranceModif_Common_Zone;
+      } else if (name == "separateZones") {
+        x = XCAFDimTolObjects_GeomToleranceModif_Separate_Requirement;
+        notes.push_back("separate zones (SZ) are written as AP242's separate requirement, the closest "
+                        "modifier");
+      } else {
+        skipPmi("unknown zone modifier '" + name + "'");
+      }
+      if (std::find(modifiers.begin(), modifiers.end(), x) == modifiers.end()) modifiers.push_back(x);
+    }
+  }
+  double projected = 0.0;
+  if (const Json* pr = item.get("projected"); pr != nullptr && pr->kind != Json::Kind::Null) {
+    projected = pmiNumber(item, "projected", "the tolerance");
+    if (!(projected > 0)) skipPmi("the projected zone height must be greater than zero");
+  }
+  if (const Json* un = item.get("unequal"); un != nullptr && un->kind != Json::Kind::Null) {
+    const double unequal = pmiNumber(item, "unequal", "the tolerance");
+    notes.push_back("OCCT 8.0.1 cannot write an unequally disposed zone: written without it (UZ " +
+                    shortNumber(unequal) + ")");
+  }
+  const bool allAround = boolOption(item, "allAround", false);
+  if (!prs.note.empty()) notes.push_back(prs.note);
+  for (const std::string& n : notes) report.notes.emplace_back(id, n);
 
   const TDF_Label tolL = ctx.dimTol->AddGeomTolerance();
   nameGdtLabel(tolL, id);
@@ -552,7 +748,15 @@ void exportPmiTolerance(PmiExportContext& ctx, const Json& item, const std::stri
       new XCAFDimTolObjects_GeomToleranceObject();
   object->SetType(xType);
   object->SetValue(value);
-  if (isDiameter) object->SetTypeOfValue(XCAFDimTolObjects_GeomToleranceTypeValue_Diameter);
+  if (isDiameter) {
+    object->SetTypeOfValue(spherical ? XCAFDimTolObjects_GeomToleranceTypeValue_SphericalDiameter
+                                     : XCAFDimTolObjects_GeomToleranceTypeValue_Diameter);
+  }
+  for (XCAFDimTolObjects_GeomToleranceModif m : modifiers) object->AddModifier(m);
+  // OCCT 8.0.1's writer writes neither a projected zone nor all around: both are added to the
+  // STEP model after transfer (applyPmiStepFixups), in the form its reader reads.
+  if (projected > 0) ctx.fixups.projected[id] = projected;
+  if (allAround) ctx.fixups.allAround.insert(id);
   if (zoneMaterial == 1) {
     object->SetMaterialRequirementModifier(XCAFDimTolObjects_GeomToleranceMatReqModif_M);
   } else if (zoneMaterial == 2) {
@@ -583,7 +787,7 @@ void exportPmiTolerance(PmiExportContext& ctx, const Json& item, const std::stri
 // Adds every item it can to the document; fills `report` and returns the ids written.
 std::vector<std::string> addPmiToDocument(const std::vector<ExportItem>& bodies, StepDocument& doc,
                                           const Json& items, bool presentation,
-                                          PmiExportReportData& report) {
+                                          PmiExportReportData& report, PmiStepFixups& fixups) {
   PmiExportContext ctx{bodies, doc, XCAFDoc_DocumentTool::DimTolTool(doc.doc->Main()),
                        presentation, {}};
   std::vector<std::string> written;
@@ -611,7 +815,7 @@ std::vector<std::string> addPmiToDocument(const std::vector<ExportItem>& bodies,
         } else if (kind == "dimension") {
           exportPmiDimension(ctx, item, id, report);
         } else {
-          exportPmiTolerance(ctx, item, id);
+          exportPmiTolerance(ctx, item, id, report);
         }
         written.push_back(id);
       } catch (const PmiSkip& skip) {
@@ -625,7 +829,210 @@ std::vector<std::string> addPmiToDocument(const std::vector<ExportItem>& bodies,
     }
   }
   report.exported = static_cast<int>(written.size());
+  fixups = ctx.fixups;
   return written;
+}
+
+// The shape aspect the writer named after an annotation id (writeShapeAspect takes the GD&T
+// label name after its first space, "PMI <id>").
+bool namedFor(const occ::handle<StepRepr_ShapeAspect>& sa, const std::string& id) {
+  return !sa.IsNull() && hasciiText(sa->Name()) == id;
+}
+
+// Completes the written STEP model with what OCCT 8.0.1's XCAF writer cannot express, in the form
+// its reader (and the CAx-IF recommended practices) use; anything not found is noted.
+void applyPmiStepFixups(const occ::handle<StepData_StepModel>& model, const PmiStepFixups& fixups,
+                        PmiExportReportData& report) {
+  if (model.IsNull()) return;
+  // OCCT 8.0.1 (writeDGTsAP242) takes the presentation draughting model's context from the
+  // dimensions it writes: with presentation but no dimension (a flatness alone, datums and
+  // frames only) the model has none and Write fails. Use the context of the geometry the GD&T
+  // is on, as the writer does for dimensions.
+  occ::handle<StepRepr_RepresentationContext> gdtContext;
+  for (int i = 1; i <= model->NbEntities() && gdtContext.IsNull(); ++i) {
+    const occ::handle<StepAP242_GeometricItemSpecificUsage> gisu =
+        occ::down_cast<StepAP242_GeometricItemSpecificUsage>(model->Value(i));
+    if (!gisu.IsNull() && !gisu->UsedRepresentation().IsNull()) {
+      gdtContext = gisu->UsedRepresentation()->ContextOfItems();
+    }
+  }
+  for (int i = 1; i <= model->NbEntities() && !gdtContext.IsNull(); ++i) {
+    const occ::handle<StepVisual_DraughtingModel> dm =
+        occ::down_cast<StepVisual_DraughtingModel>(model->Value(i));
+    if (!dm.IsNull() && dm->ContextOfItems().IsNull()) dm->SetContextOfItems(gdtContext);
+  }
+  // The same missing context makes the writer's GetUnit fall back to new units: tolerance values
+  // written in mm are tagged SI_UNIT(.METRE.) (a 0.1 mm zone reads as 0.1 m elsewhere) and angles
+  // get a plane angle unit named METRE. Relabel those measures with the context's own units.
+  occ::handle<NCollection_HArray1<occ::handle<StepBasic_NamedUnit>>> contextUnits;
+  if (const auto c1 = occ::down_cast<StepGeom_GeometricRepresentationContextAndGlobalUnitAssignedContext>(gdtContext);
+      !c1.IsNull()) {
+    contextUnits = c1->Units();
+  } else if (const auto c2 = occ::down_cast<StepGeom_GeomRepContextAndGlobUnitAssCtxAndGlobUncertaintyAssCtx>(gdtContext);
+             !c2.IsNull()) {
+    contextUnits = c2->Units();
+  }
+  occ::handle<StepBasic_NamedUnit> lengthUnit;
+  occ::handle<StepBasic_NamedUnit> angleUnit;
+  std::set<const Standard_Transient*> ownUnits;
+  if (!contextUnits.IsNull()) {
+    for (int i = contextUnits->Lower(); i <= contextUnits->Upper(); ++i) {
+      const occ::handle<StepBasic_NamedUnit>& u = contextUnits->Value(i);
+      if (u.IsNull()) continue;
+      ownUnits.insert(u.get());
+      if (lengthUnit.IsNull() && (u->IsKind(STANDARD_TYPE(StepBasic_SiUnitAndLengthUnit)) ||
+                                  u->IsKind(STANDARD_TYPE(StepBasic_ConversionBasedUnitAndLengthUnit)))) {
+        lengthUnit = u;
+      }
+      if (angleUnit.IsNull() && (u->IsKind(STANDARD_TYPE(StepBasic_SiUnitAndPlaneAngleUnit)) ||
+                                 u->IsKind(STANDARD_TYPE(StepBasic_ConversionBasedUnitAndPlaneAngleUnit)))) {
+        angleUnit = u;
+      }
+    }
+  }
+  for (int i = 1; i <= model->NbEntities() && !lengthUnit.IsNull() && !angleUnit.IsNull(); ++i) {
+    const occ::handle<Standard_Transient> e = model->Value(i);
+    occ::handle<StepBasic_MeasureWithUnit> m = occ::down_cast<StepBasic_MeasureWithUnit>(e);
+    if (m.IsNull()) {
+      const occ::handle<StepRepr_ReprItemAndMeasureWithUnit> ri =
+          occ::down_cast<StepRepr_ReprItemAndMeasureWithUnit>(e);
+      if (!ri.IsNull()) m = ri->GetMeasureWithUnit();
+    }
+    if (m.IsNull() || m->UnitComponent().IsNull()) continue;
+    const occ::handle<StepBasic_NamedUnit> u = m->UnitComponent().NamedUnit();
+    if (u.IsNull() || ownUnits.count(u.get()) > 0) continue;
+    StepBasic_Unit replacement;
+    if (u->IsKind(STANDARD_TYPE(StepBasic_SiUnitAndPlaneAngleUnit))) {
+      replacement.SetValue(angleUnit);
+    } else if (u->IsKind(STANDARD_TYPE(StepBasic_SiUnitAndLengthUnit))) {
+      replacement.SetValue(lengthUnit);
+    } else {
+      continue;
+    }
+    m->SetUnitComponent(replacement);
+  }
+  std::set<std::string> oriented;
+  std::set<std::string> projected;
+  std::set<std::string> allAround;
+  const int count = model->NbEntities();  // entities added below are not visited
+  for (int i = 1; i <= count; ++i) {
+    const occ::handle<Standard_Transient> e = model->Value(i);
+    // Measuring direction: an axis2_placement_3d 'orientation' in the dimension's
+    // shape_dimension_representation, the direction as its ref_direction.
+    const occ::handle<StepShape_DimensionalCharacteristicRepresentation> dcr =
+        occ::down_cast<StepShape_DimensionalCharacteristicRepresentation>(e);
+    if (!dcr.IsNull() && !dcr->Representation().IsNull()) {
+      const occ::handle<StepShape_DimensionalLocation> loc =
+          occ::down_cast<StepShape_DimensionalLocation>(dcr->Dimension().Value());
+      if (loc.IsNull()) continue;
+      for (const auto& [id, dir] : fixups.orientation) {
+        if (!namedFor(loc->RelatingShapeAspect(), id) || oriented.count(id) > 0) continue;
+        const gp_Ax2 frame(gp::Origin(), dir);  // any axis normal to the direction
+        occ::handle<StepGeom_Direction> axis = new StepGeom_Direction();
+        axis->Init3D(new TCollection_HAsciiString(), frame.XDirection().X(), frame.XDirection().Y(),
+                     frame.XDirection().Z());
+        occ::handle<StepGeom_Direction> ref = new StepGeom_Direction();
+        ref->Init3D(new TCollection_HAsciiString(), dir.X(), dir.Y(), dir.Z());
+        GeomToStep_MakeCartesianPoint origin(gp::Origin(), 1.0);
+        occ::handle<StepGeom_Axis2Placement3d> placement = new StepGeom_Axis2Placement3d();
+        placement->Init(new TCollection_HAsciiString("orientation"), origin.Value(), true, axis, true, ref);
+        const occ::handle<StepShape_ShapeDimensionRepresentation> sdr = dcr->Representation();
+        const int n = sdr->NbItems();
+        occ::handle<NCollection_HArray1<occ::handle<StepRepr_RepresentationItem>>> items =
+            new NCollection_HArray1<occ::handle<StepRepr_RepresentationItem>>(1, n + 1);
+        for (int k = 1; k <= n; ++k) items->SetValue(k, sdr->ItemsValue(k));
+        items->SetValue(n + 1, placement);
+        sdr->SetItems(items);
+        model->AddWithRefs(axis);
+        model->AddWithRefs(ref);
+        model->AddWithRefs(origin.Value());
+        model->AddWithRefs(placement);
+        oriented.insert(id);
+      }
+      continue;
+    }
+    const occ::handle<StepDimTol_GeometricTolerance> tol =
+        occ::down_cast<StepDimTol_GeometricTolerance>(e);
+    if (tol.IsNull()) continue;
+    const occ::handle<StepRepr_ShapeAspect> sa = tol->TolerancedShapeAspect().ShapeAspect();
+    if (sa.IsNull()) continue;
+    const std::string id = hasciiText(sa->Name());
+    // Projected zone: a tolerance_zone of the tolerance with a projected_zone_definition.
+    auto height = fixups.projected.find(id);
+    if (height != fixups.projected.end() && projected.count(id) == 0) {
+      occ::handle<StepBasic_MeasureWithUnit> magnitude =
+          occ::down_cast<StepBasic_MeasureWithUnit>(tol->Magnitude());
+      if (magnitude.IsNull()) {
+        const occ::handle<StepRepr_ReprItemAndMeasureWithUnit> ri =
+            occ::down_cast<StepRepr_ReprItemAndMeasureWithUnit>(tol->Magnitude());
+        if (!ri.IsNull()) magnitude = ri->GetMeasureWithUnit();
+      }
+      occ::handle<StepDimTol_ToleranceZone> zone;
+      for (int k = 1; k <= count && zone.IsNull(); ++k) {
+        const occ::handle<StepDimTol_ToleranceZone> z =
+            occ::down_cast<StepDimTol_ToleranceZone>(model->Value(k));
+        if (z.IsNull()) continue;
+        for (int t = 1; t <= z->NbDefiningTolerances(); ++t) {
+          if (z->DefiningToleranceValue(t).Value().get() == tol.get()) zone = z;
+        }
+      }
+      if (!magnitude.IsNull()) {
+        if (zone.IsNull()) {
+          occ::handle<StepDimTol_ToleranceZoneForm> form = new StepDimTol_ToleranceZoneForm();
+          form->Init(new TCollection_HAsciiString("unknown"));
+          occ::handle<NCollection_HArray1<StepDimTol_ToleranceZoneTarget>> targets =
+              new NCollection_HArray1<StepDimTol_ToleranceZoneTarget>(1, 1);
+          StepDimTol_ToleranceZoneTarget target;
+          target.SetValue(tol);
+          targets->SetValue(1, target);
+          zone = new StepDimTol_ToleranceZone();
+          zone->Init(new TCollection_HAsciiString(), new TCollection_HAsciiString(), sa->OfShape(),
+                     StepData_LFalse, targets, form);
+          // OCCT's shared lists for these classes miss members: add every entity itself (the
+          // writer does the same for the zone form), or the file gets unknown references.
+          model->AddWithRefs(form);
+          model->AddWithRefs(zone);
+        }
+        occ::handle<StepBasic_MeasureValueMember> v = new StepBasic_MeasureValueMember();
+        v->SetName("LENGTH_MEASURE");
+        v->SetReal(height->second);
+        occ::handle<StepBasic_LengthMeasureWithUnit> length = new StepBasic_LengthMeasureWithUnit();
+        length->Init(v, magnitude->UnitComponent());
+        occ::handle<StepDimTol_ProjectedZoneDefinition> definition =
+            new StepDimTol_ProjectedZoneDefinition();
+        definition->Init(zone, new NCollection_HArray1<occ::handle<StepRepr_ShapeAspect>>(), sa, length);
+        model->AddWithRefs(length);
+        model->AddWithRefs(definition);
+        projected.insert(id);
+      }
+    }
+    // All around: the tolerance applies to an all_around_shape_aspect composed of its faces.
+    if (fixups.allAround.count(id) > 0 && allAround.count(id) == 0 &&
+        !sa->IsKind(STANDARD_TYPE(StepRepr_AllAroundShapeAspect))) {
+      occ::handle<StepRepr_AllAroundShapeAspect> around = new StepRepr_AllAroundShapeAspect();
+      around->Init(new TCollection_HAsciiString(id.c_str()), new TCollection_HAsciiString("all around"),
+                   sa->OfShape(), StepData_LFalse);
+      occ::handle<StepRepr_ShapeAspectRelationship> member = new StepRepr_ShapeAspectRelationship();
+      member->Init(new TCollection_HAsciiString(), false, nullptr, around, sa);
+      tol->SetTolerancedShapeAspect(occ::handle<StepRepr_ShapeAspect>(around));
+      model->AddWithRefs(around);
+      model->AddWithRefs(member);
+      allAround.insert(id);
+    }
+  }
+  for (const auto& entry : fixups.orientation) {
+    if (oriented.count(entry.first) == 0) {
+      report.notes.emplace_back(entry.first, "the measuring direction could not be written");
+    }
+  }
+  for (const auto& entry : fixups.projected) {
+    if (projected.count(entry.first) == 0) {
+      report.notes.emplace_back(entry.first, "the projected zone could not be written");
+    }
+  }
+  for (const std::string& id : fixups.allAround) {
+    if (allAround.count(id) == 0) report.notes.emplace_back(id, "all around could not be written");
+  }
 }
 
 struct PmiExportOutcome {
@@ -648,11 +1055,15 @@ PmiExportOutcome exportStepWithPmi(const std::vector<ExportItem>& bodies, const 
   const DESTEP_Parameters params = stepWriteParameters(schema);
   PmiExportOutcome out;
   StepDocument doc = buildStepDocument(bodies);
+  PmiStepFixups fixups;
   const std::vector<std::string> written =
-      addPmiToDocument(bodies, doc, items, presentation, out.report);
+      addPmiToDocument(bodies, doc, items, presentation, out.report, fixups);
   std::string failure;
+  const size_t notesBefore = out.report.notes.size();
   try {
-    out.path = writeStepDocument(doc.doc, params);
+    out.path = writeStepDocument(doc.doc, params, [&](const occ::handle<StepData_StepModel>& model) {
+      applyPmiStepFixups(model, fixups, out.report);
+    });
     return out;
   } catch (const Standard_Failure& e) {
     const char* what = e.what();
@@ -662,6 +1073,7 @@ PmiExportOutcome exportStepWithPmi(const std::vector<ExportItem>& bodies, const 
   }
   // The writer failed with the GD&T in the document: write the geometry alone and report every
   // annotation as not exported, rather than failing the whole export.
+  out.report.notes.resize(notesBefore);
   const StepDocument plain = buildStepDocument(bodies);
   out.path = writeStepDocument(plain.doc, params);
   for (const std::string& id : written) {
@@ -693,17 +1105,30 @@ std::string pmiExportReportJson(const PmiExportReportData& report) {
 // Import
 // ---------------------------------------------------------------------------------------------
 
+// Issue severities (contracts PmiIssueSeverity).
+constexpr const char* kLost = "lost";
+constexpr const char* kApproximated = "approximated";
+constexpr const char* kCosmetic = "cosmetic";
+
 struct PmiImportContext {
   const std::vector<std::pair<TopoDS_Shape, std::string>>& bodies;
   std::vector<std::unique_ptr<Topo>> topo;
   std::vector<std::string> items;   // PmiImportItem JSON
-  std::vector<std::string> issues;  // {name?, reason} JSON
+  std::vector<std::string> issues;  // PmiImportIssue JSON
   // Radians per plane-angle unit of the file. OCCT 8.0.1 converts angular nominal values and
   // limits to degrees but leaves plus/minus deviations in the file's unit (their
   // measure_with_unit is not a plane_angle_measure_with_unit, and the unit context it builds for
   // them has a zero length factor), so the import converts them itself.
   double angleUnitRad = 1.0;
   bool angleUnitKnown = false;
+  // The STEP model behind the XCAF document (whittle_pmi_step.cpp); invalid when unavailable.
+  StepPmiModel* step = nullptr;
+  std::vector<StepDimensionInfo> stepDims;
+  std::vector<StepToleranceInfo> stepTols;
+  occ::handle<TDocStd_Document> doc;
+  bool docShapesLoaded = false;
+  std::set<const TopoDS_TShape*> docShapes;
+  int noValueLabels = 0;  // XCAF dimensions OCCT created without a value
 };
 
 // The file's plane-angle unit: a conversion-based one (degree, grad) when the file declares one,
@@ -749,10 +1174,13 @@ bool stepPlaneAngleUnit(STEPCAFControl_Reader& reader, double& radPerUnit) {
   return false;
 }
 
-void pmiIssue(PmiImportContext& ctx, const std::string& name, const std::string& reason) {
+// One import issue: a stable `code` per cause and what it cost (`severity`).
+void pmiIssue(PmiImportContext& ctx, const std::string& name, const char* code,
+              const char* severity, const std::string& reason) {
   std::string json = "{";
   if (!name.empty()) json += "\"name\":" + jsonString(name) + ",";
-  json += "\"reason\":" + jsonString(reason) + "}";
+  json += "\"reason\":" + jsonString(reason) + ",\"code\":\"" + code + "\",\"severity\":\"" +
+          severity + "\"}";
   ctx.issues.push_back(std::move(json));
 }
 
@@ -762,6 +1190,10 @@ const ShapeMap& topoMap(const Topo& topo, TopAbs_ShapeEnum kind) {
 
 const char* kindName(TopAbs_ShapeEnum kind) {
   return kind == TopAbs_FACE ? "face" : kind == TopAbs_EDGE ? "edge" : "vertex";
+}
+
+const char* kindWithArticle(TopAbs_ShapeEnum kind) {
+  return kind == TopAbs_FACE ? "a face" : kind == TopAbs_EDGE ? "an edge" : "a vertex";
 }
 
 // One face/edge/vertex → a target on the returned bodies. Exact match (same TShape and
@@ -801,56 +1233,79 @@ bool mapPmiSubShape(PmiImportContext& ctx, const TopoDS_Shape& s, std::string& j
   return true;
 }
 
-// The targets of GD&T shape labels. False (with `problem`) when any of them cannot be mapped:
+// Why a sub-shape is not on the returned bodies: geometry the file holds beside the solids
+// (supplemental curves and surfaces, which the import does not return), or something else.
+void unmappedReason(PmiImportContext& ctx, const TopoDS_Shape& atom, std::string& problem,
+                    const char*& code) {
+  if (!ctx.docShapesLoaded && !ctx.doc.IsNull()) {
+    ctx.docShapes = documentSubShapes(ctx.doc);
+    ctx.docShapesLoaded = true;
+  }
+  if (ctx.docShapes.count(atom.TShape().get()) > 0) {
+    problem = std::string("it applies to supplemental geometry (") + kindWithArticle(atom.ShapeType()) +
+              " the file places beside the solid, not one of its own), which is not imported";
+    code = "supplementalGeometry";
+    return;
+  }
+  problem = std::string(kindWithArticle(atom.ShapeType())) +
+            " it applies to is not part of the imported bodies";
+  code = "targetNotInBodies";
+}
+
+// Faces, edges or vertices → targets. False (with `problem`, `code`) when any cannot be mapped:
 // an item on fewer faces than the file says would be a silent guess.
-bool mapPmiLabels(PmiImportContext& ctx, const NCollection_Sequence<TDF_Label>& labels,
-                  std::vector<std::string>& targets, std::string& problem, bool& instanced) {
+bool mapPmiAtoms(PmiImportContext& ctx, const std::vector<TopoDS_Shape>& atoms,
+                 std::vector<std::string>& targets, std::string& problem, const char*& code,
+                 bool& instanced) {
+  for (const TopoDS_Shape& atom : atoms) {
+    std::string json;
+    if (!mapPmiSubShape(ctx, atom, json, instanced)) {
+      unmappedReason(ctx, atom, problem, code);
+      return false;
+    }
+    if (std::find(targets.begin(), targets.end(), json) == targets.end()) targets.push_back(json);
+  }
+  if (targets.empty()) {
+    problem = "it is attached to no geometry";
+    code = "noGeometry";
+    return false;
+  }
+  return true;
+}
+
+// The faces, edges and vertices of GD&T shape labels; false when a label is not usable.
+bool pmiLabelAtoms(const NCollection_Sequence<TDF_Label>& labels, std::vector<TopoDS_Shape>& atoms,
+                   std::string& problem, const char*& code) {
   for (int i = 1; i <= labels.Length(); ++i) {
     const TopoDS_Shape shape = XCAFDoc_ShapeTool::GetShape(labels(i));
     if (shape.IsNull()) {
       problem = "a referenced shape is empty";
+      code = "noGeometry";
       return false;
     }
-    std::vector<TopoDS_Shape> atoms;
-    switch (shape.ShapeType()) {
-      case TopAbs_FACE:
-      case TopAbs_EDGE:
-      case TopAbs_VERTEX:
-        atoms.push_back(shape);
-        break;
-      case TopAbs_WIRE:
-        for (TopExp_Explorer ex(shape, TopAbs_EDGE); ex.More(); ex.Next()) atoms.push_back(ex.Current());
-        break;
-      case TopAbs_SHELL:
-      case TopAbs_COMPOUND:
-        for (TopExp_Explorer ex(shape, TopAbs_FACE); ex.More(); ex.Next()) atoms.push_back(ex.Current());
-        if (atoms.empty()) {
-          for (TopExp_Explorer ex(shape, TopAbs_EDGE); ex.More(); ex.Next()) atoms.push_back(ex.Current());
-        }
-        break;
-      default:
-        problem = "it applies to a whole body, not to faces, edges or vertices";
-        return false;
+    const TopAbs_ShapeEnum t = shape.ShapeType();
+    if (t == TopAbs_SOLID || t == TopAbs_COMPSOLID) {
+      problem = "it applies to a whole body, not to faces, edges or vertices";
+      code = "wholeBody";
+      return false;
     }
-    if (atoms.empty()) {
+    const size_t before = atoms.size();
+    stepAtoms(shape, atoms);
+    if (atoms.size() == before) {
       problem = "a referenced shape holds no faces or edges";
+      code = "noGeometry";
       return false;
     }
-    for (const TopoDS_Shape& atom : atoms) {
-      std::string json;
-      if (!mapPmiSubShape(ctx, atom, json, instanced)) {
-        problem = std::string("a ") + kindName(atom.ShapeType()) +
-                  " it applies to is not part of the imported bodies";
-        return false;
-      }
-      if (std::find(targets.begin(), targets.end(), json) == targets.end()) targets.push_back(json);
-    }
-  }
-  if (targets.empty()) {
-    problem = "it is attached to no geometry";
-    return false;
   }
   return true;
+}
+
+bool mapPmiLabels(PmiImportContext& ctx, const NCollection_Sequence<TDF_Label>& labels,
+                  std::vector<std::string>& targets, std::string& problem, const char*& code,
+                  bool& instanced) {
+  std::vector<TopoDS_Shape> atoms;
+  if (!pmiLabelAtoms(labels, atoms, problem, code)) return false;
+  return mapPmiAtoms(ctx, atoms, targets, problem, code, instanced);
 }
 
 // Points of one edge in its orientation: the ends of a line, else a tangential sampling.
@@ -871,7 +1326,7 @@ std::vector<gp_Pnt> pmiEdgePoints(const TopoDS_Edge& edge) {
 
 // Polylines of a presentation shape: the reader returns each tessellated curve strip as a wire
 // of line edges; curve-based (non-tessellated) presentations are sampled.
-std::vector<std::vector<gp_Pnt>> pmiPolylines(const TopoDS_Shape& prs, bool& hasFaces) {
+std::vector<std::vector<gp_Pnt>> pmiPolylines(const TopoDS_Shape& prs) {
   std::vector<std::vector<gp_Pnt>> out;
   std::vector<gp_Pnt> current;
   auto flush = [&]() {
@@ -896,7 +1351,34 @@ std::vector<std::vector<gp_Pnt>> pmiPolylines(const TopoDS_Shape& prs, bool& has
     addEdge(TopoDS::Edge(e.Current()));
     flush();
   }
-  hasFaces = TopExp_Explorer(prs, TopAbs_FACE).More();
+  return out;
+}
+
+// Filled areas of a presentation shape (the reader makes each complex_triangulated_surface_set a
+// face holding only a triangulation): three points per triangle, wound as the face is oriented.
+// `untriangulated` counts faces without a triangulation (nothing to show).
+std::vector<gp_Pnt> pmiTriangles(const TopoDS_Shape& prs, int& untriangulated) {
+  std::vector<gp_Pnt> out;
+  untriangulated = 0;
+  for (TopExp_Explorer f(prs, TopAbs_FACE); f.More(); f.Next()) {
+    const TopoDS_Face face = TopoDS::Face(f.Current());
+    TopLoc_Location loc;
+    const occ::handle<Poly_Triangulation> mesh = BRep_Tool::Triangulation(face, loc);
+    if (mesh.IsNull() || mesh->NbTriangles() == 0) {
+      ++untriangulated;
+      continue;
+    }
+    const gp_Trsf trsf = loc.Transformation();
+    const bool reversed = face.Orientation() == TopAbs_REVERSED;
+    for (int t = 1; t <= mesh->NbTriangles(); ++t) {
+      int n1 = 0;
+      int n2 = 0;
+      int n3 = 0;
+      mesh->Triangle(t).Get(n1, n2, n3);
+      if (reversed) std::swap(n2, n3);
+      for (int n : {n1, n2, n3}) out.push_back(mesh->Node(n).Transformed(trsf));
+    }
+  }
   return out;
 }
 
@@ -909,22 +1391,26 @@ std::string pmiPlaneJson(const gp_Ax2& plane) {
 // `,"presentation":{…}` for an object's presentation, or empty. Reports what it drops.
 template <typename Object>
 std::string pmiPresentationMember(PmiImportContext& ctx, const occ::handle<Object>& object,
-                                  const std::string& name, bool& hasPolylines) {
-  hasPolylines = false;
+                                  const std::string& name, bool& hasDrawing) {
+  hasDrawing = false;
   const TopoDS_Shape prs = object->GetPresentation();
   if (prs.IsNull()) return std::string();
-  bool hasFaces = false;
-  const std::vector<std::vector<gp_Pnt>> lines = pmiPolylines(prs, hasFaces);
-  if (hasFaces) {
-    pmiIssue(ctx, name, "filled (triangulated) presentation areas are not imported; lines are");
+  const std::vector<std::vector<gp_Pnt>> lines = pmiPolylines(prs);
+  int untriangulated = 0;
+  const std::vector<gp_Pnt> triangles = pmiTriangles(prs, untriangulated);
+  if (untriangulated > 0) {
+    pmiIssue(ctx, name, "filledPresentation", kCosmetic,
+             std::to_string(untriangulated) +
+                 " filled presentation area(s) hold no triangles and are not shown");
   }
-  if (lines.empty()) return std::string();
+  if (lines.empty() && triangles.empty()) return std::string();
   gp_Ax2 plane;
   if (object->HasPlane()) {
     plane = object->GetPlane();
   } else {
     plane = gp_Ax2(object->GetPointTextAttach(), gp::DZ(), gp::DX());
-    pmiIssue(ctx, name, "the presentation has no annotation plane; it is placed on the XY plane");
+    pmiIssue(ctx, name, "presentationNoPlane", kCosmetic,
+             "the presentation has no annotation plane; it is placed on the XY plane");
   }
   std::string json = ",\"presentation\":{\"plane\":" + pmiPlaneJson(plane) + ",\"polylines\":[";
   for (size_t i = 0; i < lines.size(); ++i) {
@@ -936,8 +1422,17 @@ std::string pmiPresentationMember(PmiImportContext& ctx, const occ::handle<Objec
     }
     json.push_back(']');
   }
-  json += "]}";
-  hasPolylines = true;
+  json += "]";
+  if (!triangles.empty()) {
+    json += ",\"triangles\":[";
+    for (size_t i = 0; i < triangles.size(); ++i) {
+      if (i > 0) json.push_back(',');
+      json += jsonPoint(triangles[i]);
+    }
+    json += "]";
+  }
+  json += "}";
+  hasDrawing = true;
   return json;
 }
 
@@ -980,6 +1475,7 @@ const char* pmiDimensionTypeName(XCAFDimTolObjects_DimensionType t) {
     case XCAFDimTolObjects_DimensionType_Location_LinearDistance_FromInnerToCenter:
     case XCAFDimTolObjects_DimensionType_Location_LinearDistance_FromInnerToOuter:
     case XCAFDimTolObjects_DimensionType_Location_LinearDistance_FromInnerToInner:
+    case XCAFDimTolObjects_DimensionType_Location_Oriented:
       return "linearDistance";
     case XCAFDimTolObjects_DimensionType_Location_Angular:
     case XCAFDimTolObjects_DimensionType_Size_Angular:
@@ -999,16 +1495,69 @@ const char* pmiDimensionTypeName(XCAFDimTolObjects_DimensionType t) {
   }
 }
 
+// A STEP dimension name ('linear distance', 'diameter', …) as a contracts type.
+std::string stepDimensionTypeName(const std::string& stepName) {
+  TCollection_AsciiString n(stepName.c_str());
+  n.LowerCase();
+  const std::string s = n.ToCString();
+  if (s.rfind("linear distance", 0) == 0) return "linearDistance";
+  if (s == "diameter" || s == "spherical diameter") return "linearDiameter";
+  if (s == "radius" || s == "spherical radius") return "linearRadius";
+  if (s == "thickness") return "size";
+  if (s == "curve length") return "curveLength";
+  if (s == "angle") return "angular";
+  return "other";
+}
+
 void importPmiPresentationOnly(PmiImportContext& ctx,
                                const occ::handle<XCAFDimTolObjects_DimensionObject>& object,
                                const std::string& name) {
-  bool hasPolylines = false;
-  const std::string prs = pmiPresentationMember(ctx, object, name, hasPolylines);
-  if (!hasPolylines) {
-    pmiIssue(ctx, name, "a presentation-only annotation has no lines to show");
+  bool hasDrawing = false;
+  const std::string prs = pmiPresentationMember(ctx, object, name, hasDrawing);
+  if (!hasDrawing) {
+    pmiIssue(ctx, name, "presentationEmpty", kLost,
+             "a presentation-only annotation has nothing to show");
     return;
   }
   ctx.items.push_back("{\"kind\":\"presentationOnly\"" + nameMember(name) + prs + "}");
+}
+
+// TShapes of the faces, edges and vertices of GD&T shape labels (to match STEP entities).
+std::set<const TopoDS_TShape*> labelTShapes(const NCollection_Sequence<TDF_Label>& labels) {
+  std::vector<TopoDS_Shape> atoms;
+  for (int i = 1; i <= labels.Length(); ++i) stepAtoms(XCAFDoc_ShapeTool::GetShape(labels(i)), atoms);
+  return tshapeSet(atoms);
+}
+
+// The STEP entity behind an XCAF dimension: OCCT creates the labels in entity order, so the first
+// unmatched entity of the same kind and type on the same faces is it.
+StepDimensionInfo* linkStepDimension(PmiImportContext& ctx, const NCollection_Sequence<TDF_Label>& first,
+                                     const NCollection_Sequence<TDF_Label>& second,
+                                     const std::string& typeName) {
+  if (ctx.stepDims.empty()) return nullptr;
+  const std::set<const TopoDS_TShape*> a = labelTShapes(first);
+  const std::set<const TopoDS_TShape*> b = labelTShapes(second);
+  const bool location = second.Length() > 0;
+  for (StepDimensionInfo& d : ctx.stepDims) {
+    if (d.used || d.location != location || !d.hasValue) continue;
+    // An unnamed location is OCCT's oriented form of a linear distance; "other" is anything.
+    const std::string stepType = d.type.empty() ? std::string("linearDistance") : stepDimensionTypeName(d.type);
+    if (typeName != "other" && stepType != typeName) continue;
+    if (d.first == a && d.second == b) {
+      d.used = true;
+      return &d;
+    }
+  }
+  return nullptr;
+}
+
+// A cylindrical or conical face measures from its axis; anything else from its centre.
+std::string centreQualifier(const TopoDS_Shape& atom) {
+  if (atom.ShapeType() == TopAbs_FACE) {
+    const BRepAdaptor_Surface surface(TopoDS::Face(atom), false);
+    if (surface.GetType() == GeomAbs_Cylinder || surface.GetType() == GeomAbs_Cone) return "axis";
+  }
+  return "center";
 }
 
 void importPmiDimension(PmiImportContext& ctx, const TDF_Label& label) {
@@ -1016,7 +1565,7 @@ void importPmiDimension(PmiImportContext& ctx, const TDF_Label& label) {
   if (!label.FindAttribute(XCAFDoc_Dimension::GetID(), attr)) return;
   const occ::handle<XCAFDimTolObjects_DimensionObject> object = attr->GetObject();
   if (object.IsNull()) {
-    pmiIssue(ctx, pmiLabelName(label), "a dimension without data");
+    pmiIssue(ctx, pmiLabelName(label), "noData", kLost, "a dimension without data");
     return;
   }
   const XCAFDimTolObjects_DimensionType type = object->GetType();
@@ -1026,30 +1575,51 @@ void importPmiDimension(PmiImportContext& ctx, const TDF_Label& label) {
     importPmiPresentationOnly(ctx, object, name);
     return;
   }
-  const std::string typeName = pmiDimensionTypeName(type);
+  const occ::handle<NCollection_HArray1<double>> values = object->GetValues();
+  if (values.IsNull() || values->Length() == 0) {
+    // OCCT 8.0.1 sets nothing on a dimension without a dimensional_characteristic_representation
+    // (no value, type, name or presentation): reported from the STEP model, which has them.
+    ++ctx.noValueLabels;
+    return;
+  }
+  std::string typeName = pmiDimensionTypeName(type);
   NCollection_Sequence<TDF_Label> first;
   NCollection_Sequence<TDF_Label> second;
   XCAFDoc_DimTolTool::GetRefShapeLabel(label, first, second);
+  // Copies: NCollection_Sequence::Append(sequence) splices, which would empty `second`.
   NCollection_Sequence<TDF_Label> all = first;
-  all.Append(second);
+  for (int i = 1; i <= second.Length(); ++i) all.Append(second(i));
   std::vector<std::string> targets;
   std::string problem;
+  const char* code = "noGeometry";
   bool instanced = false;
-  if (!mapPmiLabels(ctx, all, targets, problem, instanced)) {
-    pmiIssue(ctx, name, typeName + " dimension not imported: " + problem);
+  if (!mapPmiLabels(ctx, all, targets, problem, code, instanced)) {
+    pmiIssue(ctx, name, code, kLost, typeName + " dimension not imported: " + problem);
     return;
   }
   if (instanced) {
-    pmiIssue(ctx, name, "the part is instanced several times; the dimension is on the first");
+    pmiIssue(ctx, name, "instanced", kApproximated,
+             "the part is instanced several times; the dimension is on the first");
+  }
+  // Measuring direction: the 'orientation' placement of the STEP entity (CAx-IF), for a linear
+  // distance (which OCCT's reader ignores) and for OCCT's own unnamed oriented form alike.
+  // XCAFDimTolObjects_DimensionObject::GetDirection cannot tell: it always returns true, with
+  // (1, 0, 0) when nothing was set.
+  bool hasDirection = false;
+  gp_Dir direction;
+  StepDimensionInfo* step = linkStepDimension(ctx, first, second, typeName);
+  if (typeName == "linearDistance" || type == XCAFDimTolObjects_DimensionType_Location_None) {
+    if (step != nullptr && step->hasOrientation) {
+      direction = step->orientation;
+      hasDirection = true;
+    }
+  }
+  if (type == XCAFDimTolObjects_DimensionType_Location_None && hasDirection && second.Length() > 0) {
+    typeName = "linearDistance";  // OCCT's reading of an oriented dimensional location
   }
   const bool angular = typeName == "angular";
   // OCCT's reader gives angles in degrees; the contracts use radians.
   const double scale = angular ? kPi / 180.0 : 1.0;
-  const occ::handle<NCollection_HArray1<double>> values = object->GetValues();
-  if (values.IsNull() || values->Length() == 0) {
-    pmiIssue(ctx, name, typeName + " dimension not imported: it has no value");
-    return;
-  }
   double value = object->GetValue() * scale;
   std::string tolerance;
   if (object->IsDimWithRange()) {
@@ -1065,7 +1635,8 @@ void importPmiDimension(PmiImportContext& ctx, const TDF_Label& label) {
       if (ctx.angleUnitKnown) {
         deviationScale = ctx.angleUnitRad;
       } else {
-        pmiIssue(ctx, name, "the file's angle unit is unclear; angular deviations read as radians");
+        pmiIssue(ctx, name, "angleUnit", kApproximated,
+                 "the file's angle unit is unclear; angular deviations read as radians");
       }
     }
     tolerance = ",\"tolerance\":{\"kind\":\"deviation\",\"upper\":" +
@@ -1078,25 +1649,121 @@ void importPmiDimension(PmiImportContext& ctx, const TDF_Label& label) {
   if (object->GetClassOfTolerance(hole, variance, grade)) {
     const std::string cls = fitClassText(hole, variance, grade);
     if (cls.empty()) {
-      pmiIssue(ctx, name, "the dimension's class of tolerance is not an ISO 286 class");
+      pmiIssue(ctx, name, "fitClass", kApproximated,
+               "the dimension's class of tolerance is not an ISO 286 class");
     } else if (!tolerance.empty()) {
-      pmiIssue(ctx, name, "the dimension has deviations and a class " + cls + "; the class is dropped");
+      pmiIssue(ctx, name, "fitAndDeviation", kApproximated,
+               "the dimension has deviations and a class " + cls + "; the class is dropped");
     } else {
       tolerance = std::string(",\"tolerance\":{\"kind\":\"fit\",\"") + (hole ? "hole" : "shaft") +
                   "\":" + jsonString(cls) + "}";
     }
   }
+  // Descriptions: basic/reference (CAx-IF dimensional note), Wren's measured points and form.
+  std::string qualifier;
+  std::vector<std::string> at;
+  bool ordinate = false;
+  for (int i = 0; i < object->NbDescriptions(); ++i) {
+    TCollection_AsciiString key(hasciiText(object->GetDescriptionName(i)).c_str());
+    key.LowerCase();
+    const std::string text = hasciiText(object->GetDescription(i));
+    if (key.IsEqual(kDimensionalNote)) {
+      if (text == "theoretical") {
+        qualifier = "basic";
+      } else if (text == "auxiliary") {
+        qualifier = "reference";
+      } else {
+        pmiIssue(ctx, name, "dimensionNote", kApproximated,
+                 "the dimensional note '" + text + "' is not imported");
+      }
+    } else if (key.IsEqual(kWrenPointsDescription)) {
+      std::vector<std::string> parsed;
+      std::string token;
+      bool valid = true;
+      for (size_t c = 0; c <= text.size(); ++c) {
+        if (c == text.size() || text[c] == ',') {
+          valid = valid && isRefPoint(token);
+          parsed.push_back(token);
+          token.clear();
+        } else {
+          token.push_back(text[c]);
+        }
+      }
+      if (valid && parsed.size() <= targets.size()) {
+        at = parsed;
+      } else {
+        pmiIssue(ctx, name, "pointQualifier", kApproximated,
+                 "the measured points '" + text + "' do not match the dimension's targets");
+      }
+    } else if (key.IsEqual(kWrenFormDescription)) {
+      if (text == "ordinate" && typeName == "linearDistance" && hasDirection) {
+        ordinate = true;
+      } else {
+        pmiIssue(ctx, name, "dimensionForm", kApproximated,
+                 "the dimension form '" + text + "' is not imported");
+      }
+    }
+  }
+  if (!qualifier.empty() && !tolerance.empty()) {
+    pmiIssue(ctx, name, "qualifierWithTolerance", kApproximated,
+             "a " + qualifier + " dimension carries a tolerance; the tolerance is dropped");
+    tolerance.clear();
+  }
+  // Centre / outer / inner forms of a linear distance between one face, edge or vertex each.
+  int fromKind = 0;  // 0 none, else 1 centre, 2 outer, 3 inner, per side
+  int toKind = 0;
+  switch (type) {
+    case XCAFDimTolObjects_DimensionType_Location_LinearDistance_FromCenterToOuter: fromKind = 1; toKind = 2; break;
+    case XCAFDimTolObjects_DimensionType_Location_LinearDistance_FromCenterToInner: fromKind = 1; toKind = 3; break;
+    case XCAFDimTolObjects_DimensionType_Location_LinearDistance_FromOuterToCenter: fromKind = 2; toKind = 1; break;
+    case XCAFDimTolObjects_DimensionType_Location_LinearDistance_FromOuterToOuter: fromKind = 2; toKind = 2; break;
+    case XCAFDimTolObjects_DimensionType_Location_LinearDistance_FromOuterToInner: fromKind = 2; toKind = 3; break;
+    case XCAFDimTolObjects_DimensionType_Location_LinearDistance_FromInnerToCenter: fromKind = 3; toKind = 1; break;
+    case XCAFDimTolObjects_DimensionType_Location_LinearDistance_FromInnerToOuter: fromKind = 3; toKind = 2; break;
+    case XCAFDimTolObjects_DimensionType_Location_LinearDistance_FromInnerToInner: fromKind = 3; toKind = 3; break;
+    default: break;
+  }
+  if (fromKind != 0 && at.empty()) {
+    std::vector<TopoDS_Shape> a;
+    std::vector<TopoDS_Shape> b;
+    for (int i = 1; i <= first.Length(); ++i) stepAtoms(XCAFDoc_ShapeTool::GetShape(first(i)), a);
+    for (int i = 1; i <= second.Length(); ++i) stepAtoms(XCAFDoc_ShapeTool::GetShape(second(i)), b);
+    if (a.size() == 1 && b.size() == 1 && targets.size() == 2) {
+      at = {fromKind == 1 ? centreQualifier(a[0]) : "self", toKind == 1 ? centreQualifier(b[0]) : "self"};
+    }
+    if (fromKind != 1 || toKind != 1 || at.empty()) {
+      pmiIssue(ctx, name, "pointQualifier", kApproximated,
+               "the outer or inner points of the linear distance are not imported; it measures "
+               "from the faces");
+    }
+    bool allSelf = true;
+    for (const std::string& q : at) allSelf = allSelf && q == "self";
+    if (allSelf) at.clear();
+  }
   if (object->GetModifiers().Length() > 0 || object->HasQualifier()) {
-    pmiIssue(ctx, name, "dimension modifiers and qualifiers (min, max, …) are not imported");
+    pmiIssue(ctx, name, "dimensionModifier", kApproximated,
+             "dimension modifiers and qualifiers (min, max, controlled radius, …) are not imported");
+  } else if (step != nullptr && !step->unparsedModifiers.empty()) {
+    std::string list;
+    for (const std::string& m : step->unparsedModifiers) list += (list.empty() ? "" : ", ") + m;
+    pmiIssue(ctx, name, "dimensionModifier", kApproximated, "dimension modifiers not imported: " + list);
   }
-  if (type == XCAFDimTolObjects_DimensionType_Size_SphericalDiameter ||
-      type == XCAFDimTolObjects_DimensionType_Size_SphericalRadius) {
-    pmiIssue(ctx, name, "a spherical size is imported as a plain diameter or radius");
+  if (object->HasPoint() || object->HasPoint2()) {
+    pmiIssue(ctx, name, "connectionPoints", kApproximated,
+             "the dimension's connection points are not imported; it measures between its targets");
   }
-  bool hasPolylines = false;
-  const std::string prs = pmiPresentationMember(ctx, object, name, hasPolylines);
+  const bool spherical = type == XCAFDimTolObjects_DimensionType_Size_SphericalDiameter ||
+                         type == XCAFDimTolObjects_DimensionType_Size_SphericalRadius;
+  std::string v2;
+  if (hasDirection && typeName == "linearDistance") v2 += ",\"direction\":" + jsonVec3(direction.XYZ());
+  if (!at.empty()) v2 += ",\"at\":" + jsonStringArray(at);
+  if (!qualifier.empty()) v2 += ",\"qualifier\":\"" + qualifier + "\"";
+  if (ordinate) v2 += ",\"ordinate\":true";
+  if (spherical) v2 += ",\"spherical\":true";
+  bool hasDrawing = false;
+  const std::string prs = pmiPresentationMember(ctx, object, name, hasDrawing);
   ctx.items.push_back("{\"kind\":\"dimension\",\"type\":\"" + typeName + "\",\"targets\":" +
-                      pmiTargetsJson(targets) + ",\"value\":" + jsonNumber(value) + tolerance +
+                      pmiTargetsJson(targets) + ",\"value\":" + jsonNumber(value) + tolerance + v2 +
                       nameMember(name) + prs + "}");
 }
 
@@ -1130,31 +1797,49 @@ std::string datumMaterial(const occ::handle<XCAFDimTolObjects_DatumObject>& datu
 
 void importPmiTolerance(PmiImportContext& ctx, const TDF_Label& label) {
   occ::handle<XCAFDoc_GeomTolerance> attr;
-  if (!label.FindAttribute(XCAFDoc_GeomTolerance::GetID(), attr)) return;
+  if (!label.FindAttribute(XCAFDoc_GeomTolerance::GetID(), attr)) {
+    pmiIssue(ctx, pmiLabelName(label), "noData", kLost, "a geometric tolerance without data");
+    return;
+  }
   const occ::handle<XCAFDimTolObjects_GeomToleranceObject> object = attr->GetObject();
   if (object.IsNull()) {
-    pmiIssue(ctx, pmiLabelName(label), "a geometric tolerance without data");
+    pmiIssue(ctx, pmiLabelName(label), "noData", kLost, "a geometric tolerance without data");
     return;
   }
   const std::string name = pmiItemName(object, pmiLabelName(label));
   const char* type = pmiToleranceTypeName(object->GetType());
   if (type == nullptr) {
-    pmiIssue(ctx, name, "a geometric tolerance of unknown type");
+    pmiIssue(ctx, name, "unknownType", kLost, "a geometric tolerance of unknown type");
     return;
   }
   NCollection_Sequence<TDF_Label> first;
   NCollection_Sequence<TDF_Label> second;
   XCAFDoc_DimTolTool::GetRefShapeLabel(label, first, second);
   first.Append(second);
+  // The STEP entity: OCCT creates tolerance labels in entity order, so the first unmatched
+  // tolerance on the same faces is it.
+  StepToleranceInfo* step = nullptr;
+  {
+    const std::set<const TopoDS_TShape*> shapes = labelTShapes(first);
+    for (StepToleranceInfo& t : ctx.stepTols) {
+      if (!t.used && t.shapes == shapes) {
+        t.used = true;
+        step = &t;
+        break;
+      }
+    }
+  }
   std::vector<std::string> targets;
   std::string problem;
+  const char* code = "noGeometry";
   bool instanced = false;
-  if (!mapPmiLabels(ctx, first, targets, problem, instanced)) {
-    pmiIssue(ctx, name, std::string(type) + " tolerance not imported: " + problem);
+  if (!mapPmiLabels(ctx, first, targets, problem, code, instanced)) {
+    pmiIssue(ctx, name, code, kLost, std::string(type) + " tolerance not imported: " + problem);
     return;
   }
   if (instanced) {
-    pmiIssue(ctx, name, "the part is instanced several times; the tolerance is on the first");
+    pmiIssue(ctx, name, "instanced", kApproximated,
+             "the part is instanced several times; the tolerance is on the first");
   }
   std::string json = std::string("{\"kind\":\"tolerance\",\"type\":\"") + type +
                      "\",\"targets\":" + pmiTargetsJson(targets) +
@@ -1164,18 +1849,69 @@ void importPmiTolerance(PmiImportContext& ctx, const TDF_Label& label) {
       zone == XCAFDimTolObjects_GeomToleranceTypeValue_SphericalDiameter) {
     json += ",\"diameter\":true";
     if (zone == XCAFDimTolObjects_GeomToleranceTypeValue_SphericalDiameter) {
-      pmiIssue(ctx, name, "a spherical tolerance zone is imported as a cylindrical one");
+      json += ",\"spherical\":true";
     }
   }
   const XCAFDimTolObjects_GeomToleranceMatReqModif mat = object->GetMaterialRequirementModifier();
   if (mat == XCAFDimTolObjects_GeomToleranceMatReqModif_M) json += ",\"material\":\"M\"";
   if (mat == XCAFDimTolObjects_GeomToleranceMatReqModif_L) json += ",\"material\":\"L\"";
-  if (object->GetModifiers().Length() > 0 ||
-      object->GetZoneModifier() != XCAFDimTolObjects_GeomToleranceZoneModif_None ||
-      object->GetMaxValueModifier() != 0.0) {
-    pmiIssue(ctx, name,
-             "tolerance modifiers (projected, free state, all around, maximum value, …) are not "
-             "imported");
+  // Zone modifiers, all around / all over, projected zones.
+  std::vector<std::string> modifiers;
+  bool allAround = false;
+  std::vector<std::string> unread;
+  bool separate = false;
+  const NCollection_Sequence<XCAFDimTolObjects_GeomToleranceModif> mods = object->GetModifiers();
+  for (int i = 1; i <= mods.Length(); ++i) {
+    const char* m = nullptr;
+    switch (mods(i)) {
+      case XCAFDimTolObjects_GeomToleranceModif_Free_State: m = "freeState"; break;
+      case XCAFDimTolObjects_GeomToleranceModif_Tangent_Plane: m = "tangentPlane"; break;
+      case XCAFDimTolObjects_GeomToleranceModif_Statistical_Tolerance: m = "statistical"; break;
+      case XCAFDimTolObjects_GeomToleranceModif_Common_Zone: m = "combinedZone"; break;
+      case XCAFDimTolObjects_GeomToleranceModif_Separate_Requirement:
+        m = "separateZones";
+        separate = true;
+        break;
+      case XCAFDimTolObjects_GeomToleranceModif_All_Around:
+      case XCAFDimTolObjects_GeomToleranceModif_All_Over:
+        allAround = true;
+        break;
+      case XCAFDimTolObjects_GeomToleranceModif_Any_Cross_Section: unread.push_back("any cross section"); break;
+      case XCAFDimTolObjects_GeomToleranceModif_Each_Radial_Element: unread.push_back("each radial element"); break;
+      case XCAFDimTolObjects_GeomToleranceModif_Line_Element: unread.push_back("line element"); break;
+      case XCAFDimTolObjects_GeomToleranceModif_Major_Diameter: unread.push_back("major diameter"); break;
+      case XCAFDimTolObjects_GeomToleranceModif_Minor_Diameter: unread.push_back("minor diameter"); break;
+      case XCAFDimTolObjects_GeomToleranceModif_Pitch_Diameter: unread.push_back("pitch diameter"); break;
+      case XCAFDimTolObjects_GeomToleranceModif_Not_Convex: unread.push_back("not convex"); break;
+      case XCAFDimTolObjects_GeomToleranceModif_Reciprocity_Requirement: unread.push_back("reciprocity"); break;
+      default: unread.push_back("another modifier"); break;
+    }
+    if (m != nullptr && std::find(modifiers.begin(), modifiers.end(), m) == modifiers.end()) {
+      modifiers.push_back(m);
+    }
+  }
+  if (!modifiers.empty()) json += ",\"modifiers\":" + jsonStringArray(modifiers);
+  if (step != nullptr && step->hasProjected) {
+    // From the STEP entity, in mm: OCCT 8.0.1's value is scaled by its cascade unit.
+    json += ",\"projected\":" + jsonNumber(step->projected);
+  } else if (object->GetZoneModifier() == XCAFDimTolObjects_GeomToleranceZoneModif_Projected) {
+    unread.push_back("projected zone (its height could not be read)");
+  } else if (object->GetZoneModifier() == XCAFDimTolObjects_GeomToleranceZoneModif_Runout) {
+    unread.push_back("runout zone angle");
+  } else if (object->GetZoneModifier() == XCAFDimTolObjects_GeomToleranceZoneModif_NonUniform) {
+    unread.push_back("non-uniform zone");
+  }
+  if (allAround) json += ",\"allAround\":true";
+  if (object->GetMaxValueModifier() != 0.0) unread.push_back("maximum value");
+  if (separate) {
+    pmiIssue(ctx, name, "separateRequirement", kApproximated,
+             "the separate requirement (SEP REQT) is read as separate zones (SZ)");
+  }
+  if (!unread.empty()) {
+    std::string list;
+    for (const std::string& u : unread) list += (list.empty() ? "" : ", ") + u;
+    pmiIssue(ctx, name, "toleranceModifier", kApproximated,
+             "tolerance modifiers not imported: " + list);
   }
   // Datum reference frame, by precedence.
   NCollection_Sequence<TDF_Label> datumLabels;
@@ -1189,7 +1925,8 @@ void importPmiTolerance(PmiImportContext& ctx, const TDF_Label& label) {
     if (datum.IsNull()) continue;
     const std::string datumLabel = hasciiText(datum->GetName());
     if (datumLabel.empty()) {
-      pmiIssue(ctx, name, "a datum reference without a label is not imported");
+      pmiIssue(ctx, name, "datumReferenceUnlabelled", kApproximated,
+               "a datum reference without a label is not imported");
       continue;
     }
     const std::string material = datumMaterial(datum, otherModifiers);
@@ -1202,11 +1939,21 @@ void importPmiTolerance(PmiImportContext& ctx, const TDF_Label& label) {
                    [](const std::pair<int, std::string>& a, const std::pair<int, std::string>& b) {
                      return a.first < b.first;
                    });
+  // One reference per position: a datum target and its datum share a compartment.
+  std::vector<std::pair<int, std::string>> unique;
+  for (const auto& r : refs) {
+    if (unique.empty() || unique.back().first != r.first || unique.back().second != r.second) {
+      unique.push_back(r);
+    }
+  }
+  refs = unique;
   if (otherModifiers) {
-    pmiIssue(ctx, name, "datum reference modifiers other than M and L are not imported");
+    pmiIssue(ctx, name, "datumModifier", kApproximated,
+             "datum reference modifiers other than M and L are not imported");
   }
   if (refs.size() > 3) {
-    pmiIssue(ctx, name, "a datum reference frame of more than three datums; the first three are kept");
+    pmiIssue(ctx, name, "datumFrameLength", kApproximated,
+             "a datum reference frame of more than three datums; the first three are kept");
     refs.resize(3);
   }
   if (!refs.empty()) {
@@ -1217,19 +1964,21 @@ void importPmiTolerance(PmiImportContext& ctx, const TDF_Label& label) {
     }
     json += "]";
   }
-  bool hasPolylines = false;
-  json += nameMember(name) + pmiPresentationMember(ctx, object, name, hasPolylines) + "}";
+  bool hasDrawing = false;
+  json += nameMember(name) + pmiPresentationMember(ctx, object, name, hasDrawing) + "}";
   ctx.items.push_back(std::move(json));
 }
 
-// Datums: OCCT creates one datum label per tolerance reference; a datum item is the label (by
-// name) with geometry, plus the first presentation found among its labels.
-void importPmiDatums(PmiImportContext& ctx, const occ::handle<XCAFDoc_DimTolTool>& dimTol,
-                     std::set<std::string>& read) {
+// Datums. OCCT creates one datum label per tolerance reference and attaches faces only through a
+// geometric_item_specific_usage of the datum feature; the STEP model (stepDatums) supplies the
+// faces the file gives otherwise, and the datums no tolerance references. A datum item is the
+// label (by name) with geometry, plus the first presentation found among its labels.
+void importPmiDatums(PmiImportContext& ctx, const occ::handle<XCAFDoc_DimTolTool>& dimTol) {
   NCollection_Sequence<TDF_Label> labels;
   dimTol->GetDatumLabels(labels);
   std::vector<std::string> order;
   std::map<std::string, std::vector<TDF_Label>> byName;
+  const bool step = ctx.step != nullptr && ctx.step->valid();
   for (int i = 1; i <= labels.Length(); ++i) {
     occ::handle<XCAFDoc_Datum> attr;
     if (!labels(i).FindAttribute(XCAFDoc_Datum::GetID(), attr)) continue;
@@ -1237,21 +1986,52 @@ void importPmiDatums(PmiImportContext& ctx, const occ::handle<XCAFDoc_DimTolTool
     if (datum.IsNull()) continue;
     const std::string label = hasciiText(datum->GetName());
     if (datum->IsDatumTarget()) {
-      pmiIssue(ctx, label + std::to_string(datum->GetDatumTargetNumber()),
-               "datum targets (points, lines, areas) are not imported");
+      // Reported per datum from the STEP model when it is available.
+      if (!step) {
+        pmiIssue(ctx, label + std::to_string(datum->GetDatumTargetNumber()), "datumTarget", kLost,
+                 "datum target " + label + std::to_string(datum->GetDatumTargetNumber()) +
+                     " not imported: datum targets need their own annotation kind");
+      }
       continue;
     }
     if (label.empty()) {
-      pmiIssue(ctx, std::string(), "a datum without a label is not imported");
+      pmiIssue(ctx, std::string(), "datumUnlabelled", kLost, "a datum without a label is not imported");
       continue;
     }
     if (byName.find(label) == byName.end()) order.push_back(label);
     byName[label].push_back(labels(i));
   }
+  std::vector<StepDatumInfo> fileDatums;
+  if (step) fileDatums = stepDatums(*ctx.step);
+  auto fileDatum = [&](const std::string& label) -> const StepDatumInfo* {
+    for (const StepDatumInfo& d : fileDatums) {
+      if (d.label == label) return &d;
+    }
+    return nullptr;
+  };
+  // Datums the file defines only through datum targets, or that no tolerance references.
+  for (const StepDatumInfo& d : fileDatums) {
+    if (!d.hasFeature && !d.targets.empty()) {
+      std::string list;
+      for (const std::string& t : d.targets) list += (list.empty() ? "" : ", ") + t;
+      pmiIssue(ctx, d.label, "datumTarget", kLost,
+               "datum " + d.label + " not imported: it is defined by datum targets (" + list +
+                   "), which need their own annotation kind");
+      continue;
+    }
+    for (const std::string& t : d.targets) {
+      pmiIssue(ctx, t, "datumTarget", kLost,
+               "datum target " + t + " not imported: datum targets need their own annotation kind");
+    }
+    if (byName.find(d.label) == byName.end() && d.hasFeature && !d.label.empty()) {
+      order.push_back(d.label);
+      byName[d.label];  // no XCAF label: the STEP model is the only source
+    }
+  }
   for (const std::string& label : order) {
-    read.insert(label);
     std::vector<std::string> targets;
-    std::string problem = "it is attached to no geometry";
+    std::string problem = "the file attaches its datum feature to no faces";
+    const char* code = "datumNoGeometry";
     bool instanced = false;
     bool mapped = false;
     std::string name;
@@ -1267,38 +2047,127 @@ void importPmiDatums(PmiImportContext& ctx, const occ::handle<XCAFDoc_DimTolTool
         first.Append(second);
         if (first.Length() > 0) {
           targets.clear();
-          mapped = mapPmiLabels(ctx, first, targets, problem, instanced);
+          mapped = mapPmiLabels(ctx, first, targets, problem, code, instanced);
         }
       }
       if (prs.empty()) {
         const std::string n = pmiItemName(datum, std::string());
-        bool hasPolylines = false;
-        prs = pmiPresentationMember(ctx, datum, n.empty() ? label : n, hasPolylines);
-        if (hasPolylines || name.empty()) name = n;
+        bool hasDrawing = false;
+        prs = pmiPresentationMember(ctx, datum, n.empty() ? label : n, hasDrawing);
+        if (hasDrawing || name.empty()) name = n;
       }
     }
+    const StepDatumInfo* file = fileDatum(label);
+    if (!mapped && file != nullptr && std::strcmp(code, "datumNoGeometry") == 0) {
+      if (file->ambiguous) {
+        problem = "the file links its symbol to different faces (a tolerance and a shape aspect "
+                  "disagree)";
+        code = "datumAmbiguous";
+      } else if (!file->shapes.empty()) {
+        targets.clear();
+        mapped = mapPmiAtoms(ctx, file->shapes, targets, problem, code, instanced);
+      }
+    }
+    if (name.empty() && file != nullptr) name = file->name;
+    bool presentationRead = false;
+#ifdef WHITTLE_OCCT_READ_ANNOTATION
+    if (mapped && byName[label].empty() && file != nullptr && !file->presentedFeature.IsNull() &&
+        !ctx.step->tr.IsNull()) {
+      // The reader's own presentation code, on the datum feature (default factors: the cascade
+      // unit is the millimetre; it takes the file's units from the draughting model).
+      occ::handle<XCAFDimTolObjects_DatumObject> datum = new XCAFDimTolObjects_DatumObject();
+      readAnnotation(ctx.step->tr, file->presentedFeature, datum, StepData_Factors());
+      bool hasDrawing = false;
+      prs = pmiPresentationMember(ctx, datum, name.empty() ? label : name, hasDrawing);
+      presentationRead = hasDrawing;
+    }
+#endif
     if (!mapped) {
-      pmiIssue(ctx, name.empty() ? label : name, "datum " + label + " not imported: " + problem);
+      pmiIssue(ctx, name.empty() ? label : name, code, kLost, "datum " + label + " not imported: " + problem);
       continue;
     }
     if (instanced) {
-      pmiIssue(ctx, name.empty() ? label : name,
+      pmiIssue(ctx, name.empty() ? label : name, "instanced", kApproximated,
                "the part is instanced several times; the datum is on the first");
+    }
+    if (byName[label].empty() && file != nullptr && file->presented && !presentationRead) {
+      pmiIssue(ctx, name.empty() ? label : name, "presentationNotRead", kCosmetic,
+               "datum " + label + " is shown without its presentation (OCCT reads a datum's "
+                                  "presentation only through a tolerance that references it)");
     }
     ctx.items.push_back("{\"kind\":\"datum\",\"label\":" + jsonString(label) + ",\"targets\":" +
                         pmiTargetsJson(targets) + nameMember(name) + prs + "}");
   }
 }
 
-// What OCCT dropped before XCAF: semantic entities it attached to no geometry, and datums that
-// no tolerance references (OCCT 8.0.1 reads datums only through tolerances).
+// STEP entity names of the contract tolerance types.
+const std::pair<const char*, const char*> kStepToleranceTypes[] = {
+    {"STRAIGHTNESS_TOLERANCE", "straightness"},   {"FLATNESS_TOLERANCE", "flatness"},
+    {"ROUNDNESS_TOLERANCE", "circularity"},       {"CYLINDRICITY_TOLERANCE", "cylindricity"},
+    {"LINE_PROFILE_TOLERANCE", "profileOfLine"},  {"SURFACE_PROFILE_TOLERANCE", "profileOfSurface"},
+    {"PARALLELISM_TOLERANCE", "parallelism"},     {"PERPENDICULARITY_TOLERANCE", "perpendicularity"},
+    {"ANGULARITY_TOLERANCE", "angularity"},       {"POSITION_TOLERANCE", "position"},
+    {"CONCENTRICITY_TOLERANCE", "concentricity"}, {"COAXIALITY_TOLERANCE", "coaxiality"},
+    {"SYMMETRY_TOLERANCE", "symmetry"},           {"CIRCULAR_RUNOUT_TOLERANCE", "circularRunout"},
+    {"TOTAL_RUNOUT_TOLERANCE", "totalRunout"},
+};
+
+// A tolerance OCCT 8.0.1 has no class for (a complex entity with a part it does not know, such as
+// a per-unit-area zone): its type, value and faces are read from the entity itself. Only without
+// a datum reference frame (its datum system is not read this way). What the contract cannot hold
+// is reported as approximated. False when it cannot be read this way.
+bool importUnreadTolerance(PmiImportContext& ctx, const StepUnreadEntity& u) {
+  if (u.kind != "tolerance" || u.datumReference || u.magnitude.IsNull() || u.aspect.IsNull() ||
+      ctx.step == nullptr) {
+    return false;
+  }
+  const char* type = nullptr;
+  for (const auto& t : kStepToleranceTypes) {
+    if (u.stepType == t.first) type = t.second;
+  }
+  occ::handle<StepBasic_MeasureWithUnit> magnitude =
+      occ::down_cast<StepBasic_MeasureWithUnit>(u.magnitude);
+  if (magnitude.IsNull()) {
+    const occ::handle<StepRepr_ReprItemAndMeasureWithUnit> ri =
+        occ::down_cast<StepRepr_ReprItemAndMeasureWithUnit>(u.magnitude);
+    if (!ri.IsNull()) magnitude = ri->GetMeasureWithUnit();
+  }
+  double value = 0.0;
+  const occ::handle<StepRepr_ShapeAspect> aspect = occ::down_cast<StepRepr_ShapeAspect>(u.aspect);
+  if (type == nullptr || aspect.IsNull() || !stepLengthMm(magnitude, value) || !(value > 0)) {
+    return false;
+  }
+  std::vector<std::string> targets;
+  std::string problem;
+  const char* code = "noGeometry";
+  bool instanced = false;
+  if (!mapPmiAtoms(ctx, stepAspectShapes(*ctx.step, aspect), targets, problem, code, instanced)) {
+    pmiIssue(ctx, u.name, code, kLost, std::string(type) + " tolerance not imported: " + problem);
+    return true;
+  }
+  pmiIssue(ctx, u.name, "unsupportedEntity", kApproximated,
+           std::string(type) + " tolerance read from the STEP entity without its " +
+               (u.why.empty() ? std::string("other parts") : u.why) +
+               " (OCCT 8.0.1 cannot read it): the zone applies to the whole feature, without "
+               "presentation");
+  if (instanced) {
+    pmiIssue(ctx, u.name, "instanced", kApproximated,
+             "the part is instanced several times; the tolerance is on the first");
+  }
+  ctx.items.push_back(std::string("{\"kind\":\"tolerance\",\"type\":\"") + type +
+                      "\",\"targets\":" + pmiTargetsJson(targets) +
+                      ",\"value\":" + jsonNumber(value) + nameMember(u.name) + "}");
+  return true;
+}
+
+// What OCCT dropped before XCAF: semantic entities it attached to no geometry, dimensions
+// without a value, GD&T entities it has no class for, measuring directions it could not match.
 void scanStepModelForPmi(PmiImportContext& ctx, STEPCAFControl_Reader& reader, int dimensions,
-                         int tolerances, const std::set<std::string>& datums) {
+                         int tolerances) {
   const occ::handle<Interface_InterfaceModel> model = reader.ChangeReader().Model();
   if (model.IsNull()) return;
   int fileDimensions = 0;
   int fileTolerances = 0;
-  std::vector<std::string> fileDatums;
   for (int i = 1; i <= model->NbEntities(); ++i) {
     const occ::handle<Standard_Transient> entity = model->Value(i);
     if (entity.IsNull()) continue;
@@ -1307,29 +2176,43 @@ void scanStepModelForPmi(PmiImportContext& ctx, STEPCAFControl_Reader& reader, i
       ++fileDimensions;
     } else if (entity->IsKind(STANDARD_TYPE(StepDimTol_GeometricTolerance))) {
       ++fileTolerances;
-    } else if (entity->IsKind(STANDARD_TYPE(StepDimTol_Datum))) {
-      const std::string id =
-          hasciiText(occ::down_cast<StepDimTol_Datum>(entity)->Identification());
-      if (std::find(fileDatums.begin(), fileDatums.end(), id) == fileDatums.end()) {
-        fileDatums.push_back(id);
-      }
     }
   }
+  // Dimensions the file gives no value: named and typed from the STEP entity.
+  int named = 0;
+  for (const StepDimensionInfo& d : ctx.stepDims) {
+    if (d.hasValue || (d.first.empty() && d.second.empty())) continue;
+    ++named;
+    pmiIssue(ctx, d.name, "noValue", kLost,
+             stepDimensionTypeName(d.type) + " dimension not imported: the file gives it no value");
+  }
+  for (int i = named; i < ctx.noValueLabels; ++i) {
+    pmiIssue(ctx, std::string(), "noValue", kLost, "a dimension not imported: it has no value");
+  }
   if (fileDimensions > dimensions) {
-    pmiIssue(ctx, std::string(),
+    pmiIssue(ctx, std::string(), "notRead", kLost,
              std::to_string(fileDimensions - dimensions) +
                  " dimension(s) of the file could not be read (no geometry they apply to)");
   }
   if (fileTolerances > tolerances) {
-    pmiIssue(ctx, std::string(),
+    pmiIssue(ctx, std::string(), "notRead", kLost,
              std::to_string(fileTolerances - tolerances) +
                  " geometric tolerance(s) of the file could not be read (no geometry they apply to)");
   }
-  for (const std::string& id : fileDatums) {
-    if (datums.count(id) == 0) {
-      pmiIssue(ctx, id,
-               "datum " + id +
-                   " is not imported: it is referenced by no tolerance that could be read");
+  if (ctx.step != nullptr) {
+    for (const StepUnreadEntity& u : stepUnreadGdt(*ctx.step)) {
+      if (importUnreadTolerance(ctx, u)) continue;
+      std::string what = u.type.empty() ? u.kind : u.type + " " + u.kind;
+      std::string reason = what + " not imported: OCCT 8.0.1 cannot read this entity";
+      if (!u.why.empty()) reason += " (a " + u.kind + " with " + u.why + ")";
+      pmiIssue(ctx, u.name, "unsupportedEntity", kLost, reason);
+    }
+  }
+  for (const StepDimensionInfo& d : ctx.stepDims) {
+    if (d.hasOrientation && d.hasValue && !d.used) {
+      pmiIssue(ctx, d.name, "directionNotRead", kApproximated,
+               "the measuring direction of a linear distance could not be matched; it comes in "
+               "without one");
     }
   }
 }
@@ -1352,23 +2235,44 @@ std::string pmiFailureMember(const std::vector<std::pair<TopoDS_Shape, std::stri
   std::vector<std::unique_ptr<Topo>> topo;
   for (const auto& body : bodies) topo.push_back(std::make_unique<Topo>(body.first));
   return ",\"pmi\":{\"items\":[],\"issues\":[{\"reason\":" + jsonString(reason) +
-         "}],\"counts\":" + pmiCountsJson(topo) + "}";
+         ",\"code\":\"readFailed\",\"severity\":\"lost\"}],\"counts\":" + pmiCountsJson(topo) + "}";
 }
 
 std::string stepPmiJson(STEPCAFControl_Reader& reader, const occ::handle<TDocStd_Document>& doc,
-                        const std::vector<std::pair<TopoDS_Shape, std::string>>& bodies) {
+                        const std::vector<std::pair<TopoDS_Shape, std::string>>& bodies,
+                        const std::string& path) {
   PmiImportContext ctx{bodies, {}, {}, {}};
+  ctx.doc = doc;
   int dimensions = 0;
   int tolerances = 0;
-  std::set<std::string> datums;
+  StepPmiModel step;
   try {
     const occ::handle<XCAFDoc_DimTolTool> dimTol = XCAFDoc_DocumentTool::DimTolTool(doc->Main());
-    // The body maps are only needed when there is GD&T to place (most STEP files have none).
-    if (dimTol->BaseLabel().HasChild()) {
-      for (const auto& body : bodies) ctx.topo.push_back(std::make_unique<Topo>(body.first));
-      ctx.angleUnitKnown = stepPlaneAngleUnit(reader, ctx.angleUnitRad);
+    // The body maps are only needed when there is GD&T to place (most STEP files have none). XCAF
+    // can be empty while the file has GD&T (datums alone: OCCT reads them only through tolerances).
+    if (!dimTol->BaseLabel().HasChild()) {
+      bool fileHasGdt = false;
+      const occ::handle<Interface_InterfaceModel> model = reader.ChangeReader().Model();
+      for (int i = 1; !model.IsNull() && i <= model->NbEntities() && !fileHasGdt; ++i) {
+        const occ::handle<Standard_Transient> e = model->Value(i);
+        fileHasGdt = isStepGdtEntity(e) || (!e.IsNull() && e->IsKind(STANDARD_TYPE(StepDimTol_Datum)));
+      }
+      if (!fileHasGdt && !model.IsNull()) {
+        StepPmiModel unread;
+        unread.model = model;
+        fileHasGdt = !stepUnreadGdt(unread).empty();
+      }
+      if (!fileHasGdt) return std::string();
     }
-    importPmiDatums(ctx, dimTol, datums);
+    for (const auto& body : bodies) ctx.topo.push_back(std::make_unique<Topo>(body.first));
+    ctx.angleUnitKnown = stepPlaneAngleUnit(reader, ctx.angleUnitRad);
+    step = stepPmiModel(reader, path);
+    if (step.valid()) {
+      ctx.step = &step;
+      ctx.stepDims = stepDimensions(step);
+      ctx.stepTols = stepTolerances(step);
+    }
+    importPmiDatums(ctx, dimTol);
     NCollection_Sequence<TDF_Label> labels;
     dimTol->GetDimensionLabels(labels);
     for (int i = 1; i <= labels.Length(); ++i) {
@@ -1386,14 +2290,14 @@ std::string stepPmiJson(STEPCAFControl_Reader& reader, const occ::handle<TDocStd
     dimTol->GetGeomToleranceLabels(labels);
     tolerances = labels.Length();
     for (int i = 1; i <= labels.Length(); ++i) importPmiTolerance(ctx, labels(i));
-    scanStepModelForPmi(ctx, reader, dimensions, tolerances, datums);
+    scanStepModelForPmi(ctx, reader, dimensions, tolerances);
   } catch (const Standard_Failure& e) {
     const char* what = e.what();
-    pmiIssue(ctx, std::string(),
+    pmiIssue(ctx, std::string(), "readFailed", kLost,
              std::string("reading the PMI stopped inside the geometry kernel: ") +
                  e.ExceptionType() + " " + (what != nullptr ? what : ""));
   } catch (const std::exception& e) {
-    pmiIssue(ctx, std::string(), std::string("reading the PMI stopped: ") + e.what());
+    pmiIssue(ctx, std::string(), "readFailed", kLost, std::string("reading the PMI stopped: ") + e.what());
   }
   if (ctx.items.empty() && ctx.issues.empty()) return std::string();
   if (ctx.topo.size() != bodies.size()) {
@@ -1415,11 +2319,12 @@ std::string stepPmiJson(STEPCAFControl_Reader& reader, const occ::handle<TDocStd
 }
 
 std::string stepPmiMember(STEPCAFControl_Reader& reader, const occ::handle<TDocStd_Document>& doc,
-                          const std::vector<std::pair<TopoDS_Shape, std::string>>& bodies) noexcept {
+                          const std::vector<std::pair<TopoDS_Shape, std::string>>& bodies,
+                          const std::string& path) noexcept {
   // PMI never fails an import: the bodies come back whatever happens here.
   std::string reason;
   try {
-    return stepPmiJson(reader, doc, bodies);
+    return stepPmiJson(reader, doc, bodies, path);
   } catch (const Standard_Failure& e) {
     try {
       const char* what = e.what();

@@ -141,6 +141,108 @@ describe('decodePmiImport', () => {
     expect(decodePmiImport(raw([], [{ name: 'x' }]), 1).ok).toBe(false);
   });
 
+  it('contract v2: keeps direction, at, qualifier, ordinate, spherical, zone fields, triangles, issue codes', () => {
+    const tri = [
+      [0, 0, 10],
+      [1, 0, 10],
+      [0, 1, 10],
+    ];
+    const items = [
+      {
+        ...dimension,
+        tolerance: undefined,
+        direction: [1, 0, 0],
+        at: ['self', 'axis'],
+        ordinate: true,
+      },
+      { ...dimension, tolerance: undefined, qualifier: 'basic' },
+      {
+        kind: 'dimension',
+        type: 'linearRadius',
+        targets: [{ body: 0, kind: 'face', index: 3 }],
+        value: 5,
+        spherical: true,
+      },
+      {
+        kind: 'tolerance',
+        type: 'position',
+        targets: [{ body: 0, kind: 'face', index: 2 }],
+        value: 0.1,
+        diameter: true,
+        spherical: true,
+        modifiers: ['freeState', 'combinedZone'],
+        projected: 15,
+        unequal: 0.05,
+        allAround: true,
+        presentation: { ...prs, triangles: tri },
+      },
+    ];
+    const issues = [
+      { name: 'F1', reason: 'r', code: 'noValue', severity: 'lost' },
+      { reason: 'v1 issue' },
+    ];
+    const r = decodePmiImport(raw(items, issues), 1);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.value.items.map((i) => ({ ...i, presentation: undefined }))).toEqual(
+      items.map((i) => {
+        const { tolerance: _t, ...rest } = i as Record<string, unknown>;
+        return { ...rest, ...(_t === undefined ? {} : { tolerance: _t }), presentation: undefined };
+      }),
+    );
+    const t = r.value.items[3];
+    expect(t?.kind === 'tolerance' && t.presentation?.triangles).toEqual(tri);
+    expect(r.value.issues).toEqual(issues);
+  });
+
+  it('contract v2: malformed fields are INTERNAL', () => {
+    const bad: [unknown, RegExp][] = [
+      [{ ...dimension, direction: [2, 0, 0] }, /not a unit vector/],
+      [{ ...dimension, at: ['self', 'nowhere'] }, /at\[1\]/],
+      [{ ...dimension, at: ['self', 'self', 'self'] }, /longer than its targets/],
+      [{ ...dimension, qualifier: 'basic' }, /basic and has a tolerance/],
+      [{ ...dimension, tolerance: undefined, ordinate: true }, /ordinate without/],
+      [{ ...dimension, spherical: true }, /spherical but not a diameter/],
+      [
+        {
+          kind: 'tolerance',
+          type: 'flatness',
+          targets: [{ body: 0, kind: 'face', index: 2 }],
+          value: 0.1,
+          spherical: true,
+        },
+        /spherical without diameter/,
+      ],
+      [
+        {
+          kind: 'tolerance',
+          type: 'flatness',
+          targets: [{ body: 0, kind: 'face', index: 2 }],
+          value: 0.1,
+          modifiers: ['maximumValue'],
+        },
+        /modifiers\[0\]/,
+      ],
+      [
+        {
+          kind: 'tolerance',
+          type: 'position',
+          targets: [{ body: 0, kind: 'face', index: 2 }],
+          value: 0.1,
+          projected: 0,
+        },
+        /projected is not greater than zero/,
+      ],
+      [{ ...dimension, presentation: { ...prs, triangles: [[0, 0, 0]] } }, /three points/],
+    ];
+    for (const [item, why] of bad) {
+      expect(internalDetail(decodePmiImport(raw([item]), 1))).toMatch(why);
+    }
+    expect(
+      internalDetail(decodePmiImport(raw([], [{ reason: 'r', severity: 'fatal' }]), 1)),
+    ).toMatch(/severity/);
+  });
+
   it('withAnnotationIds gives semantic items an id and leaves presentation-only ones alone', () => {
     const r = decodePmiImport(
       raw([dimension, { kind: 'presentationOnly', presentation: prs }], [{ reason: 'r' }]),

@@ -149,6 +149,61 @@
 #include <XCAFDoc_Dimension.hxx>
 #include <XCAFDoc_DimTolTool.hxx>
 #include <XCAFDoc_GeomTolerance.hxx>
+// M5 PMI from the STEP model (whittle_pmi_step.cpp, ADR-100 amendment 2026-11-23)
+#include <GeomToStep_MakeCartesianPoint.hxx>
+#include <Interface_EntityIterator.hxx>
+#include <Interface_Graph.hxx>
+#include <Interface_UndefinedContent.hxx>
+#include <Poly_Triangle.hxx>
+#include <Poly_Triangulation.hxx>
+#include <StepAP242_DraughtingModelItemAssociation.hxx>
+#include <StepAP242_GeometricItemSpecificUsage.hxx>
+#include <StepAP242_ItemIdentifiedRepresentationUsage.hxx>
+#include <StepAP242_ItemIdentifiedRepresentationUsageDefinition.hxx>
+#include <StepBasic_ConversionBasedUnitAndLengthUnit.hxx>
+#include <StepBasic_LengthMeasureWithUnit.hxx>
+#include <StepBasic_MeasureValueMember.hxx>
+#include <StepBasic_MeasureWithUnit.hxx>
+#include <StepBasic_SiUnitAndLengthUnit.hxx>
+#include <StepBasic_Unit.hxx>
+#include <StepData_Factors.hxx>
+#include <StepData_UndefinedEntity.hxx>
+#include <StepDimTol_DatumFeature.hxx>
+#include <StepDimTol_DatumTarget.hxx>
+#include <StepDimTol_GeometricToleranceTarget.hxx>
+#include <StepDimTol_ProjectedZoneDefinition.hxx>
+#include <StepDimTol_ToleranceZone.hxx>
+#include <StepDimTol_ToleranceZoneForm.hxx>
+#include <StepDimTol_ToleranceZoneTarget.hxx>
+#include <StepGeom_Axis2Placement3d.hxx>
+#include <StepGeom_CartesianPoint.hxx>
+#include <StepGeom_Direction.hxx>
+#include <StepGeom_GeometricRepresentationContextAndGlobalUnitAssignedContext.hxx>
+#include <StepGeom_GeomRepContextAndGlobUnitAssCtxAndGlobUncertaintyAssCtx.hxx>
+#include <StepRepr_AllAroundShapeAspect.hxx>
+#include <StepRepr_CompoundRepresentationItem.hxx>
+#include <StepRepr_DerivedShapeAspect.hxx>
+#include <StepRepr_DescriptiveRepresentationItem.hxx>
+#include <StepRepr_ProductDefinitionShape.hxx>
+#include <StepRepr_RepresentationContext.hxx>
+#include <StepRepr_RepresentationItem.hxx>
+#include <StepRepr_ReprItemAndMeasureWithUnit.hxx>
+#include <StepRepr_ReprItemAndMeasureWithUnitAndQRI.hxx>
+#include <StepRepr_ShapeAspect.hxx>
+#include <StepRepr_ShapeAspectDerivingRelationship.hxx>
+#include <StepRepr_ShapeAspectRelationship.hxx>
+#include <StepShape_AngularLocation.hxx>
+#include <StepShape_AngularSize.hxx>
+#include <StepShape_DimensionalCharacteristic.hxx>
+#include <StepShape_DimensionalCharacteristicRepresentation.hxx>
+#include <StepShape_ShapeDimensionRepresentation.hxx>
+#include <StepShape_TopologicalRepresentationItem.hxx>
+#include <StepVisual_DraughtingModel.hxx>
+#include <Transfer_Binder.hxx>
+#include <Transfer_TransientProcess.hxx>
+#include <TransferBRep.hxx>
+#include <XSControl_TransferReader.hxx>
+#include <XSControl_WorkSession.hxx>
 #include <gp.hxx>
 #include <gp_Ax1.hxx>
 #include <gp_Ax2.hxx>
@@ -176,6 +231,8 @@
 #include <cstring>
 #include <exception>
 #include <functional>
+#include <fstream>
+#include <iterator>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -190,6 +247,18 @@
 
 #ifndef WHITTLE_BUILD_ID
 #define WHITTLE_BUILD_ID "dev"
+#endif
+
+// OCCT 8.0.1, STEPCAFControl_Reader.cxx: reads the presentation and annotation plane of a GD&T
+// entity into an XCAF object. External linkage but in no header; whittle_pmi.cpp calls it for the
+// datums the reader never reaches (no tolerance references them). Declared for the version it was
+// checked against only: another OCCT falls back to reporting the presentation as not read.
+#if OCC_VERSION_HEX == 0x080001
+void readAnnotation(const opencascade::handle<XSControl_TransferReader>& theTR,
+                    const opencascade::handle<Standard_Transient>& theGDT,
+                    const opencascade::handle<Standard_Transient>& theDimObject,
+                    const StepData_Factors& theLocalFactors);
+#define WHITTLE_OCCT_READ_ANNOTATION 1
 #endif
 
 namespace whittle {
