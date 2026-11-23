@@ -91,6 +91,13 @@ M5a (STEP AP242 PMI, `whittle_pmi.cpp`): a local single-threaded link measured 2
 also holds M4's `subShapeGeometry`). OCCT's GD&T reader and writer were already linked (STEP import
 and export reach them), so the façade code is most of it; CI's size report has the exact delta.
 
+ADR-101 phase 1b (PMI contract v2, the STEP-model reading in `whittle_pmi_step.cpp`), measured
+against the M5a façade build: single-threaded 22.09 MB raw / 6.94 MB gzip / 4.84 MB brotli
+(+107 KiB raw, +37.7 KiB gzip, +33.7 KiB brotli, +0.72 %); threaded 21.39 / 6.91 / 4.81 MB
+(+104 KiB raw, +37.6 KiB gzip, +26.5 KiB brotli). Bytes: 22 091 366 / 6 940 179 / 4 838 573 and
+21 388 451 / 6 912 817 / 4 807 659 (before 21 981 810 / 6 901 581 / 4 804 094 and
+21 281 804 / 6 874 269 / 4 780 520).
+
 Budget: ≤ 15 MB brotli per kernel (PLAN §7.2). A full two-variant build takes about 20 to 30 min
 (M2: 29.7 min on 4 busy cores; M3: 32 min busy, about 25 min idle); most of that is wasm-opt
 `-O4 --converge` on the 20 MB binaries.
