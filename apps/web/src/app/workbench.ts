@@ -98,6 +98,7 @@ import {
   type RegenView,
   type SectionUi,
   type SettingsTab,
+  type Toast,
   type UiState,
 } from './state';
 import * as hooks from './test-hooks';
@@ -1619,13 +1620,20 @@ export class Workbench {
     this.ui.set((u) => ({ ...u, ...patch }));
   }
 
-  toast(text: string, tone: 'info' | 'error' = 'info'): void {
+  toast(text: string, tone: 'info' | 'error' = 'info', action?: Toast['action']): void {
     clearTimeout(this.toastTimer);
-    this.patchUi({ toast: { id: ++this.toastSeq, text, tone } });
+    this.patchUi({ toast: { id: ++this.toastSeq, text, tone, ...(action ? { action } : {}) } });
+    // A toast with an action stays long enough to reach it.
     this.toastTimer = setTimeout(
       () => this.patchUi({ toast: null }),
-      tone === 'error' ? 6000 : 3500,
+      tone === 'error' || action ? 6000 : 3500,
     );
+  }
+
+  /** Closes the toast now (its action ran). */
+  dismissToast(): void {
+    clearTimeout(this.toastTimer);
+    this.patchUi({ toast: null });
   }
 
   /** Context tools for the current selection (select first, act second). */

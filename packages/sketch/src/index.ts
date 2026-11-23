@@ -90,6 +90,14 @@ export {
   infer,
 } from './inference';
 export {
+  ConnectedPieces,
+  crossPieceLinks,
+  entityPoints,
+  isTouching,
+  PieceLinks,
+  type SketchGeometry,
+} from './pieces';
+export {
   constraintRefs,
   isReservedSketchId,
   isSketchReference,

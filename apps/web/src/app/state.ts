@@ -52,6 +52,13 @@ export interface SketchUi {
   dimDrag: { id: Id; at: Vec2 } | null;
   /** The geometry of the hovered conflict card (`SketchConflict.entities`). */
   highlightEntities: readonly Id[] | null;
+  /**
+   * ADR-087 amendment: constraints linking two separate shapes. `carrying`: the ones carrying the
+   * drag in progress into another shape; `announced`: the ones the last click added (both shown
+   * highlighted on the sketch).
+   */
+  carrying?: readonly Id[];
+  announced?: readonly Id[];
   conflictsDismissed: boolean;
   /** Whether the sketch existed before this edit session (Finish removes new empty sketches). */
   isNew: boolean;
@@ -128,6 +135,8 @@ export interface Toast {
   id: number;
   text: string;
   tone: 'info' | 'error';
+  /** An undo-style action beside the text (e.g. Remove the constraints a click just added). */
+  action?: { label: string; run: () => void };
 }
 
 /** Push/pull on planar faces of one body (PLAN §9.2), from tool start to release / typed value. */
