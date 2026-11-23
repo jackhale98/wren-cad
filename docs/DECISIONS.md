@@ -3609,3 +3609,27 @@ CI on the orthographic view failed twice for one cause: an orthographic view str
 - **Presentation.** The annotation's first placement in a drawing view of the exported configuration (base, projected, section, iso, detail; by id), laid out by the M4 code, curves flattened at 0.02 sheet mm, text stroked from Osifont's glyph outlines exactly where the PDF writer puts it, lifted onto the view's plane through the first anchor. Without a placement: a named model view chosen from the ref geometry (measured direction true length, circles face-on, datum faces edge-on) and a default placement. A layout that needs attention gives semantic PMI only, with a note. The font is fetched in the worker once, lazily.
 - **Import.** A STEP import feature reads its PMI with its shapes (`importShapesWithPmi`, cached with the raw shapes). `importedPmi(partId, featureId)` maps targets to the feature's own names by running the kernel `import` op on each source body alone (the names are per body), with fingerprints, so the annotations resolve exactly. The app adds them in one undo step with `origin: { kind: 'import', file }`; ids are the PMI names when they are unused Wren ids, else new. Datum letters bind to the file's datums, then the part's, else stay `{ label }` (needs attention, noted). `nominal` is set from the file's value. When the kernel reads no PMI but the file has some (census), the report says so.
 - **Proposed contract changes** (not made): dimension `direction?` and `at?` per target (`XCAFDimTolObjects_DimensionObject::SetDirection`/points), a `qualifier?: 'basic' | 'reference'`, `ModelingApi.importedPmi`, and `debugPmiFacade` stays E2E-only on the worker.
+
+## ADR-101: Order after M5a, shared building blocks, PMI contract v2 (owner, 2026-11-23)
+
+**Context.** After M5a the open work was: NIST import losses, sketch dimensions not exported, a `.wrencad` saved into git that could not be diffed, phones limited to review, M5b (MBD in 3D), M6 (assemblies). The owner asked for one order in which each piece builds on the last. Full plan: `docs/NEXT.md`.
+
+**Decisions (owner approved).**
+
+1. **Order:** finish PMI exchange → phone full editor, save as project folder, phone light edits (with a mate-solver spike alongside) → M6 assemblies → M5b → M7. M6 moves ahead of M5b: it does not depend on M5b (assembly STEP needs only per-part PMI export), more users need it, and M5b then works on parts and assemblies in one pass.
+2. **Capabilities, not device names.** `TierPolicy` answers what a device may do (edit sketches, layout `review` or `full`). New code does not test `tier === 'phone'`; existing tests are replaced in Phase 2. The phone "Use full editor" setting is the desktop layout at touch density (as tablets, ADR-099).
+3. **Assemblies ship in slices behind a "Preview: assemblies" setting** until mates work; no long-lived branch.
+4. **Shared building blocks are built once and early:** a regen query from a sketch entity to the faces and edges it generated; a grouped issue report; the per-part-version cache; annotations owned by a part or an assembly; an instance path on `EntityRef`.
+5. **PMI contract v2** (`packages/contracts/src/pmi.ts`), additive: dimension `direction`, `at`, `qualifier` (basic, reference), `ordinate`, `spherical`; tolerance `spherical`, `modifiers`, `projected`, `unequal`, `allAround`; `PmiPresentation.triangles`; `PmiImportIssue` with `code` and `severity` (`lost`, `approximated`, `cosmetic`). Not in v2: datum targets (they need a new annotation kind and drawing symbol), a maximum tolerance value, and `importedPmi` on `ModelingApi` (stays on the worker API until M5b needs it).
+
+## ADR-102: Agent workflow: delegate less, tier by task, small hand-backs (owner, 2026-11-23)
+
+**Context.** The owner runs out of tokens. Anthropic's published numbers: an agent uses about 4× the tokens of a chat and a multi-agent run about 15×; fan-out suits independent breadth-first work, and most coding (shared context, many dependencies) is a poor fit. In this project the lead also spent heavily on raw CI logs.
+
+**Decisions (owner approved).**
+
+- **Delegate only** work that is self-contained, has a test that defines done, and would take the lead more than about ten tool calls. At most three writing agents at once, on different packages, in worktrees, after the contract is frozen.
+- **Tiers** (set in `.claude/agents/*.md`; the lead moves a task up one tier after a failed attempt): opus at high effort for the kernel, regen and naming, the sketch solver, and the reviewer; sonnet at medium effort for UI, viewport, document, platform, tests, and now io, drawing and sync; haiku for docs, log triage and search. The strongest model only leads.
+- **Brief:** goal and why, files to read, the contract excerpt, the tests that must pass, what is out of scope, the golden rules restated. **Hand-back:** at most 300 words (what changed, tests run with counts, open risks, proposed contract diffs); test output through `tail`, never whole logs.
+- **Verification:** the lead runs the tests or reads CI; a report is not evidence. The reviewer runs at milestone gates and before risky merges, on the diff.
+- **Context:** `docs/NEXT.md` is the state file; one session per phase; no model switch mid-session; CI checked once at its expected finish.

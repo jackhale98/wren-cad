@@ -1,6 +1,6 @@
 # Wren — project memory
 
-Wren is a free, open-source, local-first parametric CAD PWA. The full plan is in docs/PLAN.md. It is authoritative; read it before starting work.
+Wren is a free, open-source, local-first parametric CAD PWA. The full plan is in docs/PLAN.md. It is authoritative; read it before starting work. The current state and order of work are in docs/NEXT.md.
 
 ## Golden rules
 

@@ -11,8 +11,16 @@
  * Import: the façade reads semantic PMI with `STEPCAFControl_Reader` into `PmiImportItem`s on the
  * imported body's sub-shape indices; the app turns them into part annotations on the import
  * feature's face names. What OCCT cannot read is reported per item, never dropped silently.
+ *
+ * v2 (ADR-101, additive: every v2 field is optional and a v1 reader ignores it): the measurement
+ * direction and points of a dimension, basic and reference dimensions, ordinates, spherical sizes
+ * and zones, zone modifiers, projected and unequal zones, all around, filled presentation areas,
+ * and a code and severity on each import issue so a report can group and rank them. The façade
+ * writes what OCCT's XCAF objects can hold and reports the rest as a note; it never drops a field
+ * silently.
  */
 
+import type { RefPoint, ZoneModifier } from './annotation';
 import type { Id, Vec3 } from './document';
 
 /** CAx-IF / XCAFDimTolObjects type names, kept as strings so the façade maps 1:1. */
@@ -55,6 +63,11 @@ export interface PmiPresentation {
   /** Annotation plane: origin, x, normal. */
   plane: { origin: Vec3; x: Vec3; normal: Vec3 };
   polylines: Vec3[][];
+  /**
+   * v2: filled areas (arrowheads, filled text of another system) as triangles, three points
+   * each. Read on import; Wren's own export strokes text and needs none.
+   */
+  triangles?: Vec3[];
 }
 
 export type PmiExportItem = {
@@ -72,6 +85,26 @@ export type PmiExportItem = {
       tolerance?:
         | { kind: 'deviation'; upper: number; lower: number }
         | { kind: 'fit'; hole?: string; shaft?: string };
+      /**
+       * v2: unit vector (part coordinates) a linear distance is measured along. Absent: the true
+       * distance between the targets (an aligned dimension).
+       */
+      direction?: Vec3;
+      /**
+       * v2: the point of each target the dimension measures, parallel to `targets`; absent or
+       * shorter = `'self'`.
+       */
+      at?: RefPoint[];
+      /** v2: theoretically exact (basic) or reference (auxiliary) dimension; neither has a tolerance. */
+      qualifier?: 'basic' | 'reference';
+      /**
+       * v2: an ordinate: the coordinate of `targets[1]` from the origin `targets[0]` along
+       * `direction`. STEP has no ordinate type: it is written as a linear distance with a
+       * description another Wren reads back; any other reader sees the linear distance.
+       */
+      ordinate?: boolean;
+      /** v2: the radius or diameter is of a sphere (SR / SØ). */
+      spherical?: boolean;
     }
   | {
       kind: 'datum';
@@ -85,10 +118,20 @@ export type PmiExportItem = {
       /** Zone value, mm; `diameter` for a cylindrical zone. */
       value: number;
       diameter?: boolean;
+      /** v2: with `diameter`, a spherical zone (SØ). */
+      spherical?: boolean;
       /** Material modifier on the zone. */
       material?: 'M' | 'L';
       /** Datum reference frame: up to three, primary first, each with an optional modifier. */
       datums?: { label: string; material?: 'M' | 'L' }[];
+      /** v2: zone modifiers, as `ToleranceZone.modifiers`. */
+      modifiers?: ZoneModifier[];
+      /** v2: projected tolerance zone height, mm. */
+      projected?: number;
+      /** v2: unequally disposed zone offset, mm. */
+      unequal?: number;
+      /** v2: all around / all over (profile). */
+      allAround?: boolean;
     }
 );
 
@@ -114,8 +157,28 @@ export type PmiImportItem =
   | Imported<'tolerance'>
   | { kind: 'presentationOnly'; name?: string; presentation: PmiPresentation };
 
+/**
+ * v2: what an import issue cost. `lost`: an annotation in the file did not come in. `approximated`:
+ * it came in changed (a spherical zone as a cylindrical one). `cosmetic`: every annotation came
+ * in; only how one is drawn differs.
+ */
+export type PmiIssueSeverity = 'lost' | 'approximated' | 'cosmetic';
+
+export interface PmiImportIssue {
+  name?: string;
+  reason: string;
+  /**
+   * v2: stable key for issues with the same cause (`datumNoGeometry`, `targetNotInBodies`,
+   * `noValue`, `datumTarget`, `filledPresentation` …), so a report shows one line with a count.
+   * Absent: group by `reason`.
+   */
+  code?: string;
+  /** v2; absent = `'lost'`. */
+  severity?: PmiIssueSeverity;
+}
+
 export interface PmiImportResult {
   items: PmiImportItem[];
   /** Per entity OCCT could not read (type, value or target), with what is known. */
-  issues: { name?: string; reason: string }[];
+  issues: PmiImportIssue[];
 }
