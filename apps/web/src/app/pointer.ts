@@ -25,6 +25,7 @@ import {
   resolvePick,
   toleranceFor,
 } from '../selection/pick';
+import { ToggleGuard } from '../selection/toggle-guard';
 import { gestureAction } from './gestures';
 import { replayedPointerDowns } from './pointers';
 import type { SelectionItem, UiState } from './state';
@@ -496,14 +497,17 @@ export function pickRef(wb: Workbench, ref: EntityRef): void {
   const part = wb.part;
   const f = p ? part?.features.find((x) => x.id === p.featureId) : undefined;
   if (!p || !part || !f) return;
-  const next = applyPick(f, p.path, ref);
+  const root = p.path.replace(/\/\d+$/, '');
+  const list = root === p.path && Array.isArray(pointerValue(f, p.path));
+  const tool = toolOfFeature(f);
+  const once = tool ? FEATURE_PICKS[tool].find((s) => s.path === root)?.once : false;
+  // A second pick takes an entity out of a list, except where a click cannot mean that: a
+  // one-pick step (the profile of a sweep), and a body picked through one of its faces (another
+  // face of the same body is not "that body again").
+  const next = applyPick(f, p.path, ref, !once && ref.kind !== 'body');
   if (next !== f)
     wb.apply({ kind: 'updateFeature', partId: part.id, featureId: f.id, feature: next });
   wb.commit();
-  const root = p.path.replace(/\/\d+$/, '');
-  const list = root === p.path && Array.isArray(pointerValue(f, p.path));
-  const tool = toolOfFeature(next);
-  const once = tool ? FEATURE_PICKS[tool].find((s) => s.path === root)?.once : false;
   if (!list || once) wb.advancePicking(next, root);
 }
 
@@ -571,6 +575,8 @@ export function addSourceFeature(wb: Workbench, id: Id): void {
  * rest of the selection alone (owner, 2026-11-23), with or without a modifier; `toggle: false`
  * is for callers that need the hit selected whatever was there.
  */
+const guards = new WeakMap<Workbench, ToggleGuard>();
+
 export async function selectHit(
   wb: Workbench,
   hit: PickHit,
@@ -580,10 +586,20 @@ export async function selectHit(
   const key = hitKey(hit);
   const u = wb.ui.get();
   const exists = u.selection.some((s) => s.key === key);
-  if (exists && toggle) {
-    wb.patchUi({ selection: u.selection.filter((s) => s.key !== key), featureId: null });
-    wb.pushHighlights();
-    return;
+  if (toggle) {
+    let guard = guards.get(wb);
+    if (!guard) {
+      guard = new ToggleGuard();
+      guards.set(wb, guard);
+    }
+    // The second click of a double click (zoom to it) is not a deselect.
+    const effect = guard.click(key, exists);
+    if (effect === 'keep') return;
+    if (effect === 'deselect') {
+      wb.patchUi({ selection: u.selection.filter((s) => s.key !== key), featureId: null });
+      wb.pushHighlights();
+      return;
+    }
   }
   let selection: SelectionItem[];
   if (additive) {

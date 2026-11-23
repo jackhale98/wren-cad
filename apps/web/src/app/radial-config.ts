@@ -102,7 +102,13 @@ export function defaultRing(ctx: RadialContext): Ring {
     case 'empty':
       return pad(modelRadialIds([]));
     case 'face':
-      return pad(modelRadialIds([{ kind: 'face', planar: true }]));
+      // As most faces show it: made by a feature that has a sketch. The editor starts from this,
+      // so customising the Face ring does not silently lose Edit feature and Edit sketch.
+      return pad(
+        modelRadialIds([{ kind: 'face', planar: true }], {
+          owner: { feature: true, sketch: true },
+        }),
+      );
     case 'edge':
       return pad(modelRadialIds([{ kind: 'edge' }]));
     case 'vertex':

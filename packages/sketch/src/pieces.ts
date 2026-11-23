@@ -67,21 +67,24 @@ export class ConnectedPieces {
   private readonly points = new Map<Id, readonly Id[]>();
 
   constructor(entities: readonly SketchEntity[], constraints: readonly SketchConstraint[] = []) {
+    // What cannot move is found first: nothing is joined through it below.
     for (const e of entities) {
       const pts = entityPoints(e);
       this.points.set(e.id, pts);
-      for (const p of pts) this.join(e.id, p);
       if (e.source) for (const id of [e.id, ...pts]) this.fixed.add(id);
     }
     for (const c of constraints) {
       if (c.kind === 'fix') {
         for (const x of [c.entity, ...(this.points.get(c.entity) ?? [])]) this.fixed.add(x);
-        continue;
-      }
-      if (c.kind === 'coincident') {
+      } else if (c.kind === 'coincident') {
         if (c.a === SKETCH_ORIGIN) this.fixed.add(c.b);
         if (c.b === SKETCH_ORIGIN) this.fixed.add(c.a);
       }
+    }
+    // An entity and its own points are one piece (also a fixed one, with itself).
+    for (const [id, pts] of this.points) for (const p of pts) this.union(id, p);
+    for (const c of constraints) {
+      if (c.kind === 'fix') continue;
       const fields = TOUCHING[c.kind];
       const a = fields ? str(c, fields[0]) : null;
       const b = fields ? str(c, fields[1]) : null;
@@ -102,9 +105,17 @@ export class ConnectedPieces {
     return r;
   }
 
+  /**
+   * Touching geometry is one piece, except through what cannot move: the origin and axes, `fix`ed
+   * and projected geometry. Two shapes that each touch the same axis or the same projected edge
+   * stay separate pieces, so a relation between them is still a link (announced, shown).
+   */
   private join(a: Id, b: Id): void {
-    // The origin and axes join nothing: two shapes that both touch an axis stay separate.
-    if (isSketchReference(a) || isSketchReference(b)) return;
+    if (this.anchored(a) || this.anchored(b)) return;
+    this.union(a, b);
+  }
+
+  private union(a: Id, b: Id): void {
     const ra = this.piece(a);
     const rb = this.piece(b);
     if (ra !== rb) this.parent.set(ra, rb);

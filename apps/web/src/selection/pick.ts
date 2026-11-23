@@ -317,7 +317,12 @@ type Json = null | boolean | number | string | Json[] | { [k: string]: Json };
  * Applies a picked ref to a feature field: an array path (`/edges`) appends (no duplicates), an
  * element path (`/edges/2`) replaces that entry, any other path sets the field.
  */
-export function applyPick<F extends Feature>(feature: F, path: string, ref: EntityRef): F {
+export function applyPick<F extends Feature>(
+  feature: F,
+  path: string,
+  ref: EntityRef,
+  toggle = true,
+): F {
   const segs = path.split('/').slice(1);
   const root = structuredClone(feature) as unknown as Json;
   let parent: Json = root;
@@ -344,8 +349,8 @@ export function applyPick<F extends Feature>(feature: F, path: string, ref: Enti
   if (Array.isArray(cur)) {
     // A list of picks: picking an entity that is already in it takes it out again.
     const at = cur.findIndex((r) => (r as { name?: string } | null)?.name === ref.name);
-    if (at >= 0) cur.splice(at, 1);
-    else cur.push(value);
+    if (at < 0) cur.push(value);
+    else if (toggle) cur.splice(at, 1);
   } else if (last in obj) obj[last] = value;
   else return feature;
   return root as unknown as F;

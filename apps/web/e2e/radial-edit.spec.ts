@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, type Locator, test } from '@playwright/test';
 import { app, boot, cameraStill, topCenter } from './helpers';
 
 /**
@@ -27,6 +27,13 @@ test('right click a face: Edit feature opens its inspector, Edit sketch opens it
     await expect(menu).toBeVisible();
   };
 
+  // Moving the pointer onto an item soon after the menu opens is a flick, which runs the item and
+  // closes the menu before the click lands; either way the item was chosen.
+  const choose = async (item: Locator) => {
+    await item.click({ timeout: 3000 }).catch(() => {});
+    await expect(menu).toHaveCount(0);
+  };
+
   await open();
   expect((await a.ui()).selection).toEqual(['face']);
   const editFeature = menu.locator('[data-item="edit:feature"]');
@@ -35,7 +42,7 @@ test('right click a face: Edit feature opens its inspector, Edit sketch opens it
   await expect(editSketch).toBeVisible();
   expect(await menu.locator('[data-item]').count()).toBeLessThanOrEqual(8);
 
-  await editFeature.click();
+  await choose(editFeature);
   await expect(menu).toHaveCount(0);
   const edited = (await a.ui()).featureId;
   const f = features.find((x) => x.id === edited);
@@ -44,7 +51,7 @@ test('right click a face: Edit feature opens its inspector, Edit sketch opens it
   await page.keyboard.press('Escape');
 
   await open();
-  await editSketch.click();
+  await choose(editSketch);
   await expect(page.getByRole('toolbar', { name: 'Sketch tools' })).toBeVisible();
   const sk = (await a.ui()).sketch;
   expect(sk).not.toBeNull();

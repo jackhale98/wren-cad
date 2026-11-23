@@ -13,6 +13,9 @@ import { useMotionState } from '../app/motion';
 import { useObservable } from '../app/observable';
 import type { Workbench } from '../app/workbench';
 
+/** How long the device must stay `disconnected` before the chip is offered. */
+export const RECONNECT_SETTLE_MS = 1500;
+
 export const MOTION_RECONNECT_DISMISSED_KEY = 'wren.motion.reconnectDismissed';
 
 const read = (): boolean => {
@@ -48,7 +51,19 @@ export function MotionReconnectChip({ wb, touch }: { wb: Workbench; touch: boole
       setDismissed(false);
     }
   }, [connected]);
-  if (!input || !showReconnect(state.state, dismissed)) return null;
+  // At start the layer reads `disconnected` until the browser has listed its devices, and a
+  // granted device may take a moment to open: offer only once it has stayed that way.
+  const wanted = !!input && showReconnect(state.state, dismissed);
+  const [settled, setSettled] = useState(false);
+  useEffect(() => {
+    if (!wanted) {
+      setSettled(false);
+      return;
+    }
+    const t = setTimeout(() => setSettled(true), RECONNECT_SETTLE_MS);
+    return () => clearTimeout(t);
+  }, [wanted]);
+  if (!input || !wanted || !settled) return null;
   const size = touch ? 'touch' : 'md';
   return (
     <div

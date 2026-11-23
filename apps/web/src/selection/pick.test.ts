@@ -128,6 +128,10 @@ describe('picking', () => {
     expect(f.edges.map((e) => e.name)).toEqual(['e0']);
     f = applyPick(f, '/edges', { name: 'e1', kind: 'edge' });
     expect(f.edges.map((e) => e.name)).toEqual(['e0', 'e1']);
+    // Where a click cannot mean "take it out" (a one-pick step, a body picked through a face),
+    // the caller turns the toggle off: picking it again changes nothing.
+    f = applyPick(f, '/edges', { name: 'e1', kind: 'edge' }, false);
+    expect(f.edges.map((e) => e.name)).toEqual(['e0', 'e1']);
     f = applyPick(f, '/edges/1', { name: 'e9', kind: 'edge' });
     expect(f.edges.map((e) => e.name)).toEqual(['e0', 'e9']);
     const ex = applyPick(newExtrude(part, [], 0), '/end/target', { name: 'face', kind: 'face' });

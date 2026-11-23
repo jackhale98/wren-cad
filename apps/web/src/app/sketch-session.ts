@@ -34,6 +34,7 @@ import { recognizeStroke, strokeFragment } from '@wren-cad/sketch/recognize';
 import type { GeometricConstraintKind, SketchToolId } from '@wren-cad/ui';
 import { toWorld } from '../model/frames';
 import { toleranceFor } from '../selection/pick';
+import { ToggleGuard } from '../selection/toggle-guard';
 import {
   carryLabels,
   convertRadiusDiameter,
@@ -1184,6 +1185,7 @@ export class SketchSession {
         else onStill?.(d.entity);
       } catch {
         // The solver lost the session (restarted): what the drag steps applied is kept.
+        this.patch({ carrying: [] });
       }
       if (d.moved) this.wb.commit();
     });
@@ -1336,7 +1338,11 @@ export class SketchSession {
   private applyDragResult(res: SketchSolveResult, key: string): void {
     const f = this.feature();
     const part = this.wb.part;
-    if (!f || !part || res.status === 'failed') return;
+    if (!f || !part || res.status === 'failed') {
+      // No result to show: the links it was carrying are not highlighted any more.
+      this.patch({ carrying: [] });
+      return;
+    }
     this.wb.apply(
       {
         kind: 'updateFeature',
@@ -1433,7 +1439,9 @@ export class SketchSession {
     }
     if (moved) return;
     const hit = this.pickSketch(e);
-    const glyph = hit?.entity ? null : glyphNear(e); // a touch near a constraint glyph
+    // A touch near a constraint glyph picks it, but never at the cost of a selection: with
+    // entities selected, a tap that misses geometry clears them, as a tap on empty space does.
+    const glyph = hit?.entity || (this.ui()?.selected.length ?? 0) > 0 ? null : glyphNear(e);
     if (hit?.entity) this.selectEntity(hit.entity, additiveSelect(e));
     else if (glyph) this.selectConstraint(glyph);
     else this.patch({ selected: [], selectedConstraint: null });
@@ -1532,9 +1540,13 @@ export class SketchSession {
     this.scheduleOverlay();
   }
 
+  private readonly toggleGuard = new ToggleGuard();
+
   private selectEntity(id: Id, additive: boolean, toggle = true): void {
     const u = this.ui();
     if (!u) return;
+    // The second click or tap of a double click is not a deselect (as in the model view).
+    if (toggle && this.toggleGuard.click(id, u.selected.includes(id)) === 'keep') return;
     this.patch({
       selected: nextSelection(u.selected, id, additive, toggle),
       selectedConstraint: null,

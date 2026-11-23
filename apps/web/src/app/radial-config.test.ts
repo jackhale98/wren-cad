@@ -36,7 +36,10 @@ describe('radial defaults', () => {
     const ids = (c: Parameters<typeof defaultRing>[0]) =>
       defaultRing(c).filter((x): x is string => x !== null);
     expect(ids('empty')).toEqual(modelRadialIds([]));
-    expect(ids('face')).toEqual(modelRadialIds([face]));
+    // The Face ring as most faces show it (made by a feature that has a sketch), so the editor
+    // starts with Edit feature and Edit sketch in it.
+    expect(ids('face')).toEqual(modelRadialIds([face], { owner: { feature: true, sketch: true } }));
+    expect(ids('face')).toContain('edit:feature');
     expect(ids('edge')).toEqual(modelRadialIds([{ kind: 'edge' }]));
     expect(ids('vertex')).toEqual(modelRadialIds([{ kind: 'vertex' }]));
     expect(ids('feature')).toEqual(modelRadialIds([], { folderable: true }));

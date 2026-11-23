@@ -159,6 +159,15 @@ report and v2 mapping (app). Details: ADR-101 and its amendments, `PMI_VALIDATIO
   × is remembered until the next connection), the reason in Settings, and a user-guide section
   with the `WebHidAllowDevicesForUrls` browser policy that makes it permanent (not tested by us
   on a real machine).
+- Reviewer gate on everything after the Phase 2 release (2026-11-23): pass with fixes, all
+  fixed. A double click is one gesture and ends selected (`selection/toggle-guard.ts`; before,
+  the second click deselected). Two shapes that each touch the same projected edge, fixed point
+  or axis are still two pieces, so a relation between them is announced and shown. The Face
+  ring editor starts from a ring with the edit items. The Reconnect chip waits 1.5 s of
+  `disconnected` before showing. The drag highlight is cleared when a drag fails. A one-pick
+  step and a body picked through a face are not toggled off by a second pick. A touch near a
+  glyph does not replace a multi-selection. Not done: an ADR for Section and Draft leaving the
+  default face ring when the edit items need room (recorded here only).
 - Local E2E and agents: Playwright reuses a server on port 4173. An agent running E2Es in a
   worktree and the lead clash on it and each tests the other's build. Give every runner its
   own `WREN_E2E_PORT`.

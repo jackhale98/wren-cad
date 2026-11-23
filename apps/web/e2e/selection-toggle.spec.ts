@@ -27,4 +27,20 @@ test('clicking a selected face deselects it; clicking it again selects it', asyn
   await page.mouse.click(c.x, c.y);
   await a.idle();
   expect((await a.ui()).selection).toEqual(['face']);
+
+  // A double click is one gesture (zoom to it): it ends selected, whether it started selected…
+  await page.waitForTimeout(450);
+  await page.mouse.dblclick(c.x, c.y);
+  await a.idle();
+  expect((await a.ui()).selection).toEqual(['face']);
+  // …or not.
+  await page.waitForTimeout(450);
+  const c2 = await topCenter(page);
+  await page.mouse.click(c2.x, c2.y);
+  await a.idle();
+  expect((await a.ui()).selection).toEqual([]);
+  await page.waitForTimeout(450);
+  await page.mouse.dblclick(c2.x, c2.y);
+  await a.idle();
+  expect((await a.ui()).selection).toEqual(['face']);
 });

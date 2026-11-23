@@ -69,6 +69,31 @@ describe('ConnectedPieces', () => {
     expect(crossPieceLinks({ entities, constraints: b.constraints }, added(b, 4))).toEqual([]);
   });
 
+  it('two shapes that each touch the same projected edge, fixed point or axis stay two pieces', () => {
+    // Reviewer, 2026-11-23: joined through what cannot move, a later `equal` between them was not
+    // a link (no notice, no glyph at both ends) although dragging one moved the other.
+    const { b, r, s } = scene();
+    const linked = b.segment([-80, -30], [80, -30]);
+    const pin = b.point(0, 50);
+    b.geo({ kind: 'fix', entity: pin });
+    b.geo({ kind: 'pointOn', point: r.p0, on: linked.line });
+    b.geo({ kind: 'pointOn', point: s.p0, on: linked.line });
+    b.geo({ kind: 'pointOn', point: r.p1, on: SKETCH_X_AXIS });
+    b.geo({ kind: 'pointOn', point: s.p1, on: SKETCH_X_AXIS });
+    b.geo({ kind: 'equal', a: r.top, b: s.top });
+    const entities = b.entities.map(
+      (e): SketchEntity =>
+        e.id === linked.line ? { ...e, source: { ref: { featureId: 'f' } } as never } : e,
+    );
+    const p = new ConnectedPieces(entities, b.constraints);
+    expect(p.same(r.p0, s.p0)).toBe(false);
+    expect(p.same(r.p0, r.top)).toBe(true);
+    const [equal] = added(b, 1) as [SketchConstraint];
+    expect(
+      crossPieceLinks({ entities, constraints: b.constraints }, [equal]).map((c) => c.id),
+    ).toEqual([equal.id]);
+  });
+
   for (const touch of ['coincident', 'pointOn', 'tangent', 'midpoint'] as const) {
     it(`a ${touch} joins two shapes into one piece, so it and later relations link nothing`, () => {
       const { b, r, s, circle } = scene();
