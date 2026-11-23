@@ -5,7 +5,7 @@ import { preloadShell } from '../src/shells/AppShell';
 
 // The touch shells are lazy chunks in the app; tests render them synchronously.
 beforeAll(async () => {
-  await Promise.all([preloadShell('tablet'), preloadShell('phone')]);
+  await preloadShell('review');
 });
 
 afterEach(() => cleanup());

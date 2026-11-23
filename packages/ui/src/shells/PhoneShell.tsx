@@ -100,7 +100,7 @@ export function PhoneShell(props: ShellProps) {
   const open = snap !== 'peek';
 
   return (
-    <ShellRoot tier="phone" props={props}>
+    <ShellRoot tier={props.tier ?? 'phone'} props={props}>
       {() => (
         <ViewportStage
           viewport={viewport}

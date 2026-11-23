@@ -71,6 +71,8 @@ describe('shell polish (M1 gate)', () => {
     render(
       <AppShell
         tier="desktop"
+        layout="full"
+        density="compact"
         documentName="Part"
         kernelStatus={{ state: 'idle' }}
         viewport={<canvas />}

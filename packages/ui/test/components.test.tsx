@@ -9,6 +9,12 @@ const ready: KernelStatus = {
   info: { variant: 'threaded', occtVersion: '8.0.1', buildId: 'x', initMs: 800 },
 };
 
+const LAYOUT = {
+  desktop: { layout: 'full', density: 'compact' },
+  tablet: { layout: 'full', density: 'touch' },
+  phone: { layout: 'review', density: 'touch' },
+} as const;
+
 describe('StatusChip', () => {
   it('idle', () => {
     render(<StatusChip status={{ state: 'idle' }} />);
@@ -77,7 +83,7 @@ describe('AppShell', () => {
   it.each(['desktop', 'tablet', 'phone'] as const)(
     'renders the %s shell with a viewport slot',
     (tier) => {
-      render(<AppShell tier={tier} {...base} />);
+      render(<AppShell tier={tier} {...LAYOUT[tier]} {...base} />);
       const root = screen.getByTestId('app-shell');
       expect(root).toHaveAttribute('data-tier', tier);
       const slot = screen.getByTestId('viewport-slot');
@@ -88,21 +94,30 @@ describe('AppShell', () => {
   );
 
   it('desktop and tablet have the left panel and inspector; the phone does not', () => {
-    const { unmount } = render(<AppShell tier="desktop" {...base} />);
+    const { unmount } = render(
+      <AppShell tier="desktop" layout="full" density="compact" {...base} />,
+    );
     expect(screen.getByTestId('left-panel')).toBeInTheDocument();
     expect(screen.getByTestId('right-panel')).toBeInTheDocument();
     unmount();
-    const t = render(<AppShell tier="tablet" {...base} />);
+    const t = render(<AppShell tier="tablet" layout="full" density="touch" {...base} />);
     expect(screen.getByTestId('left-panel')).toBeInTheDocument();
     expect(screen.getByTestId('right-panel')).toBeInTheDocument();
     t.unmount();
-    render(<AppShell tier="phone" {...base} />);
+    render(<AppShell tier="phone" layout="review" density="touch" {...base} />);
     expect(screen.queryByTestId('left-panel')).toBeNull();
+  });
+
+  it('the shell follows the layout, not the tier name (ADR-101): a phone with the full editor', () => {
+    render(<AppShell tier="phone" layout="full" density="touch" {...base} />);
+    expect(screen.getByTestId('app-shell')).toHaveAttribute('data-tier', 'phone');
+    expect(screen.getByTestId('left-panel')).toBeInTheDocument();
+    expect(screen.getByTestId('right-panel')).toBeInTheDocument();
   });
 
   it('opens the command palette with Ctrl+K and closes it with Escape', async () => {
     const user = userEvent.setup();
-    render(<AppShell tier="desktop" {...base} />);
+    render(<AppShell tier="desktop" layout="full" density="compact" {...base} />);
     expect(screen.queryByRole('dialog')).toBeNull();
     await user.keyboard('{Control>}k{/Control}');
     expect(await screen.findByRole('dialog', { name: 'Command palette' })).toBeInTheDocument();
@@ -113,7 +128,16 @@ describe('AppShell', () => {
   it('reports theme changes', async () => {
     const user = userEvent.setup();
     const seen: string[] = [];
-    render(<AppShell tier="desktop" {...base} theme="light" onThemeChange={(t) => seen.push(t)} />);
+    render(
+      <AppShell
+        tier="desktop"
+        layout="full"
+        density="compact"
+        {...base}
+        theme="light"
+        onThemeChange={(t) => seen.push(t)}
+      />,
+    );
     await user.click(screen.getByRole('button', { name: 'Switch to dark theme' }));
     expect(seen).toEqual(['dark']);
   });

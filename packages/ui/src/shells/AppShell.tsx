@@ -1,9 +1,12 @@
-import type { DeviceTier } from '@wren-cad/contracts';
+import type { DeviceCapabilities, DeviceTier } from '@wren-cad/contracts';
 import { lazy, type ReactNode, Suspense, useState } from 'react';
 import { DesktopShell } from './DesktopShell';
 import type { ShellProps } from './types';
 
-export type AppShellProps = ShellProps & { tier: DeviceTier };
+export type AppShellProps = ShellProps & {
+  /** The device tier, for reporting (`data-tier`, diagnostics); layout comes from `layout`. */
+  tier: DeviceTier;
+} & Pick<DeviceCapabilities, 'layout' | 'density'>;
 
 // Only one shell is on screen at a time, so the phone shell loads as its own chunk (ADR-089). The
 // desktop shell, which the tablet shares at touch density (ADR-099), stays in the initial route.
@@ -18,9 +21,9 @@ const loadPhone = () =>
   });
 const LazyPhone = lazy(loadPhone);
 
-/** Starts loading the shell for `tier`; resolves when it is ready (immediately for desktop). */
-export function preloadShell(tier: DeviceTier): Promise<unknown> {
-  if (tier === 'phone') return loadPhone();
+/** Starts loading the shell for `layout`; resolves when it is ready (immediately for desktop). */
+export function preloadShell(layout: DeviceCapabilities['layout']): Promise<unknown> {
+  if (layout === 'review') return loadPhone();
   return Promise.resolve();
 }
 
@@ -40,16 +43,15 @@ function PhoneShellHost({ props }: { props: ShellProps }) {
 }
 
 /**
- * Picks the shell for a device tier (PLAN 8.4 / 9.1): the desktop structure for desktop and tablet
- * (the tablet at touch density), the bottom-sheet shell for the phone. Switching tiers remounts the
- * chrome only.
+ * Picks the shell by layout (PLAN 8.4 / 9.1, ADR-101): `full` is the desktop structure (at touch
+ * density when `density` says so), `review` the bottom-sheet shell. Switching layouts remounts
+ * the chrome only.
  */
-export function AppShell({ tier, ...props }: AppShellProps) {
-  switch (tier) {
-    case 'desktop':
-    case 'tablet':
-      return <DesktopShell key="desktop" tier={tier} {...props} />;
-    case 'phone':
+export function AppShell({ layout, density, ...props }: AppShellProps) {
+  switch (layout) {
+    case 'full':
+      return <DesktopShell key="desktop" density={density} {...props} />;
+    case 'review':
       return <PhoneShellHost key="phone" props={props} />;
   }
 }

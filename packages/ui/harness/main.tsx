@@ -1,3 +1,4 @@
+import { LAYOUT_FOR } from './layout';
 import '../src/styles/index.css';
 import type { DeviceTier, KernelStatus, RuntimeDiagnostics } from '@wren-cad/contracts';
 import { StrictMode } from 'react';
@@ -149,6 +150,7 @@ function Harness() {
   return (
     <AppShell
       tier={tier}
+      {...LAYOUT_FOR[tier]}
       theme={theme}
       documentName="Untitled bracket"
       kernelStatus={status}

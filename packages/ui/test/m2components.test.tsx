@@ -428,6 +428,8 @@ describe('phone panels', () => {
     renderUI(
       <AppShell
         tier="phone"
+        layout="review"
+        density="touch"
         {...base}
         measure={{ measurements: [{ angle: Math.PI / 2 }] }}
         section={{

@@ -1,4 +1,4 @@
-import type { KernelStatus, RuntimeDiagnostics } from '@wren-cad/contracts';
+import type { DeviceTier, KernelStatus, RuntimeDiagnostics } from '@wren-cad/contracts';
 import type { ReactNode } from 'react';
 import type { PaletteCommand } from '../components/CommandPalette';
 import type { ContextBubbleProps } from '../components/ContextBubble';
@@ -36,6 +36,8 @@ export interface KernelMemory {
 
 /** Props every shell accepts. The shell never touches Wasm or the kernel: it only renders state. */
 export interface ShellProps {
+  /** The device tier, for reporting only (`data-tier`); layout and density decide behavior. */
+  tier?: DeviceTier;
   /** App-level commands appended to the ⌘K palette (e.g. Check for updates, About). */
   commands?: readonly PaletteCommand[];
   documentName: string;

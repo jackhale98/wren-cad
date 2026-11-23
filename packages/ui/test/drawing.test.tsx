@@ -1419,6 +1419,8 @@ describe('DrawingShell', () => {
       <DrawingShell
         {...props}
         tier="desktop"
+        layout="full"
+        density="compact"
         tools={<div>tools</div>}
         onSheet={onSheet}
         onPanel={onPanel}
@@ -1441,7 +1443,7 @@ describe('DrawingShell', () => {
   });
 
   it('tablet and phone: a collapsible bottom panel with an expanded state', async () => {
-    renderUI(<DrawingShell {...props} tier="phone" />);
+    renderUI(<DrawingShell {...props} tier="phone" layout="review" density="touch" />);
     expect(screen.getByTestId('drawing-shell')).toHaveAttribute('data-tier', 'phone');
     const toggle = screen.getByTestId('drawing-panel-toggle');
     expect(toggle).toHaveAttribute('aria-expanded', 'false');

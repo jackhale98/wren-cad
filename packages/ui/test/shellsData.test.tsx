@@ -19,6 +19,8 @@ describe('shells with data', () => {
     render(
       <AppShell
         tier="desktop"
+        layout="full"
+        density="compact"
         {...base}
         featureTree={{
           features: sampleFeatures,
@@ -39,6 +41,8 @@ describe('shells with data', () => {
     render(
       <AppShell
         tier="desktop"
+        layout="full"
+        density="compact"
         {...base}
         inspector={
           <FeatureInspector feature={extrudeSample} evaluate={evaluate} onChange={() => {}} />
@@ -52,7 +56,9 @@ describe('shells with data', () => {
   it('command bar tools are disabled until enabledTools wires them', async () => {
     const user = userEvent.setup();
     const onTool = vi.fn();
-    const { unmount } = render(<AppShell tier="desktop" {...base} onTool={onTool} />);
+    const { unmount } = render(
+      <AppShell tier="desktop" layout="full" density="compact" {...base} onTool={onTool} />,
+    );
     // Categories open flyouts; the tools inside are disabled with their own hint.
     await user.click(screen.getByRole('button', { name: 'Extrude, Solid tools' }));
     const extrude0 = within(screen.getByRole('group', { name: 'Solid tools' })).getByRole(
@@ -68,6 +74,8 @@ describe('shells with data', () => {
     render(
       <AppShell
         tier="desktop"
+        layout="full"
+        density="compact"
         {...base}
         enabledTools={enabled}
         activeTool="extrude"
@@ -92,7 +100,15 @@ describe('shells with data', () => {
   it('Export becomes the options popover and emits onExportRequest', async () => {
     const user = userEvent.setup();
     const onExportRequest = vi.fn();
-    render(<AppShell tier="desktop" {...base} onExportRequest={onExportRequest} />);
+    render(
+      <AppShell
+        tier="desktop"
+        layout="full"
+        density="compact"
+        {...base}
+        onExportRequest={onExportRequest}
+      />,
+    );
     await user.click(screen.getByRole('button', { name: 'Export' }));
     await user.click(await screen.findByRole('button', { name: 'Export STEP' }));
     expect(onExportRequest).toHaveBeenCalledWith({
@@ -104,7 +120,9 @@ describe('shells with data', () => {
   it('plain Export still calls onExport when no request handler is given', async () => {
     const user = userEvent.setup();
     const onExport = vi.fn();
-    render(<AppShell tier="desktop" {...base} onExport={onExport} />);
+    render(
+      <AppShell tier="desktop" layout="full" density="compact" {...base} onExport={onExport} />,
+    );
     await user.click(screen.getByRole('button', { name: 'Export' }));
     expect(onExport).toHaveBeenCalled();
   });
@@ -114,6 +132,8 @@ describe('shells with data', () => {
     render(
       <AppShell
         tier="tablet"
+        layout="full"
+        density="touch"
         {...base}
         featureTree={{ features: sampleFeatures, statuses: sampleStatuses }}
         paramsTable={{ params: sampleParams, evaluate: (e) => evaluate(e) }}
@@ -134,7 +154,15 @@ describe('shells with data', () => {
   it('tablet overlay: one panel at a time; a tap outside, Escape or the button closes it', async () => {
     const user = userEvent.setup();
     const onOverlayInsets = vi.fn();
-    render(<AppShell tier="tablet" {...base} onOverlayInsets={onOverlayInsets} />);
+    render(
+      <AppShell
+        tier="tablet"
+        layout="full"
+        density="touch"
+        {...base}
+        onOverlayInsets={onOverlayInsets}
+      />,
+    );
     const left = screen.getByRole('button', { name: 'Feature panel' });
     const right = screen.getByRole('button', { name: 'Inspector' });
     expect(left).toHaveAttribute('aria-pressed', 'false');
@@ -163,14 +191,28 @@ describe('shells with data', () => {
     const user = userEvent.setup();
     const onChange = vi.fn();
     const { rerender } = render(
-      <AppShell tier="tablet" {...base} inspectorOpen={false} onInspectorOpenChange={onChange} />,
+      <AppShell
+        tier="tablet"
+        layout="full"
+        density="touch"
+        {...base}
+        inspectorOpen={false}
+        onInspectorOpenChange={onChange}
+      />,
     );
     const right = screen.getByRole('button', { name: 'Inspector' });
     expect(right).toHaveAttribute('aria-pressed', 'false');
     await user.click(right);
     expect(onChange).toHaveBeenCalledWith(true);
     rerender(
-      <AppShell tier="tablet" {...base} inspectorOpen={true} onInspectorOpenChange={onChange} />,
+      <AppShell
+        tier="tablet"
+        layout="full"
+        density="touch"
+        {...base}
+        inspectorOpen={true}
+        onInspectorOpenChange={onChange}
+      />,
     );
     expect(right).toHaveAttribute('aria-pressed', 'true');
   });
@@ -181,6 +223,8 @@ describe('shells with data', () => {
     render(
       <AppShell
         tier="phone"
+        layout="review"
+        density="touch"
         {...base}
         paramsTable={{ params: sampleParams, evaluate: (e) => evaluate(e) }}
         onExportRequest={onExportRequest}

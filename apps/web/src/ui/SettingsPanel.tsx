@@ -14,6 +14,7 @@ import {
   NavigationSettings,
   readLayoutMap,
   Segmented,
+  Switch,
 } from '@wren-cad/ui';
 import { X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
@@ -48,6 +49,7 @@ export default function SettingsPanel({ wb, touch }: { wb: Workbench; touch: boo
   const [layout, setLayout] = useState<LayoutMap | null>(null);
   const panel = useRef<HTMLElement>(null);
   const tab = ui.settings ?? 'navigation';
+  const fullEditor = useObservable(wb.fullEditor);
 
   useEffect(() => {
     let live = true;
@@ -94,6 +96,20 @@ export default function SettingsPanel({ wb, touch }: { wb: Workbench; touch: boo
           data-testid="settings-close"
         />
       </header>
+      {wb.policy.fullEditorOptional ? (
+        <div className="border-b border-border px-3.5 py-2.5">
+          <Switch
+            label="Use full editor"
+            checked={fullEditor}
+            onChange={(on) => wb.setFullEditor(on)}
+            className={touch ? 'min-h-11' : ''}
+          />
+          <p className="mt-1 text-2xs text-fg-subtle">
+            The desktop layout with touch-size controls: sketches, features and drawings become
+            editable. Your document stays as it is.
+          </p>
+        </div>
+      ) : null}
       <div className="px-3.5 pt-3">
         <Segmented
           label="Settings section"

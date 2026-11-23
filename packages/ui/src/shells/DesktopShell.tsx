@@ -63,10 +63,10 @@ function SectionTitle({ children }: { children: string }) {
 
 export interface DesktopShellProps extends ShellProps {
   /**
-   * `tablet` renders this same structure at touch density (ADR-099): 44 px targets, touch spacing,
+   * `touch` renders this same structure at touch density (ADR-099): 44 px targets, touch spacing,
    * no resize handle, and the side panels overlay the view when both would not fit beside it.
    */
-  tier?: 'desktop' | 'tablet';
+  density?: 'compact' | 'touch';
 }
 
 /** The width of the shell body, measured (the first render uses the window's). */
@@ -99,7 +99,7 @@ export function DesktopShell(props: DesktopShellProps) {
     onOverlayInsets,
   } = props;
   const tier = props.tier ?? 'desktop';
-  const touch = tier === 'tablet';
+  const touch = props.density === 'touch';
   const size = touch ? 'touch' : 'md';
   const bodyRef = useRef<HTMLDivElement>(null);
   const bodyWidth = useBodyWidth(bodyRef);

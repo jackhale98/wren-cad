@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  capabilitiesFor,
   kernelBootFor,
   meshQualityFor,
   policyFor,
@@ -33,5 +34,50 @@ describe('tier policy (PLAN §8.4)', () => {
     expect(shouldBootKernel('phone', { editStarted: false })).toBe(false);
     expect(shouldBootKernel('phone', { editStarted: true })).toBe(true);
     expect(shouldBootKernel('phone', { editStarted: false, needsKernelToRender: true })).toBe(true);
+  });
+});
+
+describe('capabilitiesFor (ADR-101)', () => {
+  const off = { fullEditor: false };
+  it('desktop: full editor, compact', () => {
+    expect(capabilitiesFor('desktop', off)).toEqual({
+      layout: 'full',
+      density: 'compact',
+      editSketches: true,
+      editFeatures: true,
+      editValues: true,
+      editDrawings: true,
+    });
+  });
+  it('tablet: full editor at touch density', () => {
+    expect(capabilitiesFor('tablet', off)).toEqual({
+      layout: 'full',
+      density: 'touch',
+      editSketches: true,
+      editFeatures: true,
+      editValues: true,
+      editDrawings: true,
+    });
+  });
+  it('phone: review layout, nothing editable yet', () => {
+    expect(capabilitiesFor('phone', off)).toEqual({
+      layout: 'review',
+      density: 'touch',
+      editSketches: false,
+      editFeatures: false,
+      editValues: false,
+      editDrawings: false,
+    });
+  });
+  it('phone with the full editor behaves as a tablet; the setting is ignored elsewhere', () => {
+    const on = { fullEditor: true };
+    expect(capabilitiesFor('phone', on)).toEqual(capabilitiesFor('tablet', off));
+    expect(capabilitiesFor('desktop', on)).toEqual(capabilitiesFor('desktop', off));
+    expect(capabilitiesFor('tablet', on)).toEqual(capabilitiesFor('tablet', off));
+  });
+  it('only the phone offers the choice; the kernel still boots on edit there', () => {
+    expect(policyFor('phone').fullEditorOptional).toBe(true);
+    expect(policyFor('tablet').fullEditorOptional).toBe(false);
+    expect(policyFor('phone').kernelBoot).toBe('onEdit');
   });
 });

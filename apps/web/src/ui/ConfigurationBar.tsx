@@ -7,19 +7,25 @@
  * configurations are created and managed on desktop and tablet).
  */
 
-import type { DeviceTier } from '@wren-cad/contracts';
+import type { DeviceCapabilities } from '@wren-cad/contracts';
 import { ConfigurationPill } from '@wren-cad/ui';
 import type { Workbench } from '../app/workbench';
 import { useConfigurationView } from './config-view';
 
-export default function ConfigurationBar({ wb, tier }: { wb: Workbench; tier: DeviceTier }) {
+export default function ConfigurationBar({
+  wb,
+  caps,
+}: {
+  wb: Workbench;
+  caps: DeviceCapabilities;
+}) {
   const v = useConfigurationView(wb);
-  const phone = tier === 'phone';
+  const phone = caps.layout === 'review';
   if (phone && v.count === 0 && !v.missing) return null;
   return (
     <ConfigurationPill
       variant={phone ? 'chip' : 'bar'}
-      size={tier === 'desktop' ? 'md' : 'touch'}
+      size={caps.density === 'compact' ? 'md' : 'touch'}
       configurations={v.summaries}
       activeId={v.activeId}
       defaultStatus={v.defaultStatus}

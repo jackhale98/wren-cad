@@ -3,7 +3,7 @@
  * Pure: the workbench feeds the gesture and the current mode in and performs the answer.
  */
 
-import type { DeviceTier, PickKind, ViewportGesture } from '@wren-cad/contracts';
+import type { DeviceCapabilities, PickKind, ViewportGesture } from '@wren-cad/contracts';
 
 export type GestureAction =
   | 'select'
@@ -91,17 +91,20 @@ export interface BubbleSelection {
 }
 
 /**
- * Context bubble actions for the selection (3-4, select first, act second). Tablets get the
- * modeling actions; the phone is viewer-first (measure, section). Empty = nothing to offer.
+ * Context bubble actions for the selection (3-4, select first, act second). Touch devices with the full
+ * layout get the modeling actions; the review layout is viewer-first (measure, section). Empty = nothing to offer.
  */
-export function bubbleActions(sel: readonly BubbleSelection[], tier: DeviceTier): BubbleActionId[] {
-  if (sel.length === 0 || tier === 'desktop') return [];
+export function bubbleActions(
+  sel: readonly BubbleSelection[],
+  caps: Pick<DeviceCapabilities, 'layout' | 'density'>,
+): BubbleActionId[] {
+  if (sel.length === 0 || caps.density === 'compact') return [];
   const all = (k: PickKind) => sel.every((s) => s.kind === k);
   const planar = sel.every((s) => s.planar === true);
   const measurable =
     sel.length <= 2 &&
     sel.every((s) => s.kind === 'face' || s.kind === 'edge' || s.kind === 'vertex');
-  if (tier === 'phone') {
+  if (caps.layout === 'review') {
     const out: BubbleActionId[] = [];
     if (measurable) out.push('measure');
     if (sel.length === 1 && all('face') && planar) out.push('section');

@@ -55,7 +55,7 @@ export class MeasureTool {
     });
     // Results show in the phone's Measure tab, in the inspector panel elsewhere.
     const snap = this.wb.ui.get().sheetSnap;
-    if (this.wb.tier === 'phone')
+    if (this.wb.review)
       this.wb.patchUi({ sheetTab: 'measure', sheetSnap: snap === 'peek' ? 'half' : snap });
     else this.wb.revealInspector(true);
     this.wb.pushHighlights();

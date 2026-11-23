@@ -48,7 +48,7 @@ export function measureInsets(wb: Workbench): Insets | null {
   const c = canvas.getBoundingClientRect();
   if (c.height === 0) return null;
   // Desktop and tablet: only an overlaid side panel covers the canvas (the top bar is outside it).
-  if (wb.tier !== 'phone') {
+  if (!wb.review) {
     const s = stateOf(wb);
     if (!s.overlayUsed) return null; // desktop and a docked tablet never touch the insets
     return { top: 0, right: s.overlay.right, bottom: 0, left: s.overlay.left };
@@ -102,7 +102,7 @@ export function onOverlayInsets(wb: Workbench, insets: { left: number; right: nu
 export function reframeSoon(wb: Workbench): void {
   const s = stateOf(wb);
   // Desktop and a docked tablet have nothing over the canvas: their fits stay as they were.
-  if (wb.tier !== 'phone' && s.overlay.left + s.overlay.right === 0) return;
+  if (!wb.review && s.overlay.left + s.overlay.right === 0) return;
   if (s.queued) return;
   s.queued = true;
   queueMicrotask(() => {
