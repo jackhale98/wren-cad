@@ -1,5 +1,6 @@
 import type { ExportFolderProps } from '@wren-cad/ui';
 import { useState } from 'react';
+import { exportFolder } from './files';
 import {
   FOLDER_UNSUPPORTED,
   folderPickerSupported,
@@ -7,7 +8,6 @@ import {
   showGitNotice,
   silenceGitNotice,
 } from './folder-notice';
-import { exportFolder } from './files';
 import { useObservable } from './observable';
 import type { Workbench } from './workbench';
 

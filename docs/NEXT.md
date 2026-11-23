@@ -52,10 +52,14 @@ This file is the single state file: update it at every merge; a new session star
     files it had not written (now only what the folder's own manifest names; a dropped
     attachment under `imports/` stays, follow-up: list attachments in the manifest at 6.0), and
     refused the same project saved from another copy (now refused first, then replaceable
-    inline). In progress (ui): the full editor's command bar is wider than a phone; a layout
-    switch mid-sketch; "Make parameter" in values mode; tier checks left in `Welcome`,
-    `ProjectPanel`, `regen-view`, `config-export`; E2E selector fixes.
-  - Open in Phase 2: those fixes; a green CI run on the branch (E2E for 2a, 2c; no E2E yet for
+    inline). Fixed (ui): the command bar and the top bar scroll inside a narrow viewport
+    instead of overflowing it (checked at 320, 390 and 744 px in the ui harness;
+    `packages/ui/e2e/commandbar.spec.ts`); leaving the full editor finishes an open sketch or
+    feature edit; values mode cannot make a parameter; the remaining tier checks use
+    capabilities or `TierPolicy`, and the guard test covers every comparison form. Seen and
+    left: at 390 px the kernel status chip is clipped at the right edge, and with the left
+    panel open the command bar is a 54 px sliver.
+  - Open in Phase 2: a green CI run on the branch (E2E for 2a, 2c; no E2E yet for
     the directory picker or for compare and release on the phone); owner sign-off that the git
     notice is driven by the connection only; then one main release. Also open: the GitHub Pages
     deploy of `7bc8e3d` failed ("No artifacts named github-pages", looks transient; Cloudflare
