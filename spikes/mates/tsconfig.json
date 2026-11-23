@@ -1,0 +1,11 @@
+{
+  "//": "Spike S1. Strict, but without noUncheckedIndexedAccess: the numeric kernels index typed arrays everywhere.",
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "noUncheckedIndexedAccess": false,
+    "allowImportingTsExtensions": true,
+    "lib": ["ES2023"],
+    "types": ["node"]
+  },
+  "include": ["src", "test", "bench"]
+}
