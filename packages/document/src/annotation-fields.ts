@@ -19,15 +19,9 @@
  * Fields that the kind requires are listed even when missing, so validation reports them.
  */
 
-import type {
-  Annotation,
-  AnnotationKind,
-  ConfiguredValue,
-  Id,
-  NamedDimension,
-  Part,
-} from '@wren-cad/contracts';
-import { isObj, type Obj } from './check';
+import type { Annotation, AnnotationKind, ConfiguredValue, Id, Part } from '@wren-cad/contracts';
+import { ANNOTATION_DEFS, type AnnotationDef } from './annotation-kinds';
+import type { Obj } from './check';
 import type { ExprField } from './features';
 
 /** ISO 286 classes: one or two letters, then the IT grade (`01` or 1-18). */
@@ -56,16 +50,10 @@ export const ANNOTATION_KINDS = [
 type MissingKinds = Exclude<AnnotationKind, (typeof ANNOTATION_KINDS)[number]>;
 export const _allAnnotationKindsListed: [MissingKinds] extends [never] ? true : never = true;
 
-/** The kinds that are dimensions (carry `source`, `nominal`, `tolerance`, `text`). */
-export const DIMENSION_KINDS = [
-  'linear',
-  'aligned',
-  'ordinate',
-  'radius',
-  'diameter',
-  'angle',
-  'chamfer',
-] as const satisfies readonly AnnotationKind[];
+/** The kinds that are dimensions (carry `source`, `nominal`, `tolerance`, `text`), from the table. */
+export const DIMENSION_KINDS: readonly AnnotationKind[] = ANNOTATION_KINDS.filter(
+  (k) => ANNOTATION_DEFS[k].isDimension,
+);
 
 export const isDimensionKind = (k: unknown): boolean =>
   (DIMENSION_KINDS as readonly unknown[]).includes(k);
@@ -74,70 +62,19 @@ export const isDimensionKind = (k: unknown): boolean =>
 // Expression fields
 // ---------------------------------------------------------------------------------------------
 
-const rec = (v: unknown): Obj | undefined => (isObj(v) ? v : undefined);
+const defOf = (kind: unknown): AnnotationDef<AnnotationKind> | undefined =>
+  typeof kind === 'string' && Object.hasOwn(ANNOTATION_DEFS, kind)
+    ? (ANNOTATION_DEFS[kind as AnnotationKind] as unknown as AnnotationDef<AnnotationKind>)
+    : undefined;
 
 /**
  * Every `Expr` field of an annotation with the dimension it must have (JSON pointers *inside* the
  * annotation). Safe on malformed input: it reports what the declared kind requires and skips
- * optional fields that are absent.
+ * optional fields that are absent. The per-kind rules are in `ANNOTATION_DEFS`.
  */
 export function annotationExprFields(a: Annotation): ExprField[] {
-  const out: ExprField[] = [];
-  const o = a as unknown as Obj;
-  const has = (v: unknown): boolean => v !== undefined;
-  const tolerance = (dim: NamedDimension): void => {
-    const t = rec(o.tolerance);
-    switch (t?.kind) {
-      case 'symmetric':
-        out.push({ pointer: '/tolerance/value', expected: dim });
-        break;
-      case 'bilateral':
-      case 'limits':
-        out.push({ pointer: '/tolerance/upper', expected: dim });
-        out.push({ pointer: '/tolerance/lower', expected: dim });
-        break;
-    }
-  };
-  switch (o.kind) {
-    case 'linear':
-    case 'aligned':
-    case 'ordinate':
-    case 'radius':
-    case 'diameter':
-    case 'angle':
-    case 'chamfer': {
-      const dim: NamedDimension = o.kind === 'angle' ? 'angle' : 'length';
-      if (has(o.nominal)) out.push({ pointer: '/nominal', expected: dim });
-      tolerance(dim);
-      break;
-    }
-    case 'holeCallout':
-      tolerance('length');
-      break;
-    case 'geometricTolerance': {
-      out.push({ pointer: '/zone/value', expected: 'length' });
-      const z = rec(o.zone);
-      if (has(z?.projected)) out.push({ pointer: '/zone/projected', expected: 'length' });
-      if (has(z?.unequal)) out.push({ pointer: '/zone/unequal', expected: 'length' });
-      const p = rec(z?.perUnit);
-      if (p) {
-        out.push({ pointer: '/zone/perUnit/value', expected: 'length' });
-        out.push({ pointer: '/zone/perUnit/length', expected: 'length' });
-        if (has(p.width)) out.push({ pointer: '/zone/perUnit/width', expected: 'length' });
-      }
-      break;
-    }
-    case 'surfaceFinish': {
-      if (Array.isArray(o.requirements)) {
-        o.requirements.forEach((_, i) => {
-          out.push({ pointer: `/requirements/${i}/value`, expected: 'length' });
-        });
-      }
-      if (has(o.allowance)) out.push({ pointer: '/allowance', expected: 'length' });
-      break;
-    }
-  }
-  return out;
+  const def = defOf((a as unknown as Obj).kind);
+  return def ? (def.exprFields as (a: Annotation) => ExprField[])(a) : [];
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -180,20 +117,7 @@ export function annotationOptionAt(pointer: string): AnnotationConfigurableOptio
 
 /** A short human name for undo labels and messages: `Ø diameter dimension`, `datum A`. */
 export function describeAnnotation(a: Annotation): string {
-  switch (a.kind) {
-    case 'datumFeature':
-      return a.label === '' ? 'datum' : `datum ${a.label}`;
-    case 'geometricTolerance':
-      return `${a.characteristic} frame`;
-    case 'surfaceFinish':
-      return 'surface finish';
-    case 'holeCallout':
-      return 'hole callout';
-    case 'note':
-      return 'note';
-    default:
-      return `${a.kind} dimension`;
-  }
+  return (ANNOTATION_DEFS[a.kind].describe as (a: Annotation) => string)(a);
 }
 
 export const findAnnotation = (part: Part, id: Id): Annotation | undefined =>

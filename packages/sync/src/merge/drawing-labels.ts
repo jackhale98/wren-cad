@@ -124,8 +124,12 @@ export function annotationLabel(a: Annotation, part?: Part, doc?: WrenDoc): stri
       const f = featureName(part, a.source?.featureId);
       return f ? `Hole callout ${f}` : 'Hole callout';
     }
-    default:
+    default: {
+      // Compile-time: a new kind must get a label above. Malformed input still reads 'Annotation'.
+      const _unlabelled: never = a;
+      void _unlabelled;
       return 'Annotation';
+    }
   }
 }
 

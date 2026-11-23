@@ -202,20 +202,17 @@ export function valueText(
   if (res?.state !== 'ok' || res.value === undefined) return undefined;
   const v = res.value;
   const n = (x: number, d = 3) => String(Number(x.toFixed(d)));
-  switch (a.kind) {
+  switch (host.ANNOTATION_DEFS[a.kind].valueForm) {
     case 'angle':
       return `${n((v * 180) / Math.PI, 2)}°`;
     case 'diameter':
       return `Ø${n(v)} mm`;
     case 'radius':
       return `R${n(v)} mm`;
-    case 'datumFeature':
-    case 'geometricTolerance':
-    case 'note':
-    case 'surfaceFinish':
-      return undefined;
-    default:
+    case 'length':
       return `${n(v)} mm`;
+    case undefined:
+      return undefined;
   }
 }
 

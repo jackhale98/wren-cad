@@ -170,18 +170,24 @@ export interface PlacementContext {
   placed: ReadonlyMap<Id, PlacedAnnotation>;
 }
 
-const DIMENSION_KINDS = new Set<Annotation['kind']>([
-  'linear',
-  'aligned',
-  'ordinate',
-  'radius',
-  'diameter',
-  'angle',
-  'chamfer',
-]);
+/** Complete over the kinds: a new kind fails typecheck here (drawing cannot import document's table). */
+const IS_DIMENSION: Record<Annotation['kind'], boolean> = {
+  linear: true,
+  aligned: true,
+  ordinate: true,
+  radius: true,
+  diameter: true,
+  angle: true,
+  chamfer: true,
+  datumFeature: false,
+  geometricTolerance: false,
+  note: false,
+  surfaceFinish: false,
+  holeCallout: false,
+};
 
 function isDimension(a: Annotation): a is DimensionAnnotation {
-  return DIMENSION_KINDS.has(a.kind);
+  return IS_DIMENSION[a.kind];
 }
 
 /** Layout kinds each annotation kind accepts (anything else is flagged). */
@@ -199,7 +205,11 @@ export function layoutFits(a: Annotation, layout: AnnotationPlacement['layout'][
       return layout === 'arc';
     case 'chamfer':
       return layout === 'leader' || layout === 'offset';
-    default:
+    case 'datumFeature':
+    case 'geometricTolerance':
+    case 'note':
+    case 'surfaceFinish':
+    case 'holeCallout':
       return layout === 'leader';
   }
 }

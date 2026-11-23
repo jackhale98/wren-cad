@@ -9,6 +9,7 @@
 
 import type { EvalResult, Expr, WrenDoc } from '@wren-cad/contracts';
 import {
+  ANNOTATION_DEFS,
   describeAnnotation,
   expressionEngine,
   partNumberFor,
@@ -19,6 +20,7 @@ import {
 import { activeIdOf, keyOf, slotOf, summarizeMass, valueKey } from '../app/config-model';
 
 export const host = {
+  ANNOTATION_DEFS,
   ulid,
   evaluate: (expr: Expr, expected: 'scalar' | 'length' | 'angle', doc: WrenDoc): EvalResult =>
     expressionEngine.evaluate(expr, expected, scopeOf(doc)),

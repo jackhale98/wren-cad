@@ -34,6 +34,7 @@ import {
   isHoleFitClass,
   isShaftFitClass,
 } from './annotation-fields';
+import { ANNOTATION_DEFS } from './annotation-kinds';
 import { Checker, isObj, type Obj } from './check';
 
 export const GEOMETRIC_CHARACTERISTICS = [
@@ -106,43 +107,11 @@ export const gpsFamily = (s: GpsStandard): 'iso' | 'asme' =>
 // ---------------------------------------------------------------------------------------------
 
 /**
- * What the kind requires of `refs` (arity per kind, the table in the proposal §2.2), or undefined
+ * What the kind requires of `refs` (arity per kind, `ANNOTATION_DEFS`), or undefined
  * when the list fits. A frame or a datum with `appliesTo` may have no refs.
  */
 export function annotationRefsProblem(a: Annotation): string | undefined {
-  const n = a.refs.length;
-  const exactly = (k: number, what: string): string | undefined =>
-    n === k
-      ? undefined
-      : `${what} needs ${k === 1 ? 'one reference' : `${k} references`}, not ${n}`;
-  switch (a.kind) {
-    case 'linear':
-    case 'aligned':
-    case 'ordinate':
-    case 'angle':
-      return exactly(2, `A ${a.kind} dimension`);
-    case 'radius':
-    case 'diameter':
-    case 'chamfer':
-      return exactly(1, `A ${a.kind} dimension`);
-    case 'datumFeature':
-      // A datum on a feature of size names its dimension (`appliesTo`, ADR-094): no refs needed.
-      if (n === 1 || (n === 0 && a.appliesTo !== undefined)) return undefined;
-      return n === 0
-        ? 'A datum feature needs a feature, or a size dimension it applies to'
-        : `A datum feature needs one reference, not ${n}`;
-    case 'surfaceFinish':
-      return exactly(1, 'A surface finish symbol');
-    case 'geometricTolerance':
-      if (n === 1 || (n === 0 && a.appliesTo !== undefined)) return undefined;
-      return n === 0
-        ? 'A tolerance frame needs a toleranced feature, or a dimension it applies to'
-        : `A tolerance frame needs one reference, not ${n}`;
-    case 'note':
-      return n >= 1 ? undefined : 'A note needs at least one leader target';
-    case 'holeCallout':
-      return undefined;
-  }
+  return (ANNOTATION_DEFS[a.kind].refsProblem as (a: Annotation) => string | undefined)(a);
 }
 
 const isEntityRefShape = (r: unknown): r is EntityRef =>

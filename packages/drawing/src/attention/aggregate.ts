@@ -101,7 +101,13 @@ function annotationName(a: Annotation | undefined): string {
       return 'Hole callout';
     case 'note':
       return 'Note';
-    default:
+    case 'linear':
+    case 'aligned':
+    case 'ordinate':
+    case 'radius':
+    case 'diameter':
+    case 'angle':
+    case 'chamfer':
       return `${a.kind[0]?.toUpperCase()}${a.kind.slice(1)} dimension`;
   }
 }
