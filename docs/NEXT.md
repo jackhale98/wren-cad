@@ -200,6 +200,15 @@ report and v2 mapping (app). Details: ADR-101 and its amendments, `PMI_VALIDATIO
   not checked against the text; ISO 286 values are still computed from the formulas
   ("provisional"); proposed for 6.0: `inspection` on hole callouts, an `inspectionConflict`
   issue kind.
+- Reviewer gate on the change preview and the tolerance editor (2026-11-23): pass with fixes,
+  all fixed. The must-fix: limits and fits were worked out from the measured size instead of
+  the value the sheet draws (a stated 25 on geometry measuring 24.6 printed limits 25.5/25.3).
+  Also: ISO 286 range limits tolerate float noise; ± takes a positive size; a stale rolled-back
+  regen result is dropped after a short Before; the Fit tile is disabled with its reason when
+  there is no size or it is over 500 mm; in the type tiles, arrows move focus and Space, Enter
+  or a click choose (unlike `Segmented`, so no deviations are lost on the way); thumbnails are
+  not taken while a preview or Before shows. Left: the Before chip's pointer-cancel and blur
+  paths are covered only through the shared release handler, with no touch E2E.
 - UI harness screenshots (`packages/ui/e2e`, which CI runs with `--ignore-snapshots`): 23
   baselines in `motion`, `m37` and `interactions` no longer match (panels render taller; the
   3D mouse text and the export menu changed today, the rest is not explained yet). Not
