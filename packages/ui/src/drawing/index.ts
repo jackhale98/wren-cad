@@ -59,7 +59,22 @@ export {
   type TitleBlockEditorProps,
   type TitleBlockRow,
 } from './TitleBlockEditor';
+export {
+  DEFAULT_LABEL_STYLE,
+  type LabelContext,
+  type LabelStyle,
+  ToleranceEditor,
+  type ToleranceEditorProps,
+} from './ToleranceEditor';
 export { ToleranceField, type ToleranceFieldProps, toleranceText } from './ToleranceField';
+export {
+  type FitLookup,
+  type FitSupport,
+  switchTolerance,
+  TOLERANCE_TYPES,
+  type ToleranceType,
+  toleranceType,
+} from './toleranceModel';
 export {
   ConfigBadge,
   type ConfigChoice,

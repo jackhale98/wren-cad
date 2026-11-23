@@ -44,10 +44,11 @@ export interface ToleranceFieldProps {
   label?: string;
 }
 
-const EXAMPLES = '±0.1   +0.2/−0.1   H7   H7/g6   [10]   (10)';
+const EXAMPLES = '±0.1  +0.2/−0.1  H7/g6  [10]  (10)';
 
 /**
- * The inline tolerance field: type it as it is written on a drawing. It reads with
+ * The quick entry of the tolerance editor ("Type it"): type the tolerance as it is written on a
+ * drawing and the structured fields above it follow. It reads with
  * `parseTolerance` (symmetric, bilateral, limits, fits, basic, reference), previews what it
  * understood or says what it could not read, commits on Enter or blur and reverts on Escape. An
  * empty field clears the tolerance.
@@ -59,7 +60,7 @@ export function ToleranceField({
   disabled,
   onCommit,
   size = 'md',
-  label = 'Tolerance',
+  label = 'Type it',
 }: ToleranceFieldProps) {
   const stored = toleranceText(value);
   const [draft, setDraft] = useState<string | null>(null);
@@ -96,7 +97,7 @@ export function ToleranceField({
         disabled={disabled}
         spellCheck={false}
         autoComplete="off"
-        placeholder="none"
+        placeholder={EXAMPLES}
         aria-invalid={parsed?.ok === false || undefined}
         aria-describedby={`${id}-msg`}
         onChange={(e) => setDraft(e.target.value)}
@@ -119,7 +120,7 @@ export function ToleranceField({
         className={cn('text-2xs', parsed?.ok === false ? 'text-danger-text' : 'text-fg-subtle')}
       >
         {parsed === null
-          ? `Type it as written: ${EXAMPLES}`
+          ? 'As written on a drawing, then Enter.'
           : parsed.ok
             ? parsed.nominal
               ? `Reads as: nominal ${parsed.nominal}, ${parsed.tolerance ? toleranceText(parsed.tolerance) : 'no tolerance'}. Enter to apply.`

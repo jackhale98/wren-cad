@@ -11,6 +11,7 @@ Contents: [Getting started](#getting-started) · [The interface](#the-interface)
 [Parameters and expressions](#parameters-and-expressions) · [Materials and mass](#materials-and-mass) ·
 [When a reference needs attention](#when-a-reference-needs-attention) · [Import and export](#import-and-export) ·
 [Files and the library](#files-and-the-library) · [Offline, install and updates](#offline-install-and-updates) ·
+[Drawings: tolerances](#drawings-tolerances-and-inspection-dimensions) ·
 [Keyboard shortcuts](#keyboard-shortcuts) · [Touch and pen](#touch-and-pen)
 
 ## Getting started
@@ -952,6 +953,33 @@ the app, your library and your documents without a connection. The first visit n
 When a new version is ready, a banner says **Update available · Reload**. If you have not touched the
 page yet, Wren updates by itself. Wren checks for updates when you come back to the page and
 every 30 minutes. To check now, choose **Check for updates** in the palette.
+
+## Drawings: tolerances and inspection dimensions
+
+Select a dimension on the sheet and open the inspector. Under **Value and tolerance** the
+**Tolerance** control shows the seven kinds at once, each drawn as it will look on the sheet:
+
+| Kind | What you fill in |
+| --- | --- |
+| None | nothing: the sheet's general tolerance applies |
+| Symmetric (±) | one value: 25 ±0.1 |
+| Deviation (+/−) | an upper and a lower deviation, each with its sign; the upper one cannot be below the lower one |
+| Limits | the two limit sizes (25.2 and 24.9); Wren stores them as deviations from the dimension |
+| Fit | a hole class, a shaft class or both, picked as a letter and a grade. Only classes ISO 286 has a value for at this size are offered, and the deviations are shown as you pick. Choose how the sheet writes it: the symbol, the symbol with its deviations, or the limits with the symbol |
+| Basic | nothing: a theoretically exact size, drawn in a box |
+| Reference | nothing: for information only, drawn in parentheses |
+
+Values accept expressions with units, and every change is one undo step. Changing the kind keeps
+what it can: ±0.1 becomes +0.1/−0.1, which becomes the limits 25.1 and 24.9. The dimension's value
+is never changed. **On the sheet** under the fields previews the dimension exactly as it is drawn,
+and **Type it** is a quick entry: type `±0.1`, `+0.2/−0.1`, `H7/g6`, `[10]` or `(10)` and the fields
+follow. A kind that cannot apply says why (a fit on an angle, limits on a dimension with no value).
+
+**Inspection dimension** draws the size and its tolerance in a frame with rounded ends (ISO 129-1):
+this size is checked at inspection. The frame holds the diameter or radius symbol, the value and
+the tolerance. A count such as 4× and any text before it stay in front of the frame, and text after
+it stays behind. A reference dimension cannot be an inspection dimension, so the switch is off and
+disabled for one. The frame is drawn in SVG, PDF and DXF exports. It is not written to STEP files.
 
 ## Keyboard shortcuts
 

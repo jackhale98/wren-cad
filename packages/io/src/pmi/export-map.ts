@@ -195,6 +195,10 @@ function dimensionItem(
   const tol = dimensionTolerance(a.tolerance, unit, input.evaluate);
   if (!tol.ok) return skip(tol.reason);
   const notes = tol.note ? [tol.note] : [];
+  // AP242 has an inspection concept (a dimension's name or an inspection characteristic), but the
+  // PMI item contract has no field for it: say so instead of inventing one.
+  if (a.inspection === true && a.tolerance?.kind !== 'reference')
+    notes.push('The inspection frame is a drawing mark and is not written to the STEP file');
   const at = a.at?.slice(0, targets.length);
   const qualifier =
     a.tolerance?.kind === 'basic' || a.tolerance?.kind === 'reference'

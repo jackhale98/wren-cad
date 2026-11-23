@@ -17,6 +17,8 @@
  *   surfaceFinish         /requirements/N/value, /allowance          length
  *
  * Fields that the kind requires are listed even when missing, so validation reports them.
+ * `inspection` (a boolean on every dimension) holds no `Expr` and is not configurable, so it has no
+ * row here; its one rule (not together with a reference tolerance) is `inspectionRefusal`.
  */
 
 import type { Annotation, AnnotationKind, ConfiguredValue, Id, Part } from '@wren-cad/contracts';

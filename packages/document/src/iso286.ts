@@ -233,3 +233,30 @@ export function fitDeviations(fitClass: string, size: number): FitDeviationResul
   const es = -ei + delta;
   return { ok: true, upper: mm(es), lower: mm(es - it), provisional: true };
 }
+
+/** One fundamental deviation letter with the IT grades that have a deviation at a size. */
+export interface FitClassChoice {
+  /** As written: `H`, `JS` for a hole; `g`, `js` for a shaft. */
+  letter: string;
+  grades: number[];
+}
+
+/**
+ * The classes a picker may offer for a nominal size: every letter with the grades (1–18) for which
+ * `fitDeviations` has a value. A letter with none at this size is left out; a size outside
+ * 0 < size ≤ 500 mm has no choices at all (the caller says so with `ISO286_MAX_SIZE`).
+ */
+export function fitClassChoices(side: 'hole' | 'shaft', size: number): FitClassChoice[] {
+  if (rangeMean(size) === undefined) return [];
+  const out: FitClassChoice[] = [];
+  for (const l of LETTERS) {
+    const letter = side === 'hole' ? l.toUpperCase() : l;
+    const grades: number[] = [];
+    for (let g = 1; g <= 18; g++) {
+      const cls = `${letter}${g}`;
+      if (parseFitClass(cls)?.side === side && fitDeviations(cls, size).ok) grades.push(g);
+    }
+    if (grades.length > 0) out.push({ letter, grades });
+  }
+  return out;
+}

@@ -132,6 +132,15 @@ describe('golden: lanes and offsets survive a 10 % resize (feature 2, T8)', () =
 });
 
 describe('placement layouts', () => {
+  it('draws an inspection dimension with the round-ended frame (and not without the flag)', () => {
+    const v = view('V1');
+    const pl = P('L1', 'V1', 'A1', { kind: 'lane', side: 'top', lane: 0 });
+    const a = annotations.get('A1')!;
+    const arcs = (an: typeof a) =>
+      layoutPlacement(pl, an, ctx(v)).items.filter((i) => i.kind === 'arc').length;
+    const before = arcs(a);
+    expect(arcs({ ...a, inspection: true } as typeof a)).toBe(before + 2);
+  });
   it('draws the tolerance and never a stale value (T1)', () => {
     const v = view('V1');
     const ok = layoutPlacement(

@@ -19,7 +19,8 @@ import { Field, Section, Segmented, Switch } from '../components/controls';
 import { ExpressionInput } from '../components/ExpressionInput';
 import { Button, cn } from '../components/primitives';
 import { SheetValueField } from './SheetValueField';
-import { ToleranceField } from './ToleranceField';
+import { type LabelStyle, ToleranceEditor } from './ToleranceEditor';
+import type { FitSupport } from './toleranceModel';
 
 export const CHARACTERISTIC_LABELS: Record<GeometricCharacteristic, string> = {
   straightness: 'Straightness',
@@ -65,6 +66,12 @@ export interface AnnotationInspectorProps {
   datumLabelProblem(label: string, own: Id): string | undefined;
   /** The dimension's value in mm or degrees, for the limits form. */
   measured?: number;
+  /** ISO 286 for the tolerance editor's fit pickers (the table lives in the document package). */
+  fits?: FitSupport;
+  /** Why a fit is refused on this dimension (from `annotationIssues`), when it is. */
+  fitDisabled?: string;
+  /** How the sheet writes numbers and how tall its dimension text is, for the live preview. */
+  labelStyle?: LabelStyle;
   onChange(next: Annotation): void;
   onPlacement(next: AnnotationPlacement): void;
   onRemoveFromView(): void;
@@ -495,16 +502,40 @@ export function AnnotationInspector(p: AnnotationInspectorProps) {
             </Field>
           ) : null}
           {a.kind !== 'chamfer' ? (
-            <ToleranceField
+            <ToleranceEditor
               value={a.tolerance}
-              nominal={a.nominal}
+              {...(a.nominal !== undefined ? { nominal: a.nominal } : {})}
               quantity={a.kind === 'angle' ? 'angle' : 'length'}
               {...(p.measured !== undefined ? { measured: p.measured } : {})}
+              evaluate={p.evaluate}
+              {...(p.fits ? { fits: p.fits } : {})}
+              {...(p.fitDisabled ? { fitDisabled: p.fitDisabled } : {})}
+              {...(p.labelStyle ? { labelStyle: p.labelStyle } : {})}
+              labelContext={{
+                ...(a.kind === 'diameter'
+                  ? { size: 'diameter' as const }
+                  : a.kind === 'radius'
+                    ? { size: 'radius' as const }
+                    : {}),
+                ...(a.text ? { text: a.text } : {}),
+              }}
+              inspection={{
+                checked: a.inspection === true,
+                onChange: (on) => {
+                  const next = { ...a };
+                  if (on) next.inspection = true;
+                  else delete next.inspection;
+                  set(next);
+                },
+              }}
               size={sz}
               onCommit={({ nominal, tolerance }) => {
                 const next = { ...a } as Extract<Annotation, { tolerance?: Tolerance }>;
                 if (tolerance === null) delete next.tolerance;
                 else next.tolerance = tolerance;
+                // A reference dimension is not checked: one edit drops the frame with it.
+                if (tolerance?.kind === 'reference')
+                  delete (next as { inspection?: boolean }).inspection;
                 if (nominal && a.source === undefined)
                   (next as { nominal?: Expr }).nominal = nominal;
                 set(next as Annotation);
@@ -859,9 +890,15 @@ function HoleFields({ a, set, p, sz }: Omit<FieldProps<HoleCalloutAnnotation>, '
       {toggle('thread', 'Thread')}
       {toggle('counterbore', 'Counterbore')}
       {toggle('countersink', 'Countersink')}
-      <ToleranceField
+      <ToleranceEditor
         value={a.tolerance}
         label="Diameter tolerance"
+        quantity="length"
+        {...(p.measured !== undefined ? { measured: p.measured } : {})}
+        evaluate={p.evaluate}
+        {...(p.fits ? { fits: p.fits } : {})}
+        {...(p.labelStyle ? { labelStyle: p.labelStyle } : {})}
+        labelContext={{ size: 'diameter' }}
         size={sz}
         onCommit={({ tolerance }) => {
           const next = { ...a };

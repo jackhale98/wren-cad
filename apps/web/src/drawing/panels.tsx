@@ -32,6 +32,8 @@ import {
   attentionRows,
   characteristicChoices,
   datumChoices,
+  fitRefusalOf,
+  fitSupport,
   importRows,
   labelProblem,
   notPromotable,
@@ -366,6 +368,9 @@ export function AnnotationPanelBody({
       characteristics={characteristicChoices(b)}
       datumLabelProblem={(l, own) => labelProblem(b, l, own)}
       {...(measured !== undefined ? { measured } : {})}
+      fits={fitSupport()}
+      {...(fitRefusalOf(a) ? { fitDisabled: fitRefusalOf(a) as string } : {})}
+      labelStyle={{ numbers: b.drawing.style.numbers, textHeight: b.drawing.style.text.dimension }}
       onChange={(next) => updateAnnotation(c, next, 'Edit annotation')}
       onPlacement={(p) => {
         const next = inspectorLeaderEdit(b, shown, p);
