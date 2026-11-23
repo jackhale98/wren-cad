@@ -15,8 +15,9 @@
     "preview": "pnpm --filter @wren-cad/web preview",
     "test": "pnpm -r --if-present test",
     "typecheck": "pnpm -r --if-present typecheck",
-    "lint": "biome check . && node scripts/check-file-sizes.mjs",
+    "lint": "biome check . && node scripts/check-file-sizes.mjs && node scripts/check-workflow-permissions.mjs",
     "check:size": "node scripts/check-file-sizes.mjs",
+    "check:workflows": "node scripts/check-workflow-permissions.mjs",
     "format": "biome format --write .",
     "e2e": "pnpm --filter @wren-cad/web e2e",
     "perf": "pnpm --filter @wren-cad/web perf",
@@ -29,6 +30,7 @@
     "@biomejs/biome": "2.6.6",
     "@types/node": "22.20.5",
     "typescript": "6.0.3",
-    "vitest": "5.1.0"
+    "vitest": "5.1.0",
+    "yaml": "2.9.1"
   }
 }
