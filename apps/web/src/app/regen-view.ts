@@ -31,9 +31,13 @@ import { hitKey, isReferenceHit, pickVertices, toHighlight, vertexAt } from '../
 import { mergeIssueStatuses } from './config-model';
 import type { RegenView, SelectionItem } from './state';
 import { failBoot, mark, markOnce } from './timing';
+import { rolledBackDocs } from './view-doc';
 import type { Workbench } from './workbench';
 
 export function onRegen(wb: Workbench, raw: RegenView): void {
+  // A rolled-back view (Before, pick fields) that ended while it was regenerating: its result
+  // belongs to a superseded request and must not replace the real statuses, result or selection.
+  if (rolledBackDocs.has(raw.doc) && raw.doc !== wb.viewDoc()) return;
   // Errors the app can explain better (propagate: false naming its tangent edges, ADR-040).
   const current = wb.config.isCurrent(raw.doc);
   const explained = followBlockedCauses(raw.result.features.map((s) => explainStatus(raw.doc, s)));

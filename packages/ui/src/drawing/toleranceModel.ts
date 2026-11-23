@@ -194,6 +194,24 @@ export function switchTolerance(
   }
 }
 
+/**
+ * Why a fit cannot be chosen now (`undefined`: it can): an angle has none, and a fit needs the
+ * dimension's size inside the ISO 286 table. Mirrors the `'fit'` case of `switchTolerance`.
+ */
+export function fitUnavailable(ctx: {
+  quantity: 'length' | 'angle';
+  size?: number;
+  fits?: FitSupport | undefined;
+}): string | undefined {
+  if (ctx.quantity === 'angle') return 'an angle has no ISO 286 fit.';
+  if (ctx.size === undefined) return 'the dimension has no size yet.';
+  if (!ctx.fits) return 'the fit tables are not available.';
+  if (ctx.size > ctx.fits.maxSize)
+    return `fits are defined for sizes up to ${ctx.fits.maxSize} mm.`;
+  if (!defaultFit(ctx.size, ctx.fits)) return 'no fit is defined for this size.';
+  return undefined;
+}
+
 /** The order check of a deviation pair: `undefined` when it is fine or cannot be evaluated. */
 export function pairProblem(
   upper: Expr,
