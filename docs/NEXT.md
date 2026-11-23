@@ -20,7 +20,16 @@ This file is the single state file: update it at every merge; a new session star
   revision; datum-target import and its drawing symbol are built in Phase 4 (CTC 05 datums C, D).
   At the M5 gate, review the kernel's reading of raw STEP text for recovered datums and its use
   of an OCCT-internal reader (ADR-100 amendment).
-- Now: Phase 2.
+- Phase 2, on the session branch `claude/awesome-ramanujan-737fqp` (not on main yet):
+  - 2a merged: `capabilitiesFor(tier, { fullEditor })`, no `tier === 'phone'` outside the policy
+    (a test enforces it), "Use full editor" in Settings and the palette. Unit tests pass; the
+    E2E `phone-full-editor.spec.ts` has not run (no kernel build locally): read it in CI.
+  - 2b merged: "Project folder" target in the export form (`packages/sync/src/project-folder.ts`),
+    disabled with a reason where the File System Access API is missing; the git notice shows
+    only for a project linked to a git connection (a browser cannot see where a download lands).
+    No E2E for the directory picker yet. Follow-ups: a palette and file-menu entry; the notice
+    on ⌘S; the write is not atomic across files (the manifest is written last).
+  - Running: 2c, 2d (annotation registry), spike S1. Draft M6 contracts: `docs/m6-design.md`.
 
 ## 1. Owner decisions (all approved 2026-11-23)
 
