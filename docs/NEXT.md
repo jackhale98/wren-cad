@@ -29,7 +29,18 @@ This file is the single state file: update it at every merge; a new session star
     only for a project linked to a git connection (a browser cannot see where a download lands).
     No E2E for the directory picker yet. Follow-ups: a palette and file-menu entry; the notice
     on ⌘S; the write is not atomic across files (the manifest is written last).
-  - Running: 2c, 2d (annotation registry), spike S1. Draft M6 contracts: `docs/m6-design.md`.
+  - 2c merged: the phone has `editValues`. A "Values" item in the phone tree's row menu opens
+    the feature's values inline (`FeatureValues`, fields from the shared `exprFields`);
+    parameters are editable by value only. The configuration switch and the versions panel
+    already worked on the phone. E2E `phone-light-edits.spec.ts` not run locally; several of
+    its selectors are unconfirmed. Risk: the values pane opens above the tree and shifts rows.
+  - 2d, annotation half, merged: `ANNOTATION_DEFS` in `packages/document`; a new kind now
+    touches 12 files, 10 of which fail typecheck if forgotten (CONTRIBUTING.md, "Adding an
+    annotation kind"). drawing, io and ui cannot import document, so they keep their own
+    tables. Proposed for 6.0: move the pure-data part of the table into contracts.
+  - Open in Phase 2: 2d feature half (same pattern for feature kinds); spike S1; CI on the
+    branch (E2E for 2a and 2c); then the reviewer gate and one main release.
+  - Draft M6 contracts: `docs/m6-design.md` (three owner questions at its end).
 
 ## 1. Owner decisions (all approved 2026-11-23)
 
