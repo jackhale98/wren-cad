@@ -1,22 +1,26 @@
-# Implementation plan (owner approved 2026-11-23; ADR-101, ADR-102)
+# State and order of work (owner approved 2026-11-23; ADR-101, ADR-102)
 
 The order of work after M5a, the architecture rules it follows, and how agents are used.
-Live: main `ff5fc3e` on wren-cad.app. Dev is ahead by docs and the soak workflow fix (`8889ecc`).
+Live: main `7bc8e3d` on wren-cad.app (Phase 1 included). Work happens on a `claude/**` session
+branch and reaches main by merge; there is no `dev` branch.
 This file is the single state file: update it at every merge; a new session starts by reading it.
 
 ## 0. Status
 
-- Phase 0: done except reading the first real nightly Soak result (the fix is on main `a641707`;
-  the workflow permission check is in CI).
-- Phase 1: 1b, 1c and 1d merged on dev; all suites pass on the 1b Wasm build locally. Waiting for
-  CI (it rebuilds the kernel), then one main release. Results: NIST imports lose 12 annotations
-  across the four models (was 21; see `PMI_VALIDATION.md`); the bracket exports 28 (was 23); the
-  Wasm round trip loses nothing.
-- Phase 1 leftovers, not blocking: datum targets (new annotation kind; CTC 05 datums C, D);
-  proposed contract additions: a `PmiIssueCode` union, `perUnit` on tolerance items, `modifiers`
-  on dimensions, `ModelingApi.sketchGenerated`. Review the kernel's reading of raw STEP text for
-  recovered datums and its use of an OCCT-internal reader (ADR-100 amendment) at the M5 gate.
-- Next: Phase 2.
+- Phase 0: done. Open: read the first real nightly Soak result (the fix `8889ecc` is on main;
+  nine releases went out with no soak, so expect findings). CI runs
+  `scripts/check-workflow-permissions.mjs` (a caller that does not grant what a reusable workflow
+  asks for); `actionlint` was not added and is in the backlog (§6).
+- Phase 1: done, on main and live (`7bc8e3d`). Results: NIST imports lose 12 annotations across
+  the four models (was 21; see `PMI_VALIDATION.md`); the bracket exports 28 (was 23); the Wasm
+  round trip loses nothing.
+- Phase 1 leftovers, each with a home in §3: the proposed contract additions (a `PmiIssueCode`
+  union, `perUnit` on PMI tolerance items, `modifiers` on PMI dimensions,
+  `ModelingApi.sketchGenerated`) and the datum-target annotation kind go into the 6.0 contract
+  revision; datum-target import and its drawing symbol are built in Phase 4 (CTC 05 datums C, D).
+  At the M5 gate, review the kernel's reading of raw STEP text for recovered datums and its use
+  of an OCCT-internal reader (ADR-100 amendment).
+- Now: Phase 2.
 
 ## 1. Owner decisions (all approved 2026-11-23)
 
@@ -31,32 +35,22 @@ Each is built once, early, and reused by later phases.
 
 | Block | Built in | Reused by |
 | --- | --- | --- |
-| **PMI contract v2** (additive): dimension `direction`, per-target `at`, `qualifier`, datum targets, frame modifiers, spherical size and zone, `ModelingApi.importedPmi` | Phase 1 | NIST import, aligned/ordinate round trip, M5b |
+| **PMI contract v2** (additive): dimension `direction`, per-target `at`, `qualifier`, zone modifiers, spherical size and zone, issue `code` and `severity`. Not in v2: datum targets (6.0), `importedPmi` on `ModelingApi` (worker API until M5b) | Phase 1 | NIST import, aligned/ordinate round trip, M5b |
 | **Sketch entity → generated face/edge query** in the regen engine (persistent names, deterministic) | Phase 1 | sketch-dimension export, M5b (sketch dimensions shown in 3D), mate picks on sketch-driven faces |
 | **Grouped issue report** (repeats collapse to one line with a count) | Phase 1 | PMI import, assembly STEP import, mate problems |
-| **Capabilities, not device names**: `TierPolicy` answers "can edit sketches", "layout: review or full"; code stops asking `tier === 'phone'` (23 files today) | Phase 2 | phone full editor, phone light edits, M6 and M5b UI with no new per-device branches |
+| **Capabilities, not device names**: `TierPolicy` answers "can edit sketches", "layout: review or full"; code stops asking `tier === 'phone'` (count with `grep -rlE "tier [!=]== 'phone'" apps packages --include='*.ts*'`) | Phase 2 | phone full editor, phone light edits, M6 and M5b UI with no new per-device branches |
 | **Per-part-version cache** (display mesh, edges, names for picking, mass properties, mate frames) | Phase 3 (6.1) | lightweight assemblies, instant part open on phones, previews |
 | **Annotation owner and model views**: annotations belong to a part or an assembly; a view (drawing or model view) places them | contract in 6.0, display in Phase 4 | assembly drawings, balloons and BOM, M5b |
 | **Instance path on `EntityRef`** | 6.0 | mates, assembly drawings, assembly PMI, in-context references |
 
 ## 3. Order
 
-**Phase 0 — housekeeping (lead, inline).**
-- Soak: every nightly run since 2026-11-11 was a `startup_failure` (the caller did not grant
-  `actions: read` to `kernel.yml`). Fixed in `8889ecc`; takes effect when main has it. Then read
-  the first real result: nine releases went out with no soak, so expect findings.
-- Add `actionlint` to CI so a workflow that cannot start fails on the push that breaks it.
-- Apply §5 (agent files, brief template). Record the order and the capability rule as ADRs.
+**Phase 0 — housekeeping. Done** (Soak caller permission, the workflow permission check in CI,
+agent files and brief per §5, ADR-101 and ADR-102). Open items are in §0 and §6.
 
-**Phase 1 — finish PMI exchange (M5a).** One contract revision, then three independent runs.
-- 1a Lead: PMI contract v2.
-- 1b Kernel: NIST import fixes (datums through the shape aspect, edge index mapping after
-  healing, "other" dimensions, then modifiers, datum targets, spherical). Goldens: imported counts
-  per NIST model.
-- 1c Regen engine: the sketch-entity query, then sketch-dimension export. Bracket golden: every
-  import-planned annotation exports.
-- 1d App: grouped report, filled presentation areas drawn, mapping of the v2 fields.
-- 1b, 1c and 1d touch different packages and run in parallel. One main release at the end.
+**Phase 1 — finish PMI exchange (M5a). Done**, on main: PMI contract v2 (lead), NIST import
+recovery (kernel), the sketch-entity query and sketch-dimension export (regen), the grouped
+report and v2 mapping (app). Details: ADR-101 and its amendments, `PMI_VALIDATION.md`.
 
 **Phase 2 — small, user-visible, and the groundwork for the rest.**
 - 2a Capability policy; "Use full editor" on phones (the desktop layout at touch density).
@@ -67,11 +61,14 @@ Each is built once, early, and reused by later phases.
 - In parallel, independent of all of the above: **spike S1, the mate solver** (candidates: a
   purpose-built rigid-body solver with DOF from the Jacobian rank; SolveSpace's solver built to
   Wasm). Output: `docs/spikes/`, a recommendation, a 25-part timing. Meanwhile the lead drafts
-  the M6 contracts.
+  the M6 contracts. The spike passes if a 25-part assembly re-solves within one frame (≤ 16 ms)
+  while a part is dragged through a DOF, and from scratch in ≤ 100 ms, in Wasm on a desktop.
+- Before 6.0: the audit of rule 9 in §4 (one cheap agent).
 
 **Phase 3 — assemblies (M6), each slice released behind the preview setting.**
 - 6.0 Contracts: `Assembly`, instances, mates, instance paths, the part cache record, assembly
-  configurations, annotation owner. File format section and migration.
+  configurations, annotation owner. File format section and migration. The same revision takes
+  the Phase 1 leftovers (§0): the four PMI and modeling additions and the datum-target kind.
 - 6.1 Document model and file format; per-part-version cache.
 - 6.2 Viewport: instanced drawing, picking that returns the instance path.
 - 6.3 Insert, move, fasten; assembly tree. First usable slice.
@@ -84,9 +81,11 @@ Each is built once, early, and reused by later phases.
 - Reviewer gate, then the preview setting is removed.
 
 **Phase 4 — MBD in 3D (M5b).** Annotation planes, model views, annotations drawn and picked in
-the viewport, edited with the drawing tools. Works on parts and assemblies because of 6.0.
+the viewport, edited with the drawing tools. Works on parts and assemblies because of 6.0. Also
+datum targets: import (CTC 05) and the drawing symbol.
 
-**Phase 5 — M7 hardening, then the simulation track.**
+**Phase 5 — M7 hardening, then the simulation track.** Starts when the M6 and M5b reviewer gates
+have passed.
 
 ## 4. Architecture rules
 
@@ -125,7 +124,7 @@ frozen.
 | --- | --- |
 | Lead (strongest model) | contracts, decomposition, merges, risky diffs, owner reports. Reads no raw logs. |
 | opus, high effort | kernel (C++/OCCT), regen and naming, sketch solver, mate-solver spike, reviewer at gates |
-| sonnet, medium effort | UI, viewport, document, platform, tests; io, drawing and sync by default (today opus), up a tier for layout geometry or merge logic |
+| sonnet, medium effort | UI, viewport, document, platform, tests, io, drawing and sync; io, drawing and sync go up a tier for layout geometry or merge logic |
 | haiku | docs, CI log triage ("which test, which error, ten lines"), baseline refreshes, code search |
 
 **Brief** (every delegation): goal and why; files to read; the contract excerpt; the tests that
@@ -146,6 +145,6 @@ expires after five idle minutes.
 - PMI validation with the NIST STEP File Analyzer and one third-party CAD tool
   (`PMI_VALIDATION.md`). 3D mouse tilt left/right after the reverse switches.
 - Tablet command bar clips at 744 px with a panel open; unused ToolRail; 6 desktop m4-toolbar
-  baselines; long-press timing from event timestamps (task 35); contract follow-ups (task 37);
-  drag perf probe on a quiet machine; datum triangle overlaps the outside arrowhead on linear
+  baselines; long-press timing from event timestamps; `actionlint` in CI (a workflow that cannot
+  start should fail on the push that breaks it); drag perf probe on a quiet machine; datum triangle overlaps the outside arrowhead on linear
   dimensions.

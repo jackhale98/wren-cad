@@ -29,7 +29,7 @@ never exported; the summary after the export lists each with its reason.
 | --- | --- | --- |
 | Every mapping, both directions, and the export → import → export fixpoint | `packages/io/test/pmi.test.ts` | passing |
 | Presentation: text stroked where the PDF writer puts it, on the view's plane, model views | `packages/drawing/test/pmi-presentation.test.ts` | passing |
-| The M4 bracket: ≥ 15 items (23), each one of its drawing's annotations by id, kind and value; targets are the faces the refs resolve to; presentation from the drawing views; deterministic | `packages/kernel-client/test/regen/pmi.golden.test.ts` | passing (real kernel, simulated façade) |
+| The M4 bracket: ≥ 15 items (28), each one of its drawing's annotations by id, kind and value; targets are the faces the refs resolve to; presentation from the drawing views; deterministic | `packages/kernel-client/test/regen/pmi.golden.test.ts` | passing (real kernel, simulated façade) |
 | Round trip through a real STEP file, the import feature's names and annotations, lossless | same file, "round trip (simulated façade)" | passing |
 | Round trip through the real façade (`STEPCAFControl_Writer` / `Reader`) | same file, "Wasm round trip" | runs when the kernel dist has `exportStepPmi`; since phase 1b the kernel reads datums no frame references from the STEP model, so datum C of the bracket comes back too |
 | Kernel façade: counts, types, values, deviations, fits, datums, faces, names, presentation | `packages/kernel/test/pmi.golden.test.ts` (kernel workstream) | CI |
