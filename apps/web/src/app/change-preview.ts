@@ -9,17 +9,17 @@
  * current document arrives. Before reuses the pick rollback of `view-doc.ts`.
  */
 
-import type { Feature, Id, RegenResult, TouchViewport } from '@wren-cad/contracts';
-import type { FeatureEffect, FeatureTint, RegionPrismSpec } from '@wren-cad/viewport';
+import type {
+  Feature,
+  FeatureEffect,
+  FeatureTint,
+  Id,
+  RegenResult,
+  RegionPrismSpec,
+} from '@wren-cad/contracts';
 import { extrudePrism, featureEffect, ownedFaces } from '../model/feature-effect';
 import type { RegenView } from './state';
 import type { Workbench } from './workbench';
-
-/** The viewport engine's change-preview methods (optional: other viewports simply draw nothing). */
-type ChangeViewport = TouchViewport & {
-  setFeatureTint?(tint: FeatureTint | null): void;
-  setRegionPrism?(spec: RegionPrismSpec | null): void;
-};
 
 export interface ChangePreviewState {
   tint: { featureId: Id; effect: FeatureEffect; faces: number } | null;
@@ -37,8 +37,9 @@ export class ChangePreview {
 
   constructor(private readonly wb: Workbench) {}
 
-  private get vp(): ChangeViewport | null {
-    return this.wb.viewport as ChangeViewport | null;
+  /** The change-preview methods are optional in the contract: other viewports draw nothing. */
+  private get vp() {
+    return this.wb.viewport;
   }
 
   state(): ChangePreviewState {

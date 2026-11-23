@@ -3,8 +3,16 @@
  * read from the feature and the persistent names already in the mesh. No kernel call.
  */
 
-import type { BodyOp, ExtrudeFeature, Feature, Id, SketchResult, Vec3 } from '@wren-cad/contracts';
-import type { FeatureEffect, RegionPrismSpec } from '@wren-cad/viewport';
+import type {
+  BodyOp,
+  ExtrudeFeature,
+  Feature,
+  FeatureEffect,
+  Id,
+  RegionPrismSpec,
+  SketchResult,
+  Vec3,
+} from '@wren-cad/contracts';
 
 const byOp = (op: BodyOp): FeatureEffect =>
   op === 'cut' ? 'cut' : op === 'intersect' ? 'modify' : 'add';
