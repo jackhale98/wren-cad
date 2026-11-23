@@ -1,7 +1,8 @@
 # State and order of work (owner approved 2026-11-23; ADR-101, ADR-102)
 
 The order of work after M5a, the architecture rules it follows, and how agents are used.
-Live: main `8317ff4` (Phase 2 released 2026-11-23; check the deploy jobs of that run). Work happens on a `claude/**` session
+Live: main `5aed1f4` (released 2026-11-23: Phase 2, then the owner's requests of the same day;
+check the deploy jobs of that run). Work happens on a `claude/**` session
 branch and reaches main by merge; there is no `dev` branch.
 This file is the single state file: update it at every merge; a new session starts by reading it.
 
@@ -168,6 +169,14 @@ report and v2 mapping (app). Details: ADR-101 and its amendments, `PMI_VALIDATIO
   step and a body picked through a face are not toggled off by a second pick. A touch near a
   glyph does not replace a multi-selection. Not done: an ADR for Section and Draft leaving the
   default face ring when the edit items need room (recorded here only).
+- Released to main as `5aed1f4` after CI run 162 passed on the branch. The run before it
+  (`8e39294`) failed only in the unit job: nine timing tests of packages/sketch ran 2 to 2.5
+  times over their CI limits and two hit the 5 s timeout, on a starved runner; the same code
+  passed locally and the next run passed. If it repeats, run the packages' unit tests with less
+  parallelism in CI (`pnpm test` runs every package at once).
+- Next: slice 2e.1 (change preview, no kernel change), then Phase 3. Open owner items: the
+  three questions at the end of `docs/m6-design.md`; whether Section and Draft may leave the
+  default face ring; the first nightly Soak result.
 - Local E2E and agents: Playwright reuses a server on port 4173. An agent running E2Es in a
   worktree and the lead clash on it and each tests the other's build. Give every runner its
   own `WREN_E2E_PORT`.
