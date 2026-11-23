@@ -72,7 +72,11 @@ test('phone: Use full editor gives the editing shell at touch density, and off r
   await page.getByTestId('plane-chooser').getByRole('button', { name: /Top/ }).tap();
   await expect(page.getByRole('toolbar', { name: 'Sketch tools' })).toBeVisible();
   await expect.poll(async () => (await a.ui()).sketch !== null).toBe(true);
-  await page.getByRole('button', { name: 'Finish sketch' }).tap();
+  // The inspector has a "Finish sketch" button too: use the toolbar's, as the tablet spec does.
+  await page
+    .getByRole('toolbar', { name: 'Sketch tools' })
+    .getByRole('button', { name: 'Finish sketch' })
+    .tap();
   await a.idle();
 
   // Off again, from the palette: back to the review shell, same document (nothing reloaded).

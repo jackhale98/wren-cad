@@ -59,6 +59,12 @@ This file is the single state file: update it at every merge; a new session star
     capabilities or `TierPolicy`, and the guard test covers every comparison form. Seen and
     left: at 390 px the kernel status chip is clipped at the right edge, and with the left
     panel open the command bar is a 54 px sliver.
+  - CI run 154 (`8c65264`): all E2E shards green except one test, `phone-full-editor.spec.ts`
+    (two "Finish sketch" buttons; the spec now uses the toolbar's). `phone-light-edits` passed.
+    Also failed: the ui unit job on an unhandled error from a stray timer in `paramDrag.ts`
+    after the test's DOM was gone (older code, guarded now); and Lighthouse (non-gating): npm
+    404 for `@sentry/server-runtime-injection@11.17.0` while installing the Lighthouse CLI,
+    a registry problem outside the repo, to watch.
   - Open in Phase 2: a green CI run on the branch (E2E for 2a, 2c; no E2E yet for
     the directory picker or for compare and release on the phone); owner sign-off that the git
     notice is driven by the connection only; then one main release. Also open: the GitHub Pages

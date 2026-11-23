@@ -105,7 +105,12 @@ export function beginParamDrag(
     const win = ev.view ?? (typeof window === 'undefined' ? null : window);
     const swallow = (c: Event) => c.stopPropagation();
     win?.addEventListener('click', swallow, { capture: true, once: true });
-    setTimeout(() => win?.removeEventListener('click', swallow, true), 60);
+    setTimeout(() => {
+      // A torn-down window (a closed page, a test's DOM environment) can lose its methods.
+      if (typeof win?.removeEventListener === 'function') {
+        win.removeEventListener('click', swallow, true);
+      }
+    }, 60);
     const accepted = handler ? handler(name) !== false : false;
     onEnd?.(accepted);
   };
