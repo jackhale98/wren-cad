@@ -57,8 +57,9 @@ has Welcome and samples, the demo bracket, New document, Open library, Open or i
   **Measure**, **Section** and **Export**.
 - **Features** shows the feature tree with a draggable rollback line, for review only; see
   [Reviewing on the phone](#reviewing-on-the-phone).
-- You cannot create or edit features on a phone (no sketching, push/pull, delete, rename or
-  reordering). Use a desktop or tablet.
+- You can change numbers on a phone (a feature's values, parameters), switch configuration and save,
+  compare or release versions. You cannot create or restructure features (no sketching, push/pull,
+  delete, rename or reordering). Use a desktop or tablet, or turn on **Use full editor** in Settings.
 
 ## Navigating and selecting
 
@@ -582,6 +583,15 @@ the tablet and desktop trees can.
 - **Touch and hold a row** to open its menu: **Suppress** or **Unsuppress** (an undoable edit),
   **Roll to here**, and, on a sketch, **Show** or **Hide** in the viewport (also the eye on the row).
   There is no Delete, Edit or Rename on the phone, and a folder has no menu.
+- **Change a value.** Choose **Values** in a feature's menu (not on a sketch). Its numbers (an
+  extrude's depth, a fillet's radius, a hole's diameter, a pattern's count) appear above the tree as
+  fields. Type or use the keypad; values take expressions with units (`12 mm`, `thickness * 2`).
+  Each committed value is one undo step. The first edit starts the geometry kernel, and the status
+  chip shows it working. **Done** closes the fields.
+- **Params** edits the expression of each parameter; adding, deleting, renaming and reordering
+  parameters are for the tablet and desktop.
+- **Versions.** The versions button in the top bar opens the same panel as on the desktop: save a
+  version, compare with the current model, mark a release.
 - A change that arrives while you work (a sync from another device) is applied as usual.
 
 A feature that fails is marked in the tree with a short explanation. Its last good geometry stays

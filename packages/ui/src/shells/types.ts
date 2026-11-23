@@ -65,6 +65,11 @@ export interface ShellProps {
   /* ---- M1 data-driven panels (all optional; shells fall back to their empty states) ---- */
   /** Feature history for the left panel's Features tab / phone history sheet. */
   featureTree?: FeatureTreeProps;
+  /**
+   * Phone review layout with `editValues`: the selected feature's values as inline fields, shown
+   * above the tree in the Features tab. Omit when nothing is selected or values are not editable.
+   */
+  featureValues?: ReactNode;
   /** Parameters for the left panel's Params tab / phone sheet. */
   paramsTable?: ParamsTableProps;
   /** Right-panel content (typically a `FeatureInspector`, `PartInspector` or `SelectionInspector`). */

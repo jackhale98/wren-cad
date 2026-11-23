@@ -3666,7 +3666,7 @@ CI on the orthographic view failed twice for one cause: an orthographic view str
 - **Hardware stays by tier.** Regen budget, mesh quality and kernel boot are unchanged (a phone is still coarse and boots the kernel on the first edit through `Workbench.apply`); only what the UI offers follows capabilities.
 - **Shells.** `AppShell` takes `layout` and `density` and keeps `tier` for reporting (`data-tier`, diagnostics). `DesktopShell` takes `density`; `DrawingShell` takes `layout` and `density`. A phone with the full editor is the desktop structure at touch density, as the tablet is (ADR-099).
 - **Setting.** "Use full editor" is per device (`localStorage` `wren.fullEditor`), offered only when `TierPolicy.fullEditorOptional` (phone), in Settings and the command palette. Switching remounts the chrome (the shell is keyed by layout); the document, store and kernel are untouched.
-- **Phone defaults.** `editValues` is false until phase 2c; it is one line in `capabilitiesFor`.
+- **Phone defaults.** `editValues` is false until phase 2c; it is one line in `capabilitiesFor`. (Turned on in phase 2c, below.)
 
 ### ADR-101 amendment: Save as project folder and the git notice (2026-11-23, sync workstream, phase 2b)
 
@@ -3676,3 +3676,10 @@ CI on the orthographic view failed twice for one cause: an orthographic view str
 - **Git notice: only what is known.** A browser gives no path for a download, and `showSaveFilePicker` returns a file handle with no route to its parent folder, so "this `.wrencad` is inside a git repo" is **not observable**; no guessing. The notice shows when the project is linked to a git connection (a git host, or a local folder that is a working tree; `ProjectKind` `git` or `localGit`), the directory picker exists, and the user has not chosen "Don't show again" (`localStorage`). It sits in the export form while `.wrencad` is chosen, inline and dismissible. Not shown for a project that only sits in a git folder the user saves into by hand.
 - **Opening.** A saved folder opens through the existing folder connection path (`FolderProvider` listing and reads, then `fromFiles`); a test round-trips it to an identical document.
 - **Proposed, not done:** a "Save as project folder" entry in the command palette and in the top-bar file menu; once the folder handle is kept (IndexedDB, as folder connections do), "save again" without the picker.
+
+### ADR-101 amendment: light edits on the phone (Phase 2c)
+
+- **Capability.** `capabilitiesFor('phone')` sets `editValues: true`; sketches, features and drawings stay false. Gates live in `platform/value-edit.ts` (`paramsModeFor`, `inlineFeatureValues`) and read capabilities only.
+- **Feature values.** The feature list is `exprFields` (packages/document), the one list the inspector's fields, parameter usage and configurations already share; no second table per kind. Only labels are new (`featureValueLabel` in packages/ui, matching the inspector's). The pane (`FeatureValues`) is the existing `ExpressionInput` (expressions with units, numeric keypad on touch) and writes a JSON-pointer replace through `Workbench.updateFeature`, so it is one undo step per committed value, configuration-aware, and `apply` boots the kernel (the status chip shows it). Reached from a "Values" item in the row menu (`FeatureTreeProps.onValues`, kept in review mode; not on sketches) and shown above the tree. Delete, Edit, Rename, reordering and re-picks are still absent from the phone menu.
+- **Params.** `ParamsTableProps.mode`: `edit` (default), `values` (expressions only: names, descriptions, add, delete and reorder are read-only; the phone), `view`.
+- **Configuration and versions** needed no change: the chip already switches (never creates or manages) and the versions button opens the shared panel (save, compare, release) on the phone. They are covered by `phone-light-edits.spec.ts` and `m37-phone.spec.ts`.

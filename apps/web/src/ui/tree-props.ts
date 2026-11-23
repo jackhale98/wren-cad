@@ -26,6 +26,8 @@ export interface TreeOptions {
   density: 'compact' | 'touch';
   /** `review` on phones: suppress, the sketch eye, the rollback bar and folder collapse only. */
   actions?: 'full' | 'review';
+  /** `editValues` in the review layout: the row menu offers "Values" (the feature's numbers inline). */
+  values?: boolean;
   nestSketches: boolean;
   setNestSketches(nest: boolean): void;
   statuses: readonly FeatureStatus[] | undefined;
@@ -37,7 +39,7 @@ export interface TreeProps {
 }
 
 export function useTreeProps(wb: Workbench, o: TreeOptions): TreeProps {
-  const { density, nestSketches, setNestSketches, statuses, actions = 'full' } = o;
+  const { density, nestSketches, setNestSketches, statuses, actions = 'full', values = false } = o;
   const doc = useDoc(wb);
   const ui = useObservable(wb.ui);
   const part = doc.parts[0];
@@ -132,6 +134,7 @@ export function useTreeProps(wb: Workbench, o: TreeOptions): TreeProps {
       nestSketches,
       onNestSketchesChange: setNestSketches,
       onEdit: (id) => wb.editFeature(id),
+      ...(values ? { onValues: (id: Id) => wb.selectFeature(id) } : {}),
       onSuppress: (id, suppressed) => {
         wb.apply({ kind: 'setSuppressed', partId: part.id, featureId: id, suppressed });
         wb.commit();
@@ -179,6 +182,7 @@ export function useTreeProps(wb: Workbench, o: TreeOptions): TreeProps {
   }, [
     wb,
     actions,
+    values,
     part,
     items,
     statuses,

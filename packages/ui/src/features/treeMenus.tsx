@@ -8,6 +8,7 @@ import {
   Pencil,
   PenLine,
   SkipBack,
+  SlidersHorizontal,
   Trash2,
 } from 'lucide-react';
 import type { MenuItem } from '../components/floating';
@@ -28,6 +29,7 @@ export interface MenuCtx
   extends Pick<
     FeatureTreeProps,
     | 'onEdit'
+    | 'onValues'
     | 'onRename'
     | 'onSuppress'
     | 'configuration'
@@ -127,6 +129,7 @@ export function menuItems(c: MenuCtx, id: Id, i: number): MenuItem[] {
     nestSketches,
     effective,
     onEdit,
+    onValues,
     onRename,
     onSuppress,
     onDelete,
@@ -152,6 +155,13 @@ export function menuItems(c: MenuCtx, id: Id, i: number): MenuItem[] {
       label: 'Edit',
       icon: <PenLine className="size-4" />,
       onSelect: () => onEdit(id),
+    });
+  if (onValues && f.type !== 'sketch')
+    items.push({
+      id: 'values',
+      label: 'Values',
+      icon: <SlidersHorizontal className="size-4" />,
+      onSelect: () => onValues(id),
     });
   if (onRename)
     items.push({

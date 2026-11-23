@@ -38,6 +38,24 @@ describe('ParamsTable', () => {
     return props;
   }
 
+  it("mode 'values': expressions edit; names, add, delete and reorder are not offered", async () => {
+    const p = setup({ mode: 'values' });
+    expect(screen.queryByRole('textbox', { name: /Name of parameter/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Add parameter' })).toBeNull();
+    expect(screen.queryByRole('button', { name: /^Delete / })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Add description' })).toBeNull();
+    expect(document.querySelector('[data-grip]')).toBeNull();
+    const field = screen.getByRole('textbox', { name: 'Expression for height' });
+    await userEvent.click(field);
+    await userEvent.keyboard('{Control>}a{/Control}width / 2{Enter}');
+    expect(p.onUpdate).toHaveBeenCalledWith('P2', { expr: 'width / 2' });
+  });
+
+  it("mode 'view': expressions are disabled", () => {
+    setup({ mode: 'view' });
+    expect(screen.getByRole('textbox', { name: 'Expression for height' })).toBeDisabled();
+  });
+
   it('shows live evaluated values with units', () => {
     setup();
     const vals = screen.getAllByTestId('param-value').map((n) => n.textContent);

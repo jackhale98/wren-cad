@@ -157,6 +157,11 @@ export interface FeatureTreeProps {
    * active configuration overrides carries a marker. See `FeatureTreeConfiguration`.
    */
   configuration?: FeatureTreeConfiguration;
+  /**
+   * Phone with `editValues`: "Values" in the row menu, to show that feature's numbers inline. Kept
+   * in `review` mode (it edits no structure).
+   */
+  onValues?(id: Id): void;
   /** `touch` = 44px rows and always-visible handles. */
   density?: 'compact' | 'touch';
   /**
@@ -206,6 +211,7 @@ export function FeatureTree({
   onMove: onMoveProp,
   onReorder: onReorderProp,
   onEdit: onEditProp,
+  onValues,
   onSuppress,
   configuration,
   onDelete: onDeleteProp,
@@ -869,6 +875,7 @@ export function FeatureTree({
     nestSketches,
     effective,
     onEdit,
+    onValues,
     onRename,
     onSuppress,
     configuration,
