@@ -145,7 +145,13 @@ report and v2 mapping (app). Details: ADR-101 and its amendments, `PMI_VALIDATIO
   (sketch): shapes that do not touch stay independent. Owner report: dragging one shape moved
   another's lines. Cause: drawing a shape roughly level with another stored `horizontalPoints`
   (and can store `equal`, `parallel`, `perpendicular`) between the two; the solver itself never
-  moves unlinked geometry. Rule being implemented: such cross-shape inferences are snaps only.
+  moves unlinked geometry. Owner (2026-11-23): the case was a hexagon drawn next to a shape
+  made with the line tool; inferred constraints between shapes are fine if it is obvious they
+  were added and they are easy to remove. So they stay stored; in progress: a notice with
+  "Remove" when a tool commits a constraint to a different shape, the glyphs that carry a drag
+  into another shape highlighted while dragging, glyph removal on touch. Also in progress
+  (owner, iPad): no way to select more than one vertex or line in the sketcher on touch; a tap
+  now adds to the selection, a tap on a selected entity removes it, a tap on empty clears.
 
 **E2E locally (new, use it):** the kernel cannot be built in the cloud container, but a CI run's
 `kernel-dist` and `drawing-kernel-dist` artefacts can be downloaded (GitHub MCP
