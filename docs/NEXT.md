@@ -292,6 +292,12 @@ frozen.
 | sonnet, medium effort | UI, viewport, document, platform, tests, io, drawing and sync; io, drawing and sync go up a tier for layout geometry or merge logic |
 | haiku | docs, CI log triage ("which test, which error, ten lines"), baseline refreshes, code search |
 
+Owner note (2026-11-23): a particularly complicated implementation or refactor may be given to
+an agent on the lead's model (the strongest tier); the owner can reset its token impact. Use it
+where a weaker attempt would likely cost a second round: the production mate solver (6.4), the
+per-part-version cache and lightweight assemblies (6.1), the kernel tool-body preview (2e.2),
+a contract-wide refactor. Not for routine work; the delegation rules above still apply.
+
 **Brief** (every delegation): goal and why; files to read; the contract excerpt; the tests that
 must pass; what is out of scope; the golden rules restated; a turn limit.
 **Hand-back:** at most 300 words: what changed, tests run with counts, open risks, proposed
