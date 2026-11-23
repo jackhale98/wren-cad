@@ -964,8 +964,8 @@ export class Workbench {
     pointer.addSourceFeature(this, id);
   }
 
-  selectHit(hit: PickHit, additive: boolean): Promise<void> {
-    return pointer.selectHit(this, hit, additive);
+  selectHit(hit: PickHit, additive: boolean, toggle = true): Promise<void> {
+    return pointer.selectHit(this, hit, additive, toggle);
   }
 
   clearSelection(): void {

@@ -118,10 +118,14 @@ describe('picking', () => {
     });
   });
 
-  it('onPick paths: /edges appends (deduped), /edges/1 replaces, scalar paths set', () => {
+  it('onPick paths: /edges appends, a second pick of the same edge removes it, /edges/1 replaces, scalar paths set', () => {
     const part = { features: [] as Feature[] };
     let f: FilletFeature = newFillet(part, [{ name: 'e0', kind: 'edge' }]);
     f = applyPick(f, '/edges', { name: 'e1', kind: 'edge' });
+    expect(f.edges.map((e) => e.name)).toEqual(['e0', 'e1']);
+    // Picking a picked edge takes it out again (owner, 2026-11-23); the others stay.
+    f = applyPick(f, '/edges', { name: 'e1', kind: 'edge' });
+    expect(f.edges.map((e) => e.name)).toEqual(['e0']);
     f = applyPick(f, '/edges', { name: 'e1', kind: 'edge' });
     expect(f.edges.map((e) => e.name)).toEqual(['e0', 'e1']);
     f = applyPick(f, '/edges/1', { name: 'e9', kind: 'edge' });

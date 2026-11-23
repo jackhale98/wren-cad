@@ -342,7 +342,10 @@ export function applyPick<F extends Feature>(feature: F, path: string, ref: Enti
   const obj = parent as Record<string, Json>;
   const cur = obj[last];
   if (Array.isArray(cur)) {
-    if (!cur.some((r) => (r as { name?: string } | null)?.name === ref.name)) cur.push(value);
+    // A list of picks: picking an entity that is already in it takes it out again.
+    const at = cur.findIndex((r) => (r as { name?: string } | null)?.name === ref.name);
+    if (at >= 0) cur.splice(at, 1);
+    else cur.push(value);
   } else if (last in obj) obj[last] = value;
   else return feature;
   return root as unknown as F;

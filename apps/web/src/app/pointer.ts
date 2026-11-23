@@ -468,7 +468,8 @@ export async function applyChoice(
   }
   if (u.prompt) {
     if (!hit) return;
-    await wb.selectHit(hit, false);
+    // A prompt asks for geometry: a click always selects, it never takes the pick back.
+    await wb.selectHit(hit, false, false);
     await wb.runTool(u.prompt.tool);
     return;
   }
@@ -565,10 +566,25 @@ export function addSourceFeature(wb: Workbench, id: Id): void {
   wb.commit();
 }
 
-export async function selectHit(wb: Workbench, hit: PickHit, additive: boolean): Promise<void> {
+/**
+ * A click on geometry. Clicking something that is already selected deselects it and leaves the
+ * rest of the selection alone (owner, 2026-11-23), with or without a modifier; `toggle: false`
+ * is for callers that need the hit selected whatever was there.
+ */
+export async function selectHit(
+  wb: Workbench,
+  hit: PickHit,
+  additive: boolean,
+  toggle = true,
+): Promise<void> {
   const key = hitKey(hit);
   const u = wb.ui.get();
   const exists = u.selection.some((s) => s.key === key);
+  if (exists && toggle) {
+    wb.patchUi({ selection: u.selection.filter((s) => s.key !== key), featureId: null });
+    wb.pushHighlights();
+    return;
+  }
   let selection: SelectionItem[];
   if (additive) {
     selection = exists

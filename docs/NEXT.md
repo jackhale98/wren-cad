@@ -123,6 +123,21 @@ report and v2 mapping (app). Details: ADR-101 and its amendments, `PMI_VALIDATIO
   gate). The annotation registry must land before the datum-target kind; mates and instances
   are built on the same pattern from the start in 6.1.
 
+- **2e, change preview** (owner request 2026-11-23: "show what a feature change will do": the
+  fillet on the selected edges, the volume an extrude adds or cuts). Today a tool applies the
+  real feature and the regen result is shown, but nothing marks what changed. Proposed, in
+  two slices, after the Phase 2 release:
+  - 2e.1, no kernel change: while a feature is created or edited, the faces it made (persistent
+    names `F<id>:…`, already in the mesh) are tinted: add, cut and modify each with its own
+    token colour; a blind extrude or cut also shows its volume as a translucent prism from the
+    profile and depth in the same frame as the drag (the push/pull prism, `viewport/prism.ts`),
+    before the kernel answers. Holding a key (touch: a "Before" chip) shows the model before
+    the feature, from the feature-result cache.
+  - 2e.2, kernel: the exact tool body (what a cut, revolve, sweep, loft or boolean removes or
+    adds) returned as a preview mesh for the edited feature only, drawn translucent.
+  - Done with this request: clicking a selected face, edge or vertex deselects it, and picking
+    an entity that is already in a feature's pick list takes it out (`selection-toggle.spec.ts`).
+
 **Phase 3 — assemblies (M6), each slice released behind the preview setting.**
 - 6.0 Contracts: `Assembly`, instances, mates, instance paths, the part cache record, assembly
   configurations, annotation owner. File format section and migration. The same revision takes
