@@ -73,6 +73,7 @@ import { planImport } from './exec-import';
 import { planBoolean, planDraft, planEdgeOp, planPushPull, planShell } from './exec-modify';
 import { planSketch } from './exec-sketch';
 import { planSolid, planSweepLoft } from './exec-solids';
+import { type SketchGenerated, sketchEntityGenerated } from './generated';
 import { hashKey } from './hash';
 import { allBodiesFor, copiedFeatures, kerr, meshOnlyError } from './helpers';
 import { bodyResult, densityOf, referenceResults, sketchResult } from './outputs';
@@ -502,6 +503,35 @@ export class RegenEngine {
       }
       const { importedPmi } = await import('./pmi');
       return importedPmi(this.core, context, featureId);
+    });
+  }
+
+  /**
+   * ADR-101 (proposed for the contract): what entity `entityId` of sketch `sketchId` generated in
+   * the latest regen of `slot`: per consuming feature the faces, edges or vertices it made from
+   * the entity, by persistent name, each followed to the final state (present, merged, split,
+   * removed), and one `outcome` that is `unique` only when that is exactly one sub-shape
+   * (generated.ts). Deterministic; reads the slot, never changes it.
+   */
+  sketchGenerated(
+    partId: Id,
+    sketchId: Id,
+    entityId: Id,
+    slot: RegenSlot = 'main',
+  ): Promise<Result<SketchGenerated>> {
+    return this.serial(async (): Promise<Result<SketchGenerated>> => {
+      const context = isSlot(slot)
+        ? this.cache.slotCache(partId, slot)?.latest?.context
+        : undefined;
+      if (!context) {
+        return {
+          ok: false,
+          error: kerr('INVALID_INPUT', 'This part has not been regenerated yet', {
+            hint: 'Regenerate the part first.',
+          }),
+        };
+      }
+      return { ok: true, value: sketchEntityGenerated(context, sketchId, entityId) };
     });
   }
 

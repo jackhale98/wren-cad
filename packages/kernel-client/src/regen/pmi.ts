@@ -9,6 +9,13 @@
  * (`@wren-cad/io/pmi`), presentation from the M4 layout (`@wren-cad/drawing/pmi`). Targets are
  * `{ body: index in the exported shapes, kind, index: 1-based TopExp index }`.
  *
+ * Sketch refs (ADR-101 phase 1c): a ref to a sketch curve or point (`S…:e(…)`, `S…:p(…)`, the
+ * refs of sketch dimensions promoted by "Import model annotations") targets what the entity
+ * generated (`sketchEntityGenerated`): a line's planar side face, a circle's or arc's cylinder,
+ * a point's swept edge. Only a `unique` outcome is a target (merged into a survivor: exported on
+ * it, with a note); anything else (construction, several consumers or sub-shapes, removed or
+ * split later) skips the annotation with that outcome's reason.
+ *
  * Import: a STEP import feature's PMI (read with its shapes, `RawImport.pmi`) → entries whose
  * targets are the import feature's own persistent names (`importedBodyNaming`), each with its
  * fingerprint, so the app's annotations resolve exactly; what does not map says why.
@@ -27,6 +34,7 @@ import type {
   PmiExportItem,
   PmiExportReport,
   PmiImportResult,
+  RefPoint,
   Result,
   Vec3,
 } from '@wren-cad/contracts';
@@ -39,9 +47,10 @@ import {
   type PmiTargetOrWhy,
   planPmiExport,
 } from '@wren-cad/io/pmi';
-import { annotationRefTargets, resolveAnnotations } from './annotations';
+import { type AnnotationRefTarget, annotationRefTargets, resolveAnnotations } from './annotations';
 import type { EngineCore } from './core';
 import { importedBodyNaming } from './exec-import';
+import { generatedReason, sketchEntityGenerated } from './generated';
 import { kerr } from './helpers';
 import { fingerprintOf } from './refs';
 import { type BodyState, type PartCache, primaryNaming, type WalkContext } from './state';
@@ -90,22 +99,31 @@ export async function planStepPmi(
   const bodyIndex = new Map(bodies.map((b, i) => [b.id, i]));
   const meshOnly = new Set(bodies.filter((b) => b.meshOnly).map((b) => b.id));
 
-  // Targets, by the annotation rules, for every annotation (a frame reads its dimension's).
+  // Targets, by the annotation rules, for every annotation (a frame reads its dimension's);
+  // sketch refs by what their entity generated.
   const targets = new Map<Id, PmiTargetOrWhy[]>();
+  const sketchNotes = new Map<Id, string[]>();
   const final = readOnly(ctx);
   for (const a of annotations) {
     if (resolutions.get(a.id)?.state !== 'ok') continue;
     const raw = await annotationRefTargets(core, final, a);
-    targets.set(
-      a.id,
-      raw.map((t): PmiTargetOrWhy => {
-        if ('reason' in t) return t;
-        const body = bodyIndex.get(t.owner);
-        if (body === undefined) return { reason: `${t.name} is on a body that is not exported` };
-        if (meshOnly.has(t.owner)) return { reason: `${t.name} is on a mesh reference body` };
-        return { body, kind: t.kind, index: t.index + 1 };
-      }),
-    );
+    const out: PmiTargetOrWhy[] = [];
+    for (let i = 0; i < raw.length; i++) {
+      const ref = a.refs[i] as EntityRef;
+      const g = sketchTarget(final, ref, a.at?.[i] ?? 'self');
+      const t = g ?? (raw[i] as AnnotationRefTarget);
+      if (g && 'note' in g && g.note)
+        sketchNotes.set(a.id, [...(sketchNotes.get(a.id) ?? []), g.note]);
+      if ('reason' in t) {
+        out.push({ reason: t.reason });
+        continue;
+      }
+      const body = bodyIndex.get(t.owner);
+      if (body === undefined) out.push({ reason: `${t.name} is on a body that is not exported` });
+      else if (meshOnly.has(t.owner)) out.push({ reason: `${t.name} is on a mesh reference body` });
+      else out.push({ body, kind: t.kind, index: t.index + 1 });
+    }
+    targets.set(a.id, out);
   }
 
   const scope = scopeOf(ctx.doc);
@@ -120,6 +138,11 @@ export async function planStepPmi(
     evaluate,
     ...(options.pmi?.annotations ? { only: options.pmi.annotations } : {}),
   });
+  for (const item of plan.items) {
+    for (const note of sketchNotes.get(item.annotationId) ?? []) {
+      plan.notes.push({ annotationId: item.annotationId, note });
+    }
+  }
   if (options.pmi?.presentation === false || plan.items.length === 0) {
     return { ok: true, value: plan };
   }
@@ -175,6 +198,56 @@ export async function planStepPmi(
     return item;
   });
   return { ok: true, value: { items, report: plan.report, notes } };
+}
+
+/** `S<sketch>:p(<id>)` / `S<sketch>:e(<id>)`. */
+const SKETCH_ENTITY = /^S([0-9A-Za-z]+):([pe])\((.+)\)$/;
+
+/**
+ * The exported sub-shape of a sketch entity ref (ADR-101): what the entity generated, when that
+ * is exactly one face, edge or vertex of a body; a ref at a line's or arc's `start` / `end` is
+ * that end point's. Null for refs that are not sketch entities (the annotation rules apply).
+ */
+function sketchTarget(
+  final: WalkContext,
+  ref: EntityRef,
+  at: RefPoint,
+):
+  | AnnotationRefTarget
+  | (Extract<AnnotationRefTarget, { owner: string }> & { note?: string })
+  | null {
+  const m = SKETCH_ENTITY.exec(ref.name);
+  if (!m) return null;
+  const sketchId = m[1] as Id;
+  let entityId = m[3] as Id;
+  let name = ref.name;
+  if (at !== 'self') {
+    const e = final.state.sketches.get(sketchId)?.entities.find((x) => x.id === entityId);
+    const ends = e?.kind === 'line' || e?.kind === 'arc' || e?.kind === 'ellipticArc';
+    if (!ends || (at !== 'start' && at !== 'end')) {
+      return { reason: `${ref.name} at its ${at} has no face or edge of its own in the solid` };
+    }
+    entityId = at === 'start' ? e.start : e.end;
+    name = `S${sketchId}:p(${entityId})`;
+  }
+  const g = sketchEntityGenerated(final, sketchId, entityId);
+  const o = g.outcome;
+  if (o.kind !== 'unique') {
+    return { reason: generatedReason(final, name, g) ?? `${name} generated nothing` };
+  }
+  const t = {
+    owner: o.target.owner,
+    kind: o.target.kind,
+    index: o.target.index,
+    name: o.target.name,
+  };
+  if (!o.merged) return t;
+  const i = o.merged.by === null ? undefined : final.index.get(o.merged.by);
+  const by = i === undefined ? undefined : final.part.features[i];
+  return {
+    ...t,
+    note: `${name}: exported on ${o.target.name}, which ${by ? `‘${by.name}’` : 'a boolean'} merged its ${o.target.kind} ${o.name} into`,
+  };
 }
 
 // ---------------------------------------------------------------------------------------------

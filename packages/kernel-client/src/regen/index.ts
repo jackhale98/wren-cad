@@ -48,6 +48,17 @@ export {
   type RegenUnresolvedRef,
   type SketchSolve,
 } from './engine';
+export {
+  type GeneratedConsumer,
+  type GeneratedNow,
+  type GeneratedOutcome,
+  type GeneratedSub,
+  type GeneratedTarget,
+  generatedReason,
+  type NothingWhy,
+  type SketchGenerated,
+  sketchEntityGenerated,
+} from './generated';
 export { ORIGIN_AXES, ORIGIN_PLANES, planeFrame, sampleEntity } from './geometry';
 export { hashKey, stableStringify } from './hash';
 export { frameMatrix, placeMesh, sha256Hex } from './imports';

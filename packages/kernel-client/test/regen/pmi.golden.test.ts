@@ -4,10 +4,17 @@
  * and a section, "Import model annotations" planned with the kernel's anchors, plus datums A, B
  * (and C on the hole's size), a flatness, a perpendicularity and a position frame, and tolerances.
  *
- * Checks: at least 15 items; every item is one of the drawing's annotations with the same id,
- * kind and value; every annotation the export leaves out says why (construction geometry); each
- * target is the face the annotation's ref resolves to (by name, never guessed); presentation comes
- * from the drawing views; the plan is deterministic.
+ * Checks: 26 items; every item is one of the drawing's annotations with the same id, kind and
+ * value; every annotation the export leaves out says why; each target is the face the
+ * annotation's ref resolves to (by name, never guessed); presentation comes from the drawing
+ * views; the plan is deterministic.
+ *
+ * Sketch dimensions (ADR-101 phase 1c): the import-planned dimensions whose refs are sketch
+ * entities export on what those entities generated (`sketchEntityGenerated`): the hole circles'
+ * diameters on the cut's cylinders, the upright's thickness between the edges swept from its
+ * corners (both merged into the plate's faces by the add: exported on the survivors, noted). The
+ * rest stay skipped, each with its own reason: the plate's width and depth (their corner edges
+ * were removed by the corner fillet) and every dimension from a sketch's construction origin.
  *
  * Round trip (simulated façade, see `fakeFacade`): the items are written with a real AP242 file of
  * the shapes, read back as `PmiImportItem`s on the re-read body, mapped to the import feature's
@@ -146,9 +153,10 @@ function fakeFacade(
       const map = (t: PmiTarget): PmiTarget => {
         const was = w.fingerprints[t.body];
         const now = reread[t.body];
-        if (!was || !now || t.kind !== 'face') return t;
-        const c = was.faces[t.index - 1]?.centroid as Vec3;
-        const j = now.faces.findIndex((f) => centroidKey(f.centroid) === centroidKey(c));
+        if (!was || !now || t.kind === 'vertex') return t;
+        const list = (fp: ShapeFingerprints) => (t.kind === 'face' ? fp.faces : fp.edges);
+        const c = list(was)[t.index - 1]?.centroid as Vec3;
+        const j = list(now).findIndex((f) => centroidKey(f.centroid) === centroidKey(c));
         return { ...t, index: j + 1 };
       };
       // As the real reader returns them: named by annotation id, no `annotationId`.
@@ -523,7 +531,67 @@ describe.skipIf(!built)(`STEP AP242 PMI export of the M4 bracket${skipNote}`, ()
       expect(inItems.has(a.id) !== skipped.has(a.id), a.id).toBe(true);
     }
     for (const reason of skipped.values())
-      expect(reason).toMatch(/construction geometry|in a sketch|not exported as PMI yet/);
+      expect(reason).toMatch(/construction geometry|was removed by|not exported as PMI yet/);
+    expect([...skipped.values()].some((r) => /in a sketch/.test(r))).toBe(false);
+  });
+
+  /** The import-planned annotation promoted from constraint `c` of sketch `s`. */
+  const fromSketch = (s: Id, c: string) =>
+    annotations.find(
+      (a) =>
+        'source' in a &&
+        a.source?.kind === 'sketchDimension' &&
+        a.source.featureId === s &&
+        a.source.constraintId === c,
+    ) as Annotation;
+
+  it('sketch dimensions export on what their entities generated, or say exactly why not', () => {
+    const items = facade.written[0]?.items ?? [];
+    const skipped = new Map((exported.pmi?.skipped ?? []).map((s) => [s.annotationId, s.reason]));
+    const sketchDims = annotations.filter(
+      (a) => 'source' in a && a.source?.kind === 'sketchDimension',
+    );
+    // Every one of them has sketch refs (they were all skipped "in a sketch" before 1c).
+    expect(sketchDims.length).toBe(9);
+    for (const a of sketchDims)
+      for (const r of a.refs) expect(r.name).toMatch(/^S[0-9A-Z]+:[pe]\(/);
+    const item = (a: Annotation) => items.find((i) => i.annotationId === a.id);
+    // Exported: hole diameters (circle → cylinder) and the upright's thickness (corner points →
+    // swept edges), with the sketch dimension's value.
+    for (const [s, c] of [
+      [B.S2, 'd2'],
+      [B.S2, 'd5'],
+    ] as const) {
+      const a = fromSketch(s, c);
+      expect(item(a)).toMatchObject({ kind: 'dimension', type: 'linearDiameter', value: 6 });
+      expect(item(a)?.targets.map((t) => t.kind)).toEqual(['face']);
+    }
+    const upright = fromSketch(B.S3, 'd7');
+    expect(item(upright)).toMatchObject({
+      kind: 'dimension',
+      type: 'linearDistance',
+      value: 8,
+      direction: [0, 1, 0],
+    });
+    expect(item(upright)?.targets.map((t) => t.kind)).toEqual(['edge', 'edge']);
+    // Skipped, each with its own reason.
+    const reason = (s: Id, c: string) => skipped.get(fromSketch(s, c).id);
+    expect(reason(B.S1, 'd5')).toBe(
+      `The edge ‘Extrude’ made from S${B.S1}:p(pa) was removed by ‘Fillet’`,
+    );
+    expect(reason(B.S1, 'd6')).toBe(
+      `The edge ‘Extrude’ made from S${B.S1}:p(pb) was removed by ‘Fillet’`,
+    );
+    for (const c of ['d3', 'd4', 'd6'])
+      expect(reason(B.S2, c)).toBe(
+        `S${B.S2}:p(o) is construction geometry: it generated no face or edge`,
+      );
+    expect(reason(B.S3, 'd9')).toBe(
+      `S${B.S3}:p(o) is construction geometry: it generated no face or edge`,
+    );
+    // 23 exported from face annotations alone before; now 26.
+    expect(items.length).toBe(26);
+    expect(exported.pmi?.exported).toBe(26);
   });
 
   it('targets are the faces the refs resolve to, and frames follow their datums and dimensions', async () => {
@@ -560,10 +628,23 @@ describe.skipIf(!built)(`STEP AP242 PMI export of the M4 bracket${skipNote}`, ()
       material: 'M',
       datums: [{ label: 'A' }, { label: 'B' }],
     });
-    const dia = items.find((i) => i.kind === 'dimension' && i.type === 'linearDiameter');
+    const dia = items.find((i) => i.annotationId === NEW(206));
     expect(pos?.targets).toEqual(dia?.targets);
     expect(dia).toMatchObject({ tolerance: { kind: 'fit', hole: 'H7' } });
     expect(items.find((i) => i.annotationId === NEW(103))?.targets).toEqual(dia?.targets);
+    // Sketch refs: the exact names of what the entities generated.
+    const names = (id: Id) =>
+      items
+        .find((i) => i.annotationId === id)
+        ?.targets.map((t) =>
+          t.kind === 'face' ? sfd.value.faceNames[t.index - 1] : sfd.value.edgeNames[t.index - 1],
+        );
+    expect(names(fromSketch(B.S2, 'd2').id)).toEqual([holeWall1]);
+    expect(names(fromSketch(B.S2, 'd5').id)).toEqual([holeWall2]);
+    expect(names(fromSketch(B.S3, 'd7').id)).toEqual([
+      edgeName(plateRight, uprightFront),
+      edgeName(plateRight, plateBack),
+    ]);
   });
 
   it('every item has presentation from its drawing view, on the view’s plane', () => {
@@ -596,7 +677,14 @@ describe.skipIf(!built)(`STEP AP242 PMI export of the M4 bracket${skipNote}`, ()
         }
       }
     }
-    expect(exported.pmi?.notes ?? []).toEqual([]);
+    // The only notes: the upright's corner edges are on the plate's faces the add merged them into.
+    const upright = fromSketch(B.S3, 'd7').id;
+    const notes = exported.pmi?.notes ?? [];
+    expect(notes.map((n) => n.annotationId)).toEqual([upright, upright]);
+    expect(notes[0]?.note).toBe(
+      `S${B.S3}:p(qb): exported on ${edgeName(plateRight, uprightFront)}, which ‘Extrude’ merged its edge ${edgeName(uprightFront, side(B.E3, B.S3, 'M2'))} into`,
+    );
+    expect(notes[1]?.note).toMatch(/^S[0-9A-Z]+:p\(qc\): exported on edge\(/);
   });
 
   it('is deterministic, and the presentation can be left out', async () => {
@@ -627,6 +715,8 @@ describe.skipIf(!built)(`STEP AP242 PMI export of the M4 bracket${skipNote}`, ()
     first: Written,
     tag: string,
     lost: ReadonlySet<Id> = new Set(),
+    /** False on a kernel build that predates the v2 fields: they are written, not compared. */
+    v2 = true,
   ) {
     const bytes = first.bytes;
     const sha = await sha256Hex(bytes);
@@ -681,13 +771,15 @@ describe.skipIf(!built)(`STEP AP242 PMI export of the M4 bracket${skipNote}`, ()
     expect(again.pmi?.skipped).toEqual([]);
 
     // Same faces: compare targets by the geometry they name in each export.
-    const where = (w: Written, t: PmiTarget) =>
-      t.kind === 'face'
-        ? centroidKey(w.fingerprints[t.body]?.faces[t.index - 1]?.centroid as Vec3)
-        : `${t.kind}${t.index}`;
-    // Contract v2 fields (ADR-101) the current kernel build does not write or read yet: dropped on
-    // both sides until it does (then delete this list; the io tests cover the mapping itself).
-    const V2_PENDING = [
+    const where = (w: Written, t: PmiTarget) => {
+      const fp = w.fingerprints[t.body];
+      if (t.kind === 'face') return centroidKey(fp?.faces[t.index - 1]?.centroid as Vec3);
+      if (t.kind === 'edge') return `edge ${centroidKey(fp?.edges[t.index - 1]?.centroid as Vec3)}`;
+      return `${t.kind}${t.index}`;
+    };
+    // Contract v2 fields (ADR-101). A kernel build that predates them writes and reads none, so
+    // they are dropped on both sides there (`v2` false); delete this once the kernel has them.
+    const V2_FIELDS = [
       'direction',
       'at',
       'qualifier',
@@ -705,7 +797,7 @@ describe.skipIf(!built)(`STEP AP242 PMI export of the M4 bracket${skipNote}`, ()
           string,
           unknown
         >;
-        for (const key of V2_PENDING) delete r[key];
+        if (!v2) for (const key of V2_FIELDS) delete r[key];
         if (i.kind !== 'datum') r.value = Math.round(i.value * 1e9) / 1e9;
         if (i.kind === 'dimension' && i.tolerance?.kind === 'deviation') {
           r.tolerance = {
@@ -743,7 +835,8 @@ describe.skipIf(!built)(`STEP AP242 PMI export of the M4 bracket${skipNote}`, ()
       const first = real.written[0] as Written;
       expect(r.pmi?.exported).toBe(first.items.length);
       // Datum C is referenced by no frame: OCCT 8.0.1 does not read it back (ADR-100 amendment).
-      await roundTrip(eng, real, first, 'WASM', new Set([NEW(103)]));
+      // That build predates the v2 fields (ADR-101): they are written but not compared.
+      await roundTrip(eng, real, first, 'WASM', new Set([NEW(103)]), false);
       await eng.closePart(partId);
     },
     120_000,
