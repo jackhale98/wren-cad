@@ -144,6 +144,8 @@ export class Workbench {
   readonly cameraTick = observable(0);
   /** Successful exports (the tutorial's last step). */
   readonly exports = observable(0);
+  /** Why the last "Save as project folder" wrote nothing (shown inline in the export form). */
+  readonly folderError = observable<string | null>(null);
   /** "Take the tour" requests (welcome card, ⌘K); the app runs the tutorial on a new part. */
   readonly tourRequests = observable(0);
   readonly pushPull: PushPullTool;
@@ -191,7 +193,7 @@ export class Workbench {
   sketch: SketchSession | null = null;
   private sketchModule: Promise<typeof import('./sketch-session')> | null = null;
   /** Top bar: sync status and branch of the open project (M2.5; `local` until linked). */
-  readonly projectBar = observable<{ status: SyncStatus; branch: string | null }>({
+  readonly projectBar = observable<{ status: SyncStatus; branch: string | null; kind?: string }>({
     status: { state: 'local' },
     branch: null,
   });

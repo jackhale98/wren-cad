@@ -813,6 +813,7 @@ Choose the export control in the top bar (on a phone, in the **Export** tab). Th
 | 3MF | Units in millimetres, with the body colour |
 | GLB | For web and AR viewers |
 | Wren project (`.wrencad`) | The whole document, with its imported files and cache |
+| Project folder | The same files as plain text, for git (see below). Needs Chrome or Edge on a computer. |
 
 For STL, 3MF and GLB, choose the tessellation quality: **Coarse** (0.1 mm), **Standard** (0.02 mm)
 or **Fine** (0.005 mm). If the part has several bodies, you can choose which ones to export.
@@ -841,6 +842,24 @@ your documents with thumbnails. You can:
 
 The library lives in your browser's storage on this device. Clearing the site's data removes it. If
 you need a copy, save a `.wrencad` file.
+
+### Project folder (for git)
+
+A `.wrencad` is a zip, so git cannot show what changed in it or merge two edits. **Export → Project
+folder → Save as project folder** writes the project as plain text files into a folder you pick:
+the same bytes every time, so a commit shows only what you changed.
+
+- Saving again into the same folder replaces the project files and removes the ones the project no
+  longer has (a part you renamed or deleted). Other files in the folder, `.git` and the version
+  history are left alone.
+- A folder that holds a different Wren project, or files Wren would overwrite, is refused with a
+  message in the export panel. Nothing is written.
+- Open the folder again by connecting it as a folder in **Connections**.
+- Where the browser cannot pick a folder (Safari, Firefox), the option is greyed out with a note;
+  connect a git host or a cloud drive instead.
+- If the project is linked to a git repository, the export panel says so when you choose
+  `.wrencad` and offers the folder. Wren cannot see where a downloaded file goes, so it only
+  knows this from the connection. **Don’t show again** turns the note off.
 
 ### `.wrencad` files
 

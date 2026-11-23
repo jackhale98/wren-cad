@@ -188,8 +188,18 @@ export {
   toPointer,
   UNORDERED_COLLECTIONS,
 } from './merge/tree';
-// Project file rules
 export { documentPaths, HISTORY_DIR, syncable, toAbsolute, toRelative } from './paths';
+// Project file rules
+export {
+  type ExistingFolder,
+  type FolderPlan,
+  type FolderRefusal,
+  type FolderSaveOutcome,
+  type FolderSaveResult,
+  listProjectFolder,
+  planProjectFolder,
+  writeProjectFolder,
+} from './project-folder';
 // Providers
 export {
   type Fetcher,

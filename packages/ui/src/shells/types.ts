@@ -4,6 +4,7 @@ import type { PaletteCommand } from '../components/CommandPalette';
 import type { ContextBubbleProps } from '../components/ContextBubble';
 import type { ToolId } from '../components/tools';
 import type { ValueChipProps } from '../components/ValueChip';
+import type { ExportFolderProps } from '../export/ExportForm';
 import type {
   ExportBody,
   ExportConfigurations,
@@ -80,6 +81,8 @@ export interface ShellProps {
   exportNotes?: Partial<Record<ExportTarget, string>>;
   /** The export form's chosen target (on open and on change), so the host can prepare it. */
   onExportTargetChange?(target: ExportTarget): void;
+  /** Project-folder export: the last refusal and the git notice (ExportForm). */
+  exportFolder?: ExportFolderProps;
   exportBusy?: boolean;
   /** M5a: the part's annotations, for STEP "AP242 with model dimensions and tolerances (PMI)". */
   exportPmi?: ExportPmi;

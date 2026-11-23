@@ -108,6 +108,16 @@ A standard ZIP (PKWARE appnote 6.3.x, DEFLATE), written with `fflate`:
   rejected. Readers should cap entry count and total size (the reference reader: 20 000 entries,
   512 MiB).
 
+### 3.1 The project folder form
+
+"Save as project folder" writes the files of §1 (the same canonical bytes as the archive entries,
+including `imports/`) into a folder. Never written: `.wren/`, `.wren-history/`, `.git/`. A save
+replaces project files; with the same `meta.id` in `wren.project.json`, project files the new save
+lacks (`parts/`, `drawings/`, `assemblies/`, `imports/`) are removed; `previews/`, `releases/` and
+everything else are untouched. A folder with another project id, an unreadable manifest, or foreign
+files at the paths to be written is refused. The manifest is written last. Files already identical
+are not rewritten. Saving the same document twice leaves the folder byte-identical.
+
 ## 4. Files
 
 All identifiers (`id`) are **ULIDs**: 26 characters of Crockford base32

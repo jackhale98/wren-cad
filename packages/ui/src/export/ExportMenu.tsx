@@ -2,11 +2,11 @@ import { Download } from 'lucide-react';
 import { lazy, Suspense, useState } from 'react';
 import { FloatingLayer } from '../components/floating';
 import { Button, type ButtonProps } from '../components/primitives';
-import type { ExportFormProps } from './ExportForm';
+import type { ExportFolderProps, ExportFormProps } from './ExportForm';
 
 const ExportForm = lazy(() => import('./ExportForm'));
 
-export type { ExportFormProps };
+export type { ExportFolderProps, ExportFormProps };
 
 export interface ExportMenuProps extends Omit<ExportFormProps, 'size' | 'className'> {
   /** Trigger look; defaults match the desktop top bar. */

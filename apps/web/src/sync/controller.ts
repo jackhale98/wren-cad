@@ -155,7 +155,7 @@ export interface SyncHost {
   evaluate(expr: Expr): EvalResult;
   toast(text: string, tone?: 'info' | 'error'): void;
   /** Top bar state. */
-  setBar(bar: { status: SyncStatus; branch: string | null }): void;
+  setBar(bar: { status: SyncStatus; branch: string | null; kind?: ProjectKind }): void;
   openPanel(tab: PanelTab): void;
 }
 
@@ -335,7 +335,11 @@ export class SyncController {
     this.view.set((v) => ({ ...v, project: { ...v.project, ...p } }));
     const pr = this.view.get().project;
     const branch = pr.history?.branches.find((b) => b.current)?.name ?? null;
-    this.host.setBar({ status: pr.status, branch: pr.history ? (branch ?? 'main') : null });
+    this.host.setBar({
+      status: pr.status,
+      branch: pr.history ? (branch ?? 'main') : null,
+      kind: pr.kind,
+    });
   }
 
   // ---------------------------------------------------------------- connections
