@@ -110,16 +110,22 @@ const KIND_TITLE: Record<Annotation['kind'], string> = {
   holeCallout: 'Hole callout',
 };
 
-const DIMENSION_KINDS: readonly Annotation['kind'][] = [
-  'linear',
-  'aligned',
-  'ordinate',
-  'radius',
-  'diameter',
-  'angle',
-  'chamfer',
-];
-const isDimension = (a: Annotation): a is DimensionAnnotation => DIMENSION_KINDS.includes(a.kind);
+/** Complete over the kinds: a new kind fails typecheck here (ui cannot import document's table). */
+const IS_DIMENSION: Record<Annotation['kind'], boolean> = {
+  linear: true,
+  aligned: true,
+  ordinate: true,
+  radius: true,
+  diameter: true,
+  angle: true,
+  chamfer: true,
+  datumFeature: false,
+  geometricTolerance: false,
+  note: false,
+  surfaceFinish: false,
+  holeCallout: false,
+};
+const isDimension = (a: Annotation): a is DimensionAnnotation => IS_DIMENSION[a.kind];
 
 /**
  * Where a dimension's text sits (ADR-094): above, inline or below its line, and shifted along it.

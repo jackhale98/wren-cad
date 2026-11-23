@@ -173,6 +173,33 @@ The repository lockfile is deliberately not part of the key, so app and UI depen
 the cached kernel. The build runs only on a cache miss. To force a rebuild without touching the kernel
 inputs (for example, after a toolchain image digest changes), bump `KERNEL_CACHE_VERSION`.
 
+## Adding an annotation kind
+
+Per-kind facts live in one table, `ANNOTATION_DEFS` in `packages/document/src/annotation-kinds.ts`
+(ADR-101, slice 2d). It is typed `{ [K in Annotation['kind']]: AnnotationDef<K> }`, so a kind
+without an entry fails typecheck. These places need an edit, 12 files, and every one except the
+two marked "by hand" fails `pnpm typecheck` when forgotten:
+
+1. `packages/contracts/src/annotation.ts` (lead-owned): the interface and the `Annotation` union.
+2. `packages/document/src/annotation-kinds.ts`: the table entry (titles, export name, dimension and
+   value flags, expression fields, ref arity, undo label).
+3. `packages/document/src/annotation-fields.ts`: add the kind to `ANNOTATION_KINDS` (a test checks
+   it against the table).
+4. `packages/document/src/annotations.ts`: the structural check of its fields (by hand).
+5. `packages/drawing/src/placement/layout.ts`: `IS_DIMENSION`, `layoutFits`, leader and text geometry.
+6. `packages/drawing/src/pmi/presentation.ts`: the model-view frame and default placement.
+7. `packages/drawing/src/import/planner.ts`: measured size, default layout, text width.
+8. `packages/drawing/src/attention/aggregate.ts`: the name in attention messages.
+9. `packages/io/src/pmi/export-map.ts`: `KIND_NAMES` and the STEP mapping (a web test checks the
+   name against the table; `import-map.ts` is by hand).
+10. `packages/sync/src/merge/drawing-labels.ts`: the merge label.
+11. `packages/ui/src/drawing/AnnotationInspector.tsx`: `KIND_TITLE`, `IS_DIMENSION` and the form.
+12. `apps/web/src/drawing/adapters.ts` needs nothing unless the kind has a new value form.
+
+drawing, io and ui cannot import `@wren-cad/document`, so they keep their own complete
+`Record<kind, ...>` tables or exhaustive switches (no `default`), which is why they appear above.
+Never add a `default` branch to a switch over `a.kind`: list the kinds, so a new one fails typecheck.
+
 ## Documentation to update with a change
 
 - **[`CHANGELOG.md`](CHANGELOG.md)**: add a line under "Unreleased" for each user-visible change.

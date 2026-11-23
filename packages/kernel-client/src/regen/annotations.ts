@@ -56,6 +56,7 @@ import type {
 } from '@wren-cad/contracts';
 import { SKETCH_ORIGIN, SKETCH_X_AXIS, SKETCH_Y_AXIS } from '@wren-cad/contracts';
 import {
+  ANNOTATION_DEFS,
   evaluateFeatureValues,
   expressionEngine,
   exprFields,
@@ -112,18 +113,10 @@ import { baseName } from './resolve';
 import { type AnnotationMemo, primaryNaming, type WalkContext } from './state';
 import type { RegenUnresolvedRef } from './types';
 
-const DIMENSION_KINDS = new Set<Annotation['kind']>([
-  'linear',
-  'aligned',
-  'ordinate',
-  'radius',
-  'diameter',
-  'angle',
-  'chamfer',
-]);
+const isDimensionKind = (k: Annotation['kind']): boolean => ANNOTATION_DEFS[k].isDimension;
 
-/** Kinds whose value the drawing shows (a number is required for `ok`). */
-const VALUED_KINDS = new Set<Annotation['kind']>([...DIMENSION_KINDS, 'holeCallout']);
+/** Kinds whose value the drawing shows (a number is required for `ok`): `valueForm` in the table. */
+const isValuedKind = (k: Annotation['kind']): boolean => ANNOTATION_DEFS[k].valueForm !== undefined;
 
 /**
  * Resolves the part's annotations against the final state of the walk in `ctx` (`prev`: the
@@ -301,7 +294,7 @@ async function resolveOne(
     const what = a.kind === 'datumFeature' ? 'datum' : 'frame';
     const target = byId.get(a.appliesTo);
     const r = done.get(a.appliesTo);
-    if (!target || !DIMENSION_KINDS.has(target.kind) || !r) {
+    if (!target || !isDimensionKind(target.kind) || !r) {
       unresolved.push({ path: '/appliesTo', ref: bindingRef(a.appliesTo), reason: 'missing' });
     } else if (r.state === 'suppressed') {
       suppressedBy.push(r.cause ?? null);
@@ -428,12 +421,7 @@ async function resolveOne(
     }
   }
   const value = sourceValue ?? nominal ?? measured;
-  if (
-    VALUED_KINDS.has(a.kind) &&
-    value === undefined &&
-    problems.length === 0 &&
-    open.length === 0
-  ) {
+  if (isValuedKind(a.kind) && value === undefined && problems.length === 0 && open.length === 0) {
     problems.push({
       error: kerr('INVALID_INPUT', unmeasurable?.reason ?? 'This dimension has no value', {
         ...(unmeasurable?.hint ? { hint: unmeasurable.hint } : {}),
@@ -461,7 +449,7 @@ async function resolveOne(
     // Trap T1: no value whenever the state is not ok.
     return { resolution: res, refs: refsMemo };
   }
-  if (value !== undefined && VALUED_KINDS.has(a.kind)) res.value = value;
+  if (value !== undefined && isValuedKind(a.kind)) res.value = value;
   // `DimensionText.count`: only when asked, and like the value only when ok.
   if (wantsCount(a)) {
     const n = a.refs.length > 0 ? instanceCount(ctx, targets[0]) : instances?.length;

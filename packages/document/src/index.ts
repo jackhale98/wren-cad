@@ -12,6 +12,7 @@
  */
 
 export * from './annotation-fields';
+export * from './annotation-kinds';
 export * from './archive';
 export * from './codec';
 export * from './commands';

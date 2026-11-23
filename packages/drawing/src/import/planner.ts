@@ -388,7 +388,12 @@ function defaultLayout(
         text: out ? [out[0] + (out[0] === 0 ? 2 * h : 0), out[1]] : [4 * h, 4 * h],
       };
     }
-    default:
+    case 'linear':
+    case 'aligned':
+    case 'ordinate':
+    case 'chamfer':
+    case 'note':
+    case 'holeCallout':
       return { kind: 'leader', attach: { kind: 'ref', index: 0 }, text: [4 * h, 4 * h] };
   }
 }
@@ -731,7 +736,14 @@ function leaderWidth(a: Annotation, value: number | undefined, style: Drawing['s
       return textWidth('00 × 45°', h);
     case 'note':
       return Math.max(...a.text.split('\n').map((l) => textWidth(l, style.text.note)));
-    default:
+    case 'linear':
+    case 'aligned':
+    case 'ordinate':
+    case 'angle':
+    case 'datumFeature':
+    case 'geometricTolerance':
+    case 'surfaceFinish':
+    case 'holeCallout':
       return 10 * h;
   }
 }

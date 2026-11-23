@@ -192,7 +192,12 @@ export function modelFrame(a: Annotation, res: AnnotationResolution): ViewFrame 
         ? bestFrame((n) => Math.abs(dot3(n, norm3(axis))))
         : bestFrame(() => 0);
     }
-    default: {
+    case 'chamfer':
+    case 'datumFeature':
+    case 'geometricTolerance':
+    case 'note':
+    case 'surfaceFinish':
+    case 'holeCallout': {
       const d = anchorDir(anchors[0]);
       // Faces edge-on (a datum triangle on the face's line), axes side-on.
       return d ? bestFrame((n) => -Math.abs(dot3(n, d))) : bestFrame(() => 0);
@@ -256,7 +261,11 @@ export function modelPlacement(
           text: [0, -10],
         },
       };
-    default:
+    case 'chamfer':
+    case 'geometricTolerance':
+    case 'note':
+    case 'surfaceFinish':
+    case 'holeCallout':
       return {
         ...base,
         layout: {
