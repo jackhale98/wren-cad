@@ -38,7 +38,12 @@ This file is the single state file: update it at every merge; a new session star
     touches 12 files, 10 of which fail typecheck if forgotten (CONTRIBUTING.md, "Adding an
     annotation kind"). drawing, io and ui cannot import document, so they keep their own
     tables. Proposed for 6.0: move the pure-data part of the table into contracts.
-  - Open in Phase 2: 2d feature half (same pattern for feature kinds); spike S1; CI on the
+  - Spike S1 merged: a purpose-built TypeScript rigid-body solver is recommended
+    (`docs/spikes/mate-solver.md`, prototype in `spikes/mates/`, 33 tests). Both thresholds pass
+    with a wide margin (25 parts: 1.2 ms from scratch, 0.2 ms per drag frame; re-run by the
+    lead). libslvs solves points, not bodies, and planegcs is 2D. Limits for 6.4 are in
+    `docs/m6-design.md` §5.
+  - Open in Phase 2: 2d feature half (same pattern for feature kinds); CI on the
     branch (E2E for 2a and 2c); then the reviewer gate and one main release.
   - Draft M6 contracts: `docs/m6-design.md` (three owner questions at its end).
 

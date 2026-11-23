@@ -114,11 +114,19 @@ export interface MateConnector {
 }
 ```
 
-**Open (S1):** whether connectors plus six joint types are what the solver wants, or lower-level
-relations (coincident, parallel, concentric, distance) from which joints are composed. The
-document shape above is the joint form because that is what the P1 list in PLAN §2.3 names and
-what users of mate-connector CAD expect; if the spike recommends relations, joints stay the
-stored form and are expanded for the solver.
+**Settled by S1** (`docs/spikes/mate-solver.md`): the joint form is what the solver takes. Each
+connector reduces to a mate frame (origin, x, z) read from the part cache; each joint type is a
+fixed set of residuals between two frames. The solver is a purpose-built TypeScript rigid-body
+solver (no Wasm, no dependency); the prototype is in `spikes/mates/`.
+
+What the spike adds to this draft:
+
+- The stored `placement` matters more than "a starting pose": it is what keeps a linkage in the
+  same assembly mode (a four-bar started far from its solution lands in the other mode 10 to
+  48% of the time). So a solved pose is written back to `placement` when a drag or a mate edit
+  ends (one undo step), and creating a mate first places the moved instance onto the mate in
+  closed form, then solves.
+- Fastened instances are clustered into one body before solving (25 parts became 17 bodies).
 
 ## 4. The per-part-version cache record (rule 5)
 
@@ -164,8 +172,15 @@ export type Needs = 'nothing' | 'kernel' | 'resolvedParts';
 ```
 
 The solver does not use the kernel, so it can run in its own small worker (the main thread never
-touches Wasm, and never blocks on a solve either). **Open (S1):** the exact result fields, and
-whether a drag step is a separate call that returns only the instances that moved.
+touches Wasm, and never blocks on a solve either). From S1: the result also carries, per
+instance, rotational and translational DOF separately, and per mate the position and angle
+error, the count of redundant equations and the mates involved; a drag step is its own call that
+re-solves only the dragged component. Measured (Node, 2.3 GHz Xeon, median): 25 parts from
+scratch 1.2 ms, a drag frame 0.2 ms; 501 instances from scratch 10 ms. Known limits to fix in
+6.4: the DOF analysis is dense (a single 100-body loop takes about 0.5 s; needs a sparse or
+spanning-tree analysis), a 500-body single chain drags at 14 ms median, tolerances need a
+per-body scale, and a planar loop of revolutes always reports three redundant equations, which
+is information, not a warning.
 
 ## 6. Annotations, drawings, configurations
 
