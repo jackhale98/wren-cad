@@ -63,7 +63,15 @@ report and v2 mapping (app). Details: ADR-101 and its amendments, `PMI_VALIDATIO
   Wasm). Output: `docs/spikes/`, a recommendation, a 25-part timing. Meanwhile the lead drafts
   the M6 contracts. The spike passes if a 25-part assembly re-solves within one frame (≤ 16 ms)
   while a part is dragged through a DOF, and from scratch in ≤ 100 ms, in Wasm on a desktop.
-- Before 6.0: the audit of rule 9 in §4 (one cheap agent).
+- Audit of rule 9 in §4, done 2026-11-23: a new feature kind touches 17 to 18 source files
+  (`shell`, `draft`), a new annotation kind 13 to 19 (`surfaceFinish`, `datumFeature`); both
+  are well over six. Kind lists exist (`KNOWN_FEATURE_TYPES`, `featureMeta`, `ANNOTATION_KINDS`)
+  but no definition table. About eight of the feature sites and eleven of the annotation sites
+  are switches a table could replace; the rest need per-kind code (kernel exec, forms, layout,
+  STEP mapping). So: **2d, kind registries** (one definition table per kind family in
+  `packages/document`, read by the switch sites; no behaviour change, existing tests are the
+  gate). The annotation registry must land before the datum-target kind; mates and instances
+  are built on the same pattern from the start in 6.1.
 
 **Phase 3 — assemblies (M6), each slice released behind the preview setting.**
 - 6.0 Contracts: `Assembly`, instances, mates, instance paths, the part cache record, assembly
