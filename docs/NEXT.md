@@ -1,10 +1,18 @@
-# Implementation plan (proposed 2026-11-23, awaiting owner approval)
+# Implementation plan (owner approved 2026-11-23; ADR-101, ADR-102)
 
 The order of work after M5a, the architecture rules it follows, and how agents are used.
 Live: main `ff5fc3e` on wren-cad.app. Dev is ahead by docs and the soak workflow fix (`8889ecc`).
 This file is the single state file: update it at every merge; a new session starts by reading it.
 
-## 1. Owner decisions needed
+## 0. Status
+
+- Phase 0: soak fix `8889ecc` on dev, release to main when its CI is green. Open: the workflow
+  permission check in CI; read the first real soak result.
+- Phase 1: contract v2 committed (`e252fd8`, not yet pushed). 1b (kernel), 1c (regen engine) and
+  1d (mapping and report) are running in worktrees. Next: merge, run the suites on the 1b Wasm
+  build, push, one main release.
+
+## 1. Owner decisions (all approved 2026-11-23)
 
 1. Assemblies (M6) before MBD in 3D (M5b). Recommended: yes.
 2. Phone: an opt-in full editor, then light edits in the phone layout. Recommended: yes.
