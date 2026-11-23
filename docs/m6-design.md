@@ -227,10 +227,10 @@ Canonical JSON as every other file; `instances` in tree order, `mates` and `anno
 by id. Merge is keyed by id at every level, so adding an instance on one branch and a mate on
 another merges cleanly.
 
-## 9. Owner questions
+## 9. Owner decisions (2026-11-23)
 
-1. Sub-assemblies rigid in the parent for M6 (flexible later)? Recommended: yes.
-2. `Instance.configurationId` absent means the part's Default, not whatever is active in the
-   part. Recommended: yes (an assembly must not change when someone switches a part's view).
-3. A drag through a free DOF is an undoable document edit of `placement`. Recommended: yes, one
-   undo step per drag.
+1. Sub-assemblies are rigid in the parent for M6; flexible sub-assemblies come later.
+2. `Instance.configurationId` absent means the part's Default, never whatever is active in the
+   part: an assembly must not change when someone switches a part's view.
+3. A drag through a free DOF is an undoable document edit of `placement`, one undo step per
+   drag. (S1: the stored pose is also what keeps a linkage in the same assembly mode.)

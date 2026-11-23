@@ -3725,3 +3725,9 @@ CI on the orthographic view failed twice for one cause: an orthographic view str
 ### ADR-101 amendment: parameters stay fully editable on the phone (2026-11-23, lead, after CI)
 
 Phase 2c put the phone's Params tab in a new expressions-only mode. That removed something the phone already had: `m2-phone.spec.ts` adds a description there, and PLAN §9.1 lists parameters as phone-editable. CI caught it. `paramsModeFor` now returns `edit` whenever the device has `editValues` or `editFeatures`; the `values` mode of `ParamsTable` stays in packages/ui, unused. Rule for the review layout: Phase 2 adds abilities and removes none. The inline feature values still cannot create a parameter (linking by name only), because that pane has no room for the naming step.
+
+### ADR-101 amendment: owner decisions for M6 and the face ring (owner, 2026-11-23)
+
+- **M6.** Sub-assemblies are rigid in their parent (flexible later). An instance with no configuration uses the part's Default, never the part's active configuration. A drag through a free degree of freedom is an undoable edit of the instance's stored placement, one step per drag. Details: `docs/m6-design.md`.
+- **Radial menu, one face.** "Edit feature" and "Edit sketch" are in the default ring where the face's owner is known. The ring holds seven items, so Section gives way first, then Draft; this moves the flick positions on flat faces. Both stay in the command bar and can be placed in a custom ring.
+

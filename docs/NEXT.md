@@ -174,9 +174,12 @@ report and v2 mapping (app). Details: ADR-101 and its amendments, `PMI_VALIDATIO
   times over their CI limits and two hit the 5 s timeout, on a starved runner; the same code
   passed locally and the next run passed. If it repeats, run the packages' unit tests with less
   parallelism in CI (`pnpm test` runs every package at once).
-- Next: slice 2e.1 (change preview, no kernel change), then Phase 3. Open owner items: the
-  three questions at the end of `docs/m6-design.md`; whether Section and Draft may leave the
-  default face ring; the first nightly Soak result.
+- Owner decisions 2026-11-23: the three M6 questions as recommended (`docs/m6-design.md` §9:
+  rigid sub-assemblies, absent instance configuration means Default, a drag through a free DOF
+  is an undoable edit); Section and Draft may leave the default face ring to make room for the
+  edit items; change preview starts with slice 2e.1.
+- Next: slice 2e.1 (in progress, viewport), then Phase 3 starting with the 6.0 contract
+  revision. Open: the first nightly Soak result.
 - Local E2E and agents: Playwright reuses a server on port 4173. An agent running E2Es in a
   worktree and the lead clash on it and each tests the other's build. Give every runner its
   own `WREN_E2E_PORT`.
