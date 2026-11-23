@@ -8,14 +8,14 @@
 
 import { useObservable } from '../app/observable';
 import type { Workbench } from '../app/workbench';
+import { beforeChipHandlers } from './before-chip-handlers';
 
 export default function BeforeChip({ wb }: { wb: Workbench }) {
   const ui = useObservable(wb.ui);
   useObservable(wb.regen); // the document changes with edits: re-check there is a "before"
   if (!ui.featureId || !wb.changePreview.canShowBefore()) return null;
   const on = ui.before;
-  const hold = () => wb.changePreview.setBefore(true);
-  const release = () => wb.changePreview.setBefore(false);
+  const { hold, release, isActivation } = beforeChipHandlers(wb.changePreview);
   return (
     <button
       type="button"
@@ -34,13 +34,13 @@ export default function BeforeChip({ wb }: { wb: Workbench }) {
       onLostPointerCapture={release}
       onContextMenu={(e) => e.preventDefault()}
       onKeyDown={(e) => {
-        if ((e.key === ' ' || e.key === 'Enter') && !e.repeat) {
+        if (isActivation(e.key) && !e.repeat) {
           e.preventDefault();
           hold();
         }
       }}
       onKeyUp={(e) => {
-        if (e.key === ' ' || e.key === 'Enter') release();
+        if (isActivation(e.key)) release();
       }}
       onBlur={release}
     >

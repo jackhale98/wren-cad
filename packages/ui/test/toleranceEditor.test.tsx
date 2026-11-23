@@ -97,10 +97,13 @@ describe('ToleranceEditor: the type choice', () => {
     expect(screen.getByRole('textbox', { name: 'Type it' }).className).toMatch(/h-11/);
   });
 
-  it('arrow keys move through the types', async () => {
+  it('arrow keys move focus through the types; Space then chooses', async () => {
     const { onCommit } = setup({ value: { kind: 'symmetric', value: '0.1 mm' } });
     tile('Symmetric').focus();
     await userEvent.keyboard('{ArrowRight}');
+    expect(onCommit).not.toHaveBeenCalled();
+    expect(tile('Deviation')).toHaveFocus();
+    await userEvent.keyboard(' ');
     expect(onCommit).toHaveBeenLastCalledWith({
       tolerance: { kind: 'bilateral', upper: '0.1 mm', lower: '-0.1 mm' },
     });
@@ -409,5 +412,58 @@ describe('ToleranceEditor: inspection, preview and "Type it"', () => {
   it('the preview of an unresolved dimension shows ?, never a stale value', () => {
     setup({ value: { kind: 'symmetric', value: '0.1 mm' }, noSize: true });
     expect(previewText()).toBe('?');
+  });
+});
+
+describe('ToleranceEditor: Fit tile availability and the tile keyboard', () => {
+  it('Fit is disabled with its reason when the dimension has no size or is over 500 mm', () => {
+    const { unmount } = setup({ noSize: true });
+    expect(tile('Fit')).toBeDisabled();
+    expect(screen.getByTestId('tolerance-editor')).toHaveTextContent(
+      /Fit unavailable: the dimension has no size yet/,
+    );
+    unmount();
+    setup({ measured: 600 });
+    expect(tile('Fit')).toBeDisabled();
+    expect(screen.getByTestId('tolerance-editor')).toHaveTextContent(/up to 500 mm/);
+  });
+
+  it('Fit stays available inside the table', () => {
+    setup({ measured: 20 });
+    expect(tile('Fit')).toBeEnabled();
+  });
+
+  it('arrows move focus without choosing; Space chooses one type in one commit', async () => {
+    const user = userEvent.setup();
+    const { onCommit } = setup({ value: { kind: 'symmetric', value: '0.1 mm' } });
+    tile('Symmetric').focus();
+    await user.keyboard('{ArrowRight}{ArrowRight}');
+    expect(onCommit).not.toHaveBeenCalled();
+    const there = document.activeElement as HTMLElement;
+    expect(there.getAttribute('role')).toBe('radio');
+    expect(there.getAttribute('aria-checked')).toBe('false');
+    await user.keyboard(' ');
+    expect(onCommit).toHaveBeenCalledTimes(1);
+  });
+
+  it('exactly one tile is a tab stop, also when the stored type cannot be chosen', () => {
+    setup({
+      value: { kind: 'fit', hole: 'H7', show: 'symbol' },
+      fitDisabled: 'not here',
+    });
+    const stops = within(screen.getByTestId('tolerance-types'))
+      .getAllByRole('radio')
+      .filter((r) => r.tabIndex === 0);
+    expect(stops).toHaveLength(1);
+    expect(stops[0]).toBeEnabled();
+  });
+
+  it('one tab stop for an ordinary stored type', () => {
+    setup({ value: { kind: 'symmetric', value: '0.1 mm' } });
+    expect(
+      within(screen.getByTestId('tolerance-types'))
+        .getAllByRole('radio')
+        .filter((r) => r.tabIndex === 0),
+    ).toHaveLength(1);
   });
 });

@@ -90,6 +90,9 @@ export async function thumbnail(wb: Workbench): Promise<Uint8Array | undefined> 
   const canvas = wb.canvas;
   const v = wb.viewport;
   if (!canvas || !v || wb.shownBodies.size === 0 || wb.ui.get().sketch) return undefined;
+  // The thumbnail is the plain model: no tint, swept volume or Before view. Nothing is marked as
+  // taken here, so the next save without a preview takes it (and a first one is still due).
+  if (wb.changePreview.showing()) return undefined;
   const now = performance.now();
   const id = wb.doc.meta.id ?? '';
   const first = !wb.thumbDocs.has(id);
