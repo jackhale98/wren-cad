@@ -1,7 +1,7 @@
 # State and order of work (owner approved 2026-11-23; ADR-101, ADR-102)
 
 The order of work after M5a, the architecture rules it follows, and how agents are used.
-Live: main `7bc8e3d` on wren-cad.app (Phase 1 included). Work happens on a `claude/**` session
+Live: main `8317ff4` (Phase 2 released 2026-11-23; check the deploy jobs of that run). Work happens on a `claude/**` session
 branch and reaches main by merge; there is no `dev` branch.
 This file is the single state file: update it at every merge; a new session starts by reading it.
 
@@ -20,7 +20,10 @@ This file is the single state file: update it at every merge; a new session star
   revision; datum-target import and its drawing symbol are built in Phase 4 (CTC 05 datums C, D).
   At the M5 gate, review the kernel's reading of raw STEP text for recovered datums and its use
   of an OCCT-internal reader (ADR-100 amendment).
-- Phase 2, on the session branch `claude/awesome-ramanujan-737fqp` (not on main yet):
+- Phase 2: released to main as `8317ff4` after CI run 156 passed on the branch (all jobs,
+  E2E included) and a full local E2E run (280 passed; the one failure was the "warm visit under
+  2 s" timing test with three workers on a loaded container, not seen in CI). Owner approved
+  the release and that the git notice is driven by the connection only. What it contains:
   - 2a merged: `capabilitiesFor(tier, { fullEditor })`, no `tier === 'phone'` outside the policy
     (a test enforces it), "Use full editor" in Settings and the palette. Unit tests pass; the
     E2E `phone-full-editor.spec.ts` has not run (no kernel build locally): read it in CI.
@@ -137,6 +140,19 @@ report and v2 mapping (app). Details: ADR-101 and its amendments, `PMI_VALIDATIO
     adds) returned as a preview mesh for the edited feature only, drawn translucent.
   - Done with this request: clicking a selected face, edge or vertex deselects it, and picking
     an entity that is already in a feature's pick list takes it out (`selection-toggle.spec.ts`).
+
+- After the release, on the session branch: click-to-deselect (merged, `6acbbbf`); in progress
+  (sketch): shapes that do not touch stay independent. Owner report: dragging one shape moved
+  another's lines. Cause: drawing a shape roughly level with another stored `horizontalPoints`
+  (and can store `equal`, `parallel`, `perpendicular`) between the two; the solver itself never
+  moves unlinked geometry. Rule being implemented: such cross-shape inferences are snaps only.
+
+**E2E locally (new, use it):** the kernel cannot be built in the cloud container, but a CI run's
+`kernel-dist` and `drawing-kernel-dist` artefacts can be downloaded (GitHub MCP
+`download_workflow_run_artifact`, then `curl` the signed URL) and unzipped into
+`packages/kernel/dist` and `packages/kernel/drawing/dist` (gitignored). Then `vite build`,
+Playwright and the real-kernel regen tests all run here. CI cancels the other E2E shards on the
+first failure (`fail-fast: true`), so a local run is the quickest way to see every failure.
 
 **Phase 3 — assemblies (M6), each slice released behind the preview setting.**
 - 6.0 Contracts: `Assembly`, instances, mates, instance paths, the part cache record, assembly
