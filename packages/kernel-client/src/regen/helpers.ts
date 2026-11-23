@@ -62,8 +62,11 @@ export function allBodiesFor(f: Feature, all: string[]): string[] {
     case 'hole':
       return all;
     default: {
+      // Compile-time: every kind has a case above. At run time a document from a newer build can
+      // carry an unknown type; it keeps the old answer.
       const exhaustive: never = f;
-      return exhaustive;
+      void exhaustive;
+      return all;
     }
   }
 }

@@ -43,7 +43,12 @@ This file is the single state file: update it at every merge; a new session star
     with a wide margin (25 parts: 1.2 ms from scratch, 0.2 ms per drag frame; re-run by the
     lead). libslvs solves points, not bodies, and planegcs is 2D. Limits for 6.4 are in
     `docs/m6-design.md` §5.
-  - Open in Phase 2: 2d feature half (same pattern for feature kinds); CI on the
+  - 2d, feature half, merged: `FEATURE_DEFS` in `packages/document`. A new feature kind still
+    touches 19 files, but 9 fail typecheck if forgotten (was 4); CONTRIBUTING.md, "Adding a
+    feature kind". ui keeps its own label tables (pinned to the table by a web test).
+    Proposed for 6.0: move labels and `isReference` into contracts. Silent `default`s remain
+    in `construction.ts`, `generated.ts` and the radial `applies`.
+  - Open in Phase 2: CI on the
     branch (E2E for 2a and 2c); then the reviewer gate and one main release.
   - Draft M6 contracts: `docs/m6-design.md` (three owner questions at its end).
 
