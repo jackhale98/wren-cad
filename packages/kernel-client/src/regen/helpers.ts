@@ -51,8 +51,20 @@ export function allBodiesFor(f: Feature, all: string[]): string[] {
       if (f.op === 'new') return [`B${f.id}`];
       if (f.scope?.kind === 'bodies') return f.scope.bodies.map((b) => b.name);
       return all;
-    default:
+    case 'fillet':
+    case 'chamfer':
+    case 'pushPull':
+    case 'shell':
+    case 'draft':
+    case 'mirror':
+    case 'linearPattern':
+    case 'circularPattern':
+    case 'hole':
       return all;
+    default: {
+      const exhaustive: never = f;
+      return exhaustive;
+    }
   }
 }
 

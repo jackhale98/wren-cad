@@ -540,8 +540,27 @@ export function consumedSketchRefs(f: Feature): readonly EntityRef[] {
       return f.sections;
     case 'hole':
       return f.points;
-    default:
+    case 'primitive':
+    case 'sketch':
+    case 'fillet':
+    case 'chamfer':
+    case 'boolean':
+    case 'pushPull':
+    case 'plane':
+    case 'import':
+    case 'shell':
+    case 'draft':
+    case 'mirror':
+    case 'linearPattern':
+    case 'circularPattern':
+    case 'thread':
+    case 'axis':
+    case 'point':
       return [];
+    default: {
+      const exhaustive: never = f;
+      return exhaustive;
+    }
   }
 }
 

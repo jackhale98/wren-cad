@@ -370,6 +370,7 @@ export {
   folderAtGap,
   folderOf,
   folderRange,
+  isReferenceType,
   type Membership,
   membershipAfterMove,
   planBlockMove,

@@ -758,6 +758,11 @@ export function FeatureInspector({
     case 'point':
       body = <PointFields f={feature} c={c} edit={e as Edit<typeof feature>} />;
       break;
+    default: {
+      // A feature kind without a form fails typecheck here (CONTRIBUTING: Adding a feature kind).
+      const exhaustive: never = feature;
+      body = exhaustive;
+    }
   }
 
   return (
