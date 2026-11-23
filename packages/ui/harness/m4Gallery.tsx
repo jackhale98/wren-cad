@@ -43,6 +43,7 @@ import {
   ViewPicker,
   ViewsPanel,
 } from '../src/drawing';
+import { LAYOUT_FOR } from './layout';
 
 /**
  * M4 gallery: every state of every drawing component, rendered from the same data the app uses
@@ -936,6 +937,7 @@ function Shell() {
     <div className="h-dvh w-full" data-testid="g-m4-shell">
       <DrawingShell
         tier={tier}
+        {...LAYOUT_FOR[tier]}
         title="Bracket drawing"
         onBack={() => {}}
         sheets={

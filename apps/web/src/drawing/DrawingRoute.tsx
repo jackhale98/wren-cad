@@ -5,7 +5,7 @@
  * and panels dock beside or under it.
  */
 
-import type { Vec2 } from '@wren-cad/contracts';
+import type { DeviceCapabilities, DeviceTier, Vec2 } from '@wren-cad/contracts';
 import { standardPreset } from '@wren-cad/drawing';
 import { DRAWING_FONT_FAMILY, drawingFontUrl } from '@wren-cad/drawing/font';
 import { svgModel } from '@wren-cad/drawing/svg';
@@ -104,11 +104,13 @@ export interface DrawingRouteProps {
   wb: Workbench;
   /** The drawing to open; null = a new drawing of the part. */
   id: string | null;
-  tier: 'desktop' | 'tablet' | 'phone';
+  /** Reporting only (`data-tier`). */
+  tier: DeviceTier;
+  caps: DeviceCapabilities;
   onClose(): void;
 }
 
-export default function DrawingRoute({ wb, id, tier, onClose }: DrawingRouteProps) {
+export default function DrawingRoute({ wb, id, tier, caps, onClose }: DrawingRouteProps) {
   useDrawingFont();
   const [controller] = useState(() => new DrawingController(wb));
   const c = controller;
@@ -116,9 +118,9 @@ export default function DrawingRoute({ wb, id, tier, onClose }: DrawingRouteProp
   useSyncExternalStore(wb.subscribeDoc, wb.getDoc);
   const viewer = useRef<SheetViewerApi>(null);
   const hoverRef = useRef<number | null>(null);
-  const touch = tier !== 'desktop';
+  const touch = caps.density === 'touch';
   const size = touch ? 'touch' : 'md';
-  const reviewOnly = tier === 'phone';
+  const reviewOnly = !caps.editDrawings;
 
   useEffect(() => {
     // Drag previews are drawn by the viewer straight onto the sheet (ADR-094).
@@ -401,6 +403,8 @@ export default function DrawingRoute({ wb, id, tier, onClose }: DrawingRouteProp
   return (
     <DrawingShell
       tier={tier}
+      layout={caps.layout}
+      density={caps.density}
       title={b?.drawing.name ?? 'Drawing'}
       onBack={onClose}
       // The tabs follow the document, not the last build: an add, rename, reorder or undo shows

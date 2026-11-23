@@ -3659,3 +3659,11 @@ CI on the orthographic view failed twice for one cause: an orthographic view str
 
 - **Linear versus aligned on import.** The item carries `direction` for a linear dimension. Without one, an item on vertices or with any `at` other than `self` is an aligned dimension (the true distance between points); on faces and edges it stays linear (natural separation). A basic or reference `qualifier` wins over a tolerance in the file (noted). `spherical` on a radius or diameter has no annotation field: Wren derives the S from the sphere face, so export sets it from the sphere anchor and import ignores it.
 - **Report.** `groupIssues` (`packages/ui`, pure) groups by `code`, else `reason`, ranks `lost`, `approximated`, `cosmetic` (a missing severity is `lost`), and `PmiReport` shows a counts line, the ranked groups, and cosmetic groups behind one line. Presentation-only items are one `lost` group (`presentationOnly`) until M5b draws them; nothing draws `PmiPresentation.triangles` yet.
+
+### ADR-101 amendment: capabilities instead of tier checks (Phase 2a)
+
+- **One derivation.** `capabilitiesFor(tier, { fullEditor })` in `platform/tier-policy.ts` is the only place a tier name becomes behavior. The Workbench holds it as an observable (`wb.capabilities`, `wb.review`); React reads it with `useObservable`. A unit test (`platform/no-tier-branches.test.ts`) fails if `=== 'phone'` or `case 'phone'` appears outside `diagnostics.ts` and `tier-policy.ts`.
+- **Hardware stays by tier.** Regen budget, mesh quality and kernel boot are unchanged (a phone is still coarse and boots the kernel on the first edit through `Workbench.apply`); only what the UI offers follows capabilities.
+- **Shells.** `AppShell` takes `layout` and `density` and keeps `tier` for reporting (`data-tier`, diagnostics). `DesktopShell` takes `density`; `DrawingShell` takes `layout` and `density`. A phone with the full editor is the desktop structure at touch density, as the tablet is (ADR-099).
+- **Setting.** "Use full editor" is per device (`localStorage` `wren.fullEditor`), offered only when `TierPolicy.fullEditorOptional` (phone), in Settings and the command palette. Switching remounts the chrome (the shell is keyed by layout); the document, store and kernel are untouched.
+- **Phone defaults.** `editValues` is false until phase 2c; it is one line in `capabilitiesFor`.

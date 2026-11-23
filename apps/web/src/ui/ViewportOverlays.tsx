@@ -313,7 +313,7 @@ export function ViewportOverlays({ wb, touch }: { wb: Workbench; touch: boolean 
         : (ui.prompt?.text ?? (ui.picking ? wb.pickPrompt() : null));
   // Phone: while the sheet shows a tool's tab, the tab is that tool's one home (Exit, Flip, the
   // instruction), so its floating chip stays hidden; with the sheet collapsed the chip shows.
-  const phoneTab = wb.tier === 'phone' && ui.sheetSnap !== 'peek' ? ui.sheetTab : null;
+  const phoneTab = wb.review && ui.sheetSnap !== 'peek' ? ui.sheetTab : null;
   const hideSectionChip = phoneTab === 'section';
   const hideMeasurePrompt =
     phoneTab === 'measure' && ui.measure?.active === true && !ui.section.picking && !ui.prompt;

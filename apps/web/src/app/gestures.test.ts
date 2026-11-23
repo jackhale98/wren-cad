@@ -1,6 +1,11 @@
 import type { ViewportGesture } from '@wren-cad/contracts';
 import { describe, expect, it } from 'vitest';
+import { capabilitiesFor } from '../platform/tier-policy';
 import { bubbleActions, type GestureMode, gestureAction, VIEW_ACTIONS } from './gestures';
+
+const TABLET = capabilitiesFor('tablet', { fullEditor: false });
+const PHONE = capabilitiesFor('phone', { fullEditor: false });
+const DESKTOP = capabilitiesFor('desktop', { fullEditor: false });
 
 const g = (
   kind: ViewportGesture['kind'],
@@ -67,23 +72,20 @@ describe('gesture map (PLAN §9.3)', () => {
 
 describe('context bubble actions', () => {
   it('tablet: face, edge and region actions', () => {
-    expect(bubbleActions([{ kind: 'face', planar: true }], 'tablet')).toEqual([
+    expect(bubbleActions([{ kind: 'face', planar: true }], TABLET)).toEqual([
       'sketch',
       'pushPull',
       'hole',
       'measure',
     ]);
-    expect(bubbleActions([{ kind: 'face', planar: false }], 'tablet')).toEqual([
-      'thread',
-      'measure',
-    ]);
+    expect(bubbleActions([{ kind: 'face', planar: false }], TABLET)).toEqual(['thread', 'measure']);
     expect(
       bubbleActions(
         [
           { kind: 'face', planar: true },
           { kind: 'face', planar: true },
         ],
-        'tablet',
+        TABLET,
       ),
     ).toEqual(['pushPull', 'shell', 'draft', 'measure']);
     expect(
@@ -93,29 +95,29 @@ describe('context bubble actions', () => {
           { kind: 'face', planar: true },
           { kind: 'face', planar: false },
         ],
-        'tablet',
+        TABLET,
       ),
     ).toEqual(['shell', 'draft']);
-    expect(bubbleActions([{ kind: 'edge' }], 'tablet')).toEqual(['fillet', 'chamfer', 'measure']);
-    expect(bubbleActions([{ kind: 'edge' }, { kind: 'edge' }, { kind: 'edge' }], 'tablet')).toEqual(
-      ['fillet', 'chamfer'],
-    );
-    expect(bubbleActions([{ kind: 'region' }], 'tablet')).toEqual([
+    expect(bubbleActions([{ kind: 'edge' }], TABLET)).toEqual(['fillet', 'chamfer', 'measure']);
+    expect(bubbleActions([{ kind: 'edge' }, { kind: 'edge' }, { kind: 'edge' }], TABLET)).toEqual([
+      'fillet',
+      'chamfer',
+    ]);
+    expect(bubbleActions([{ kind: 'region' }], TABLET)).toEqual([
       'extrude',
       'cut',
       'revolve',
       'sweep',
     ]);
-    expect(bubbleActions([{ kind: 'vertex' }], 'tablet')).toEqual(['measure']);
+    expect(bubbleActions([{ kind: 'vertex' }], TABLET)).toEqual(['measure']);
   });
   it('phone: viewer actions only; desktop: none', () => {
-    expect(bubbleActions([{ kind: 'face', planar: true }], 'phone')).toEqual([
-      'measure',
-      'section',
-    ]);
-    expect(bubbleActions([{ kind: 'edge' }], 'phone')).toEqual(['measure']);
-    expect(bubbleActions([{ kind: 'face', planar: true }], 'desktop')).toEqual([]);
-    expect(bubbleActions([], 'tablet')).toEqual([]);
+    expect(bubbleActions([{ kind: 'face', planar: true }], PHONE)).toEqual(['measure', 'section']);
+    expect(bubbleActions([{ kind: 'edge' }], PHONE)).toEqual(['measure']);
+    expect(bubbleActions([{ kind: 'face', planar: true }], DESKTOP)).toEqual([]);
+    expect(bubbleActions([], TABLET)).toEqual([]);
+    const full = capabilitiesFor('phone', { fullEditor: true });
+    expect(bubbleActions([{ kind: 'edge' }], full)).toEqual(['fillet', 'chamfer', 'measure']);
     expect(VIEW_ACTIONS).toEqual(['fit', 'undo', 'redo']);
   });
 });

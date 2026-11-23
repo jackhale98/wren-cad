@@ -538,6 +538,8 @@ describe('phone shell Features tab', () => {
     renderUI(
       <AppShell
         tier="phone"
+        layout="review"
+        density="touch"
         documentName="Bracket"
         kernelStatus={{ state: 'idle' }}
         viewport={<div />}

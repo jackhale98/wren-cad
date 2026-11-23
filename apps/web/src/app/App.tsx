@@ -120,6 +120,7 @@ export function App({ wb }: { wb: Workbench }) {
 
   const originPlanes = useObservable(wb.originPlanes);
   const projection = useObservable(wb.input).navigation.projection;
+  const fullEditor = useObservable(wb.fullEditor);
   const commands = useMemo<PaletteCommand[]>(
     () => [
       {
@@ -146,6 +147,18 @@ export function App({ wb }: { wb: Workbench }) {
         hint: 'Choose what the right-click wheel offers',
         run: () => wb.openSettings('radial'),
       },
+      ...(wb.policy.fullEditorOptional
+        ? [
+            {
+              id: 'full-editor',
+              label: fullEditor ? 'Use the review layout' : 'Use full editor',
+              hint: fullEditor
+                ? 'Back to the viewer with the bottom sheet'
+                : 'Sketch and edit features on this device',
+              run: () => wb.setFullEditor(!fullEditor),
+            },
+          ]
+        : []),
       { id: 'welcome', label: 'Welcome / samples', run: () => wb.patchUi({ welcome: true }) },
       {
         id: 'tour',
@@ -249,7 +262,15 @@ export function App({ wb }: { wb: Workbench }) {
       },
       { id: 'about', label: `About Wren · ${diagnostics.appVersion}`, hint: 'Version' },
     ],
-    [diagnostics.appVersion, wb, nestSketches, setNestSketches, originPlanes, projection],
+    [
+      diagnostics.appVersion,
+      wb,
+      nestSketches,
+      setNestSketches,
+      originPlanes,
+      projection,
+      fullEditor,
+    ],
   );
 
   const beforeViewport = useMemo(() => wb.initialDocumentRead(), [wb]);
@@ -269,15 +290,16 @@ export function App({ wb }: { wb: Workbench }) {
     [wb],
   );
 
-  const touch = diagnostics.tier !== 'desktop';
-  const density = touch ? 'touch' : 'compact';
+  const caps = useObservable(wb.capabilities);
+  const touch = caps.density === 'touch';
+  const density = caps.density;
   const statuses = useStatuses(wb, doc.meta.id ?? '');
   const tree = useTreeProps(wb, {
     density,
     nestSketches,
     setNestSketches,
     statuses,
-    actions: diagnostics.tier === 'phone' ? 'review' : 'full',
+    actions: caps.editFeatures ? 'full' : 'review',
   });
   const allCommands = useMemo(() => [...commands, ...tree.commands], [commands, tree.commands]);
   const canUndo = wb.store.canUndo();
@@ -339,6 +361,8 @@ export function App({ wb }: { wb: Workbench }) {
       <div className="contents" inert={ui.drawing !== null}>
         <AppShell
           tier={diagnostics.tier}
+          layout={caps.layout}
+          density={caps.density}
           documentName={doc.meta.name}
           kernelStatus={engine.status}
           diagnostics={{ ...diagnostics, ...runtimeOverrides(runtime) }}
@@ -346,15 +370,15 @@ export function App({ wb }: { wb: Workbench }) {
           commands={allCommands}
           projectBar={
             <Suspense fallback={null}>
-              <ProjectBar wb={wb} tier={diagnostics.tier} />
+              <ProjectBar wb={wb} caps={caps} />
             </Suspense>
           }
           configurationBar={
             <Suspense fallback={null}>
-              <ConfigurationBar wb={wb} tier={diagnostics.tier} />
+              <ConfigurationBar wb={wb} caps={caps} />
             </Suspense>
           }
-          {...(configState.panel && diagnostics.tier !== 'phone'
+          {...(configState.panel && caps.layout === 'full'
             ? {
                 configurationPanel: (
                   <Suspense fallback={null}>
@@ -490,6 +514,7 @@ export function App({ wb }: { wb: Workbench }) {
               wb={wb}
               id={ui.drawing.id}
               tier={diagnostics.tier}
+              caps={caps}
               onClose={() => wb.closeDrawing()}
             />
           </Suspense>

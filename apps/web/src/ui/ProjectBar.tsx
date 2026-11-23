@@ -3,17 +3,17 @@
  * observable state; the versions and connections panel and `@wren-cad/sync` load on first use.
  */
 
-import type { DeviceTier } from '@wren-cad/contracts';
+import type { DeviceCapabilities } from '@wren-cad/contracts';
 import { Button, IconButton, SyncStatusChip } from '@wren-cad/ui';
 import { GitBranch, Settings } from 'lucide-react';
 import { useObservable } from '../app/observable';
 import type { Workbench } from '../app/workbench';
 
-export function ProjectBar({ wb, tier }: { wb: Workbench; tier: DeviceTier }) {
+export function ProjectBar({ wb, caps }: { wb: Workbench; caps: DeviceCapabilities }) {
   const bar = useObservable(wb.projectBar);
   const ui = useObservable(wb.ui);
-  const touch = tier !== 'desktop';
-  const phone = tier === 'phone';
+  const touch = caps.density === 'touch';
+  const phone = caps.layout === 'review';
   const open = ui.project !== null;
   const toggle = () => wb.openProjectPanel(open ? null : 'versions');
   return (

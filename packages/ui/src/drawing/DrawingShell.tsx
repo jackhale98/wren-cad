@@ -1,4 +1,5 @@
 import * as RTabs from '@radix-ui/react-tabs';
+import type { DeviceCapabilities, DeviceTier } from '@wren-cad/contracts';
 import { ArrowLeft, ChevronDown, ChevronUp, PanelRight, Redo2, Undo2 } from 'lucide-react';
 import { type ReactNode, useEffect, useState } from 'react';
 import { cn, IconButton } from '../components/primitives';
@@ -16,7 +17,11 @@ export interface DrawingPanelDef {
 }
 
 export interface DrawingShellProps {
-  tier: 'desktop' | 'tablet' | 'phone';
+  /** Reporting only (`data-tier`). */
+  tier: DeviceTier;
+  /** `review`: the sheet to review with a bottom panel and no editing tools. */
+  layout: DeviceCapabilities['layout'];
+  density: DeviceCapabilities['density'];
   title: string;
   /** Return to the model. */
   onBack(): void;
@@ -114,8 +119,8 @@ function useNarrow(active: boolean): boolean {
  */
 export function DrawingShell(p: DrawingShellProps) {
   const [open, setOpen] = useState(false);
-  const touch = p.tier !== 'desktop';
-  const sideOverlay = useNarrow(p.tier === 'tablet');
+  const touch = p.density === 'touch';
+  const sideOverlay = useNarrow(touch && p.layout === 'full');
   const [sideOpen, setSideOpen] = useState(false);
   const topBar = (
     <header
@@ -181,7 +186,7 @@ export function DrawingShell(p: DrawingShellProps) {
       />
     ) : null;
 
-  if (p.tier !== 'phone') {
+  if (p.layout === 'full') {
     return (
       <div
         className="flex h-full min-h-0 flex-col bg-bg text-fg"

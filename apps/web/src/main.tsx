@@ -37,6 +37,6 @@ const render = () =>
       <App wb={workbench} />
     </StrictMode>,
   );
-const tier = getDiagnostics().tier;
-if (tier === 'desktop') render();
-else void preloadShell(tier).then(render, render);
+const layout = workbench.capabilities.get().layout;
+if (getDiagnostics().tier === 'desktop') render();
+else void preloadShell(layout).then(render, render);

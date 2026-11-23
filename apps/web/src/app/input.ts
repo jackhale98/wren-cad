@@ -90,6 +90,26 @@ export function writeRightClickFinishes(on: boolean): void {
   }
 }
 
+/** Phone setting "Use full editor" (ADR-101): per device, off by default. */
+export const FULL_EDITOR_KEY = 'wren.fullEditor';
+
+export function readFullEditor(): boolean {
+  try {
+    return globalThis.localStorage?.getItem(FULL_EDITOR_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+export function writeFullEditor(on: boolean): void {
+  try {
+    if (on) globalThis.localStorage?.setItem(FULL_EDITOR_KEY, '1');
+    else globalThis.localStorage?.removeItem(FULL_EDITOR_KEY);
+  } catch {
+    // Storage may be unavailable (private mode): the setting lasts for the session.
+  }
+}
+
 export interface InputSettings {
   navigation: NavigationOptions;
   keymap: KeymapOverrides;

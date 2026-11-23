@@ -25,6 +25,7 @@ import {
   sampleParams,
   sampleStatuses,
 } from './fixtures';
+import { LAYOUT_FOR } from './layout';
 
 const q = new URLSearchParams(location.search);
 // M3.7: the table is a lazy chunk in the app too.
@@ -143,6 +144,7 @@ export function DataShell({
     <>
       <AppShell
         tier={tier}
+        {...LAYOUT_FOR[tier]}
         theme={theme}
         documentName="Untitled bracket"
         kernelStatus={status}

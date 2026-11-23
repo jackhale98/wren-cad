@@ -3,7 +3,7 @@
  * the app consults one place: regen cache size, mesh quality, and when the kernel boots.
  */
 
-import type { DeviceTier, MeshQuality } from '@wren-cad/contracts';
+import type { DeviceCapabilities, DeviceTier, MeshQuality } from '@wren-cad/contracts';
 
 /** When the kernel worker should be started. */
 export type KernelBoot = 'eager' | 'onEdit';
@@ -23,6 +23,8 @@ export interface TierPolicy {
    * cached meshes render without a kernel and the Wasm (several MB) loads when an edit starts.
    */
   kernelBoot: KernelBoot;
+  /** The user may opt into the full editor (Settings and the command palette offer it). */
+  fullEditorOptional: boolean;
 }
 
 const POLICIES: Record<DeviceTier, TierPolicy> = {
@@ -31,9 +33,22 @@ const POLICIES: Record<DeviceTier, TierPolicy> = {
     regenMaxSpareResults: undefined,
     meshQuality: 'fine',
     kernelBoot: 'eager',
+    fullEditorOptional: false,
   },
-  tablet: { tier: 'tablet', regenMaxSpareResults: 4, meshQuality: 'fine', kernelBoot: 'eager' },
-  phone: { tier: 'phone', regenMaxSpareResults: 2, meshQuality: 'coarse', kernelBoot: 'onEdit' },
+  tablet: {
+    tier: 'tablet',
+    regenMaxSpareResults: 4,
+    meshQuality: 'fine',
+    kernelBoot: 'eager',
+    fullEditorOptional: false,
+  },
+  phone: {
+    tier: 'phone',
+    regenMaxSpareResults: 2,
+    meshQuality: 'coarse',
+    kernelBoot: 'onEdit',
+    fullEditorOptional: true,
+  },
 };
 
 export function policyFor(tier: DeviceTier): TierPolicy {
@@ -63,4 +78,32 @@ export function shouldBootKernel(
 ): boolean {
   if (kernelBootFor(tier) === 'eager') return true;
   return state.editStarted || state.needsKernelToRender === true;
+}
+
+/** User settings that change what a device may do (ADR-101 amendment). */
+export interface CapabilitySettings {
+  /** Phone only: use the full editor (desktop structure at touch density) instead of review. */
+  fullEditor: boolean;
+}
+
+/**
+ * What the device may do (ADR-101): the one place a tier name turns into capabilities. Memory,
+ * mesh and kernel-boot policy stay keyed by tier (hardware); everything the UI branches on comes
+ * from here.
+ */
+export function capabilitiesFor(
+  tier: DeviceTier,
+  settings: CapabilitySettings,
+): DeviceCapabilities {
+  const all = { editSketches: true, editFeatures: true, editValues: true, editDrawings: true };
+  if (tier === 'desktop') return { layout: 'full', density: 'compact', ...all };
+  if (tier === 'tablet' || settings.fullEditor) return { layout: 'full', density: 'touch', ...all };
+  return {
+    layout: 'review',
+    density: 'touch',
+    editSketches: false,
+    editFeatures: false,
+    editValues: false, // phase 2c turns this on
+    editDrawings: false,
+  };
 }

@@ -21,7 +21,7 @@ export function setSheet(wb: Workbench, patch: { snap?: SheetSnap; tab?: SheetTa
   const tab = patch.tab ?? u.sheetTab;
   wb.patchUi({ sheetSnap: patch.snap ?? u.sheetSnap, sheetTab: tab });
   // The phone's Measure tab is the measure tool: open = picking, closed = done.
-  if (wb.tier === 'phone' && patch.tab !== undefined && patch.tab !== u.sheetTab) {
+  if (wb.review && patch.tab !== undefined && patch.tab !== u.sheetTab) {
     if (patch.tab === 'measure') {
       if (!u.measure?.active) void wb.track(wb.measure.start([]));
     } else if (u.sheetTab === 'measure') wb.measure.stop();
@@ -37,7 +37,7 @@ export function openSheet(wb: Workbench, tab: SheetTabId, auto = false): void {
 
 /** Opens the inspector panel (desktop, tablet). `auto`: opened for an edit, so Done puts it back. */
 export function revealInspector(wb: Workbench, auto = false): void {
-  if (wb.tier === 'phone' || wb.ui.get().inspectorOpen) return;
+  if (wb.review || wb.ui.get().inspectorOpen) return;
   if (auto) wb.inspectorOpenedForUser = true;
   wb.patchUi({ inspectorOpen: true });
 }
@@ -88,7 +88,7 @@ export function setSection(wb: Workbench, patch: Partial<SectionUi>): void {
 export function openSection(wb: Workbench): void {
   wb.patchUi({ section: { ...wb.ui.get().section, open: true }, featureId: null });
   // auto: closing the panel (Edit, Esc, Exit) puts the sheet or inspector back, so it no longer covers the view.
-  if (wb.tier === 'phone') wb.openSheet('section', true);
+  if (wb.review) wb.openSheet('section', true);
   else wb.revealInspector(true);
 }
 

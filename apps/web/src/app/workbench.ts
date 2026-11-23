@@ -8,6 +8,7 @@
 import type {
   CameraChange,
   Command,
+  DeviceCapabilities,
   DeviceTier,
   EntityRef,
   EvalResult,
@@ -69,7 +70,7 @@ import { foldHeals, type Heal } from '../model/heal';
 import { type Attachment, createRegenLoop, type Modeling, type RegenLoop } from '../model/modeling';
 import { readOriginToggle, writeOriginToggle } from '../model/reference-names';
 import { getDiagnostics } from '../platform/diagnostics';
-import { policyFor, type TierPolicy } from '../platform/tier-policy';
+import { capabilitiesFor, policyFor, type TierPolicy } from '../platform/tier-policy';
 import type { Accepts } from '../selection/pick';
 import type { SyncController, SyncHost } from '../sync/controller';
 import * as attention from './attention-actions';
@@ -77,7 +78,13 @@ import { ConfigController } from './config-controller';
 import { activeIdOf, type MassSummaryView } from './config-model';
 import * as fileOps from './files';
 import type { BubbleActionId } from './gestures';
-import { commandFor, type InputSettings, loadInput } from './input';
+import {
+  commandFor,
+  type InputSettings,
+  loadInput,
+  readFullEditor,
+  writeFullEditor,
+} from './input';
 import * as keys from './keyboard';
 import { MeasureTool } from './measure-tool';
 import type { MotionPrefs } from './motion';
@@ -127,6 +134,10 @@ export class Workbench {
   /** Device tier and what it means (PLAN §8.4): regen budget, mesh quality, kernel boot. */
   readonly tier: DeviceTier;
   readonly policy: TierPolicy;
+  /** The persisted "Use full editor" setting (phone only; ADR-101). */
+  readonly fullEditor = observable(readFullEditor());
+  /** What this device may do now: the tier plus the settings (ADR-101). Ask this, not the tier. */
+  readonly capabilities: Observable<DeviceCapabilities>;
   /** The camera moved / came to rest (`onCamera`): `rest` counts the stops. */
   readonly camera = observable({ moving: false, rest: 0 });
   /** Every camera change (one per frame while moving), for HTML labels that follow geometry. */
@@ -201,6 +212,9 @@ export class Workbench {
   constructor() {
     this.tier = getDiagnostics().tier;
     this.policy = policyFor(this.tier);
+    this.capabilities = observable(
+      capabilitiesFor(this.tier, { fullEditor: this.fullEditor.get() }),
+    );
     // The inspector panel starts open beside the view on desktop, closed on a tablet until editing opens it.
     this.ui.set((u) => ({ ...u, inspectorOpen: this.tier === 'desktop' }));
     this.pushPull = new PushPullTool(this);
@@ -214,6 +228,18 @@ export class Workbench {
       save: (doc) => this.saveToLibrary(doc),
       onError: (e) => this.toast(e instanceof Error ? e.message : 'Autosave failed', 'error'),
     });
+  }
+
+  /** True in the review layout (bottom-sheet shell), whatever the tier. */
+  get review(): boolean {
+    return this.capabilities.get().layout === 'review';
+  }
+
+  /** Phone: switch between the review shell and the full editor. Remounts the chrome only. */
+  setFullEditor(on: boolean): void {
+    writeFullEditor(on);
+    this.fullEditor.set(on);
+    this.capabilities.set(capabilitiesFor(this.tier, { fullEditor: on }));
   }
 
   // ------------------------------------------------------------------ lifecycle

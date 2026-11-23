@@ -86,7 +86,8 @@ export function useContextBubble(wb: Workbench): ContextBubbleProps | undefined 
   useEffect(() => {
     if (dismissed !== null && dismissed !== key) wb.patchUi({ bubbleDismissed: null });
   }, [dismissed, key, wb]);
-  if (wb.tier === 'desktop') return undefined;
+  const caps = wb.capabilities.get();
+  if (caps.density === 'compact') return undefined;
   const busy =
     ui.sketch !== null ||
     ui.prompt !== null ||
@@ -111,7 +112,7 @@ export function useContextBubble(wb: Workbench): ContextBubbleProps | undefined 
             ? { planar: wb.face(s.hit.bodyId, s.hit.index)?.planar === true }
             : {}),
         })),
-        wb.tier,
+        caps,
       );
   if (ids.length === 0) return undefined;
   const last = ui.selection[ui.selection.length - 1];
@@ -193,7 +194,7 @@ export function useSectionProps(wb: Workbench): SectionPanelProps {
     faceLabel: s.face?.label ?? null,
     onPickFace: () => {
       wb.setSection({ picking: true });
-      if (wb.tier === 'phone') wb.setSheet({ snap: 'peek' }); // the face is tapped in the view
+      if (wb.review) wb.setSheet({ snap: 'peek' }); // the face is tapped in the view
     },
     offset: s.offset,
     range: wb.sectionRange(),
