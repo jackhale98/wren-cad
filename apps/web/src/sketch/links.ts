@@ -10,13 +10,12 @@ import {
   constraintLabel,
   constraintRefs,
   crossPieceLinks,
-  isSketchReference,
   Namer,
   type SketchGeometry,
 } from '@wren-cad/sketch';
 
 export interface LinkNotice {
-  /** Plain words: "Kept level with Point 3 of another shape". */
+  /** Plain words: "Kept level with another shape". */
   text: string;
   /** The constraints the notice's Remove deletes. */
   ids: Id[];
@@ -33,30 +32,25 @@ const PHRASE: Partial<Record<SketchConstraint['kind'], string>> = {
 
 /**
  * The notice for constraints `added` by one edit that link the new geometry to another shape
- * (`sketch` already contains the edit); null when they link nothing. `fresh` are the edit's new
- * entities: the other shape's entity is the one named.
+ * (`sketch` already contains the edit); null when they link nothing.
  */
 export function linkNotice(
   sketch: SketchGeometry,
   added: readonly SketchConstraint[],
-  fresh: ReadonlySet<Id>,
 ): LinkNotice | null {
   const links = crossPieceLinks(sketch, added);
   if (links.length === 0) return null;
+  // Short and without entity numbers ("Point 3" means nothing to the person drawing): the
+  // highlighted glyphs show where the links are. Each kind is said once.
   const namer = new Namer(sketch.entities);
-  const phrases = links.map((c) => {
-    const refs = constraintRefs(c).filter((id) => !isSketchReference(id));
-    const other = refs.find((id) => !fresh.has(id)) ?? refs[refs.length - 1];
-    const phrase = PHRASE[c.kind];
-    return phrase && other
-      ? `${phrase} ${namer.entity(other)}`
-      : `${constraintLabel(c, namer, {}).toLowerCase()}`;
-  });
+  const phrases = [
+    ...new Set(links.map((c) => PHRASE[c.kind] ?? constraintLabel(c, namer, {}).toLowerCase())),
+  ];
   const first = phrases[0] as string;
   const text =
     phrases.length === 1
-      ? `${first[0]?.toUpperCase()}${first.slice(1)} of another shape`
-      : `Linked to another shape: ${phrases.join(', ')}`;
+      ? `${first[0]?.toUpperCase()}${first.slice(1)} another shape`
+      : `Linked to another shape: ${phrases.map((x) => x.replace(/ (with|to)$/, '')).join(', ')}`;
   return { text, ids: links.map((c) => c.id) };
 }
 

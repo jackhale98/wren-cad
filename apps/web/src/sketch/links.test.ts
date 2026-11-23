@@ -51,13 +51,11 @@ function leadScene() {
 describe('linkNotice', () => {
   it('the lead scene: the clicks level with the rectangle are announced, in plain words', () => {
     const { data, rect, edits } = leadScene();
-    const notices = edits.map((e) =>
-      linkNotice(data, e.constraints, new Set(e.entities.map((x) => x.id))),
-    );
+    const notices = edits.map((e) => linkNotice(data, e.constraints));
     const said = notices.filter((n) => n !== null);
     expect(said.length).toBeGreaterThan(0);
     for (const n of said) {
-      expect(n?.text).toMatch(/^Kept level with Point \d+ of another shape$/);
+      expect(n?.text).toBe('Kept level with another shape');
       for (const id of n?.ids ?? []) {
         const c = data.constraints.find((x) => x.id === id) as SketchConstraint;
         expect(c.kind).toBe('horizontalPoints');
@@ -82,15 +80,13 @@ describe('linkNotice', () => {
       [10.3, 30.2],
       [10.2, 10.1],
     ]);
-    for (const e of own)
-      expect(linkNotice(data, e.constraints, new Set(e.entities.map((x) => x.id)))).toBeNull();
+    for (const e of own) expect(linkNotice(data, e.constraints)).toBeNull();
     // A line from the shape's corner, then level with its other corner: one piece, no notice.
     const touching = draw(data, startDraw('line'), [
       [50, 10.3],
       [80, 30.4],
     ]);
-    for (const e of touching)
-      expect(linkNotice(data, e.constraints, new Set(e.entities.map((x) => x.id)))).toBeNull();
+    for (const e of touching) expect(linkNotice(data, e.constraints)).toBeNull();
   });
 
   it('a hexagon whose centre is level with a corner of a line-tool region is announced', () => {
@@ -107,9 +103,9 @@ describe('linkNotice', () => {
       [55, 30],
     ]);
     if (!hex) throw new Error('no hexagon');
-    const n = linkNotice(data, hex.constraints, new Set(hex.entities.map((e) => e.id)));
+    const n = linkNotice(data, hex.constraints);
     expect(n?.ids).toHaveLength(1);
-    expect(n?.text).toMatch(/^Kept level with Point \d+ of another shape$/);
+    expect(n?.text).toBe('Kept level with another shape');
   });
 
   it('a link shows its glyph at each shape it links', () => {
@@ -148,9 +144,7 @@ describe('announceLinks and Remove', () => {
   it('toasts what was added with Remove; Remove deletes exactly those, in one undo step', async () => {
     vi.useFakeTimers();
     const { data, edits } = leadScene();
-    const edit = edits.find((e) =>
-      linkNotice(data, e.constraints, new Set(e.entities.map((x) => x.id))),
-    ) as SketchEdit;
+    const edit = edits.find((e) => linkNotice(data, e.constraints)) as SketchEdit;
     const h = fakeHost(data);
     const toast = vi.fn();
     announceLinks(h.host, { toast }, edit);

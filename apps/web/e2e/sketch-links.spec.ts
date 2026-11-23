@@ -72,7 +72,7 @@ test('links to another shape are announced with Remove, shown at both shapes, hi
   }
   // The third click landed level with the rectangle's top-right corner: said in plain words,
   // with Remove. Remove takes just that constraint away (one undo step).
-  await expect(toast).toContainText(/Kept level with Point \d+ of another shape/);
+  await expect(toast).toContainText('Kept level with another shape');
   const shapeSoFar = () =>
     sketchOf(page).then((f) => new Set(f.entities.map((e) => e.id).filter((id) => !rect.has(id))));
   const before = linking(await sketchOf(page), rect, await shapeSoFar()).length;
@@ -93,7 +93,7 @@ test('links to another shape are announced with Remove, shown at both shapes, hi
   const links = linking(f, rect, shape);
   // The first click (level with the rectangle's bottom) is still linked, and was announced too.
   expect(links.length).toBeGreaterThan(0);
-  expect(said.some((t) => /of another shape/.test(t))).toBe(true);
+  expect(said.some((t) => /another shape/.test(t))).toBe(true);
   // Each link's glyph sits at both shapes.
   await expect(page.locator('[data-testid="constraint-glyph"][data-link]')).toHaveCount(
     2 * links.length,

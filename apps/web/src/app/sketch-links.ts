@@ -43,7 +43,7 @@ export function announceLinks(
   if (!f || edit.constraints.length === 0) return;
   const stored = new Set(f.constraints.map((c) => c.id));
   const added = edit.constraints.filter((c) => stored.has(c.id));
-  const notice = linkNotice(f, added, new Set(edit.entities.map((e) => e.id)));
+  const notice = linkNotice(f, added);
   if (!notice) return;
   host.patch({ announced: notice.ids });
   clearTimeout(announcedTimer);
