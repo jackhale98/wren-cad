@@ -197,3 +197,75 @@ describe('encodePmiExportItems', () => {
     expect(JSON.parse(encodePmiExportItems(items))).toEqual(items);
   });
 });
+
+describe('decodePmiImport: contract v2 (ADR-101)', () => {
+  it('carries triangles, v2 item fields and the issue code and severity', () => {
+    const triangles = [
+      [0, 0, 10],
+      [1, 0, 10],
+      [0, 1, 10],
+    ];
+    const r = decodePmiImport(
+      raw(
+        [
+          {
+            ...dimension,
+            direction: [1, 0, 0],
+            at: ['mid', 'self'],
+            qualifier: 'basic',
+            ordinate: true,
+            spherical: true,
+            presentation: { ...prs, triangles },
+          },
+          {
+            kind: 'tolerance',
+            type: 'position',
+            targets: [{ body: 0, kind: 'face', index: 1 }],
+            value: 0.1,
+            diameter: true,
+            spherical: true,
+            modifiers: ['freeState'],
+            projected: 10,
+            unequal: 0.02,
+            allAround: true,
+          },
+        ],
+        [
+          { reason: 'Filled text', code: 'filledPresentation', severity: 'cosmetic' },
+          { reason: 'x' },
+        ],
+      ),
+      1,
+    );
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.value.items[0]).toMatchObject({
+      direction: [1, 0, 0],
+      at: ['mid', 'self'],
+      qualifier: 'basic',
+      ordinate: true,
+      spherical: true,
+      presentation: { triangles },
+    });
+    expect(r.value.items[1]).toMatchObject({
+      spherical: true,
+      modifiers: ['freeState'],
+      projected: 10,
+      unequal: 0.02,
+      allAround: true,
+    });
+    expect(r.value.issues).toEqual([
+      { reason: 'Filled text', code: 'filledPresentation', severity: 'cosmetic' },
+      { reason: 'x' },
+    ]);
+  });
+
+  it('rejects a malformed v2 field', () => {
+    const bad = (extra: object) =>
+      decodePmiImport(raw([{ ...dimension, ...extra }]), 1).ok === false;
+    expect(bad({ qualifier: 'maybe' })).toBe(true);
+    expect(bad({ direction: [1, 0] })).toBe(true);
+    expect(bad({ presentation: { ...prs, triangles: [[0, 0, 0]] } })).toBe(true);
+    expect(decodePmiImport(raw([], [{ reason: 'x', severity: 'dire' }]), 1).ok).toBe(false);
+  });
+});

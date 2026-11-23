@@ -67,12 +67,17 @@ describe('report labels', () => {
     expect(r).toMatchObject({
       kind: 'export',
       title: 'Exported 1 annotation as PMI (AP242)',
-      summary: '1 not included · 1 note',
+      counts: { done: 1, verb: 'exported' },
       entries: [
-        { label: 'Datum A', reason: 'Needs attention', tone: 'skipped' },
-        { label: 'Diameter dimension Ø6', reason: 'Written without a tolerance', tone: 'note' },
+        { label: 'Datum A', reason: 'Needs attention', severity: 'lost' },
+        {
+          label: 'Diameter dimension Ø6',
+          reason: 'Written without a tolerance',
+          severity: 'approximated',
+        },
       ],
     });
+    expect(r.summary).toBeUndefined();
     expect(
       exportReportUi([dia], { exported: 1, skipped: [] }, [], new Map(), false).summary,
     ).toMatch(/Without presentation.*ids are kept only with presentation/);
@@ -89,11 +94,29 @@ describe('report labels', () => {
       notes: [{ annotationId: frame.id, note: 'Datum C is not defined' }],
     });
     expect(r.title).toBe('Imported 1 annotation from ctc.step');
-    expect(r.summary).toBe('1 not imported · 1 presentation only · 1 to check');
-    expect(r.entries.map((e) => [e.label, e.tone])).toEqual([
-      ['GT2', 'skipped'],
-      ['Note 1', 'skipped'],
-      ['Profile of a surface frame', 'note'],
+    expect(r.counts).toEqual({ done: 1, verb: 'imported' });
+    expect(r.entries.map((e) => [e.label, e.severity])).toEqual([
+      ['GT2', 'lost'],
+      ['Note 1', 'lost'],
+      ['Profile of a surface frame', 'approximated'],
+    ]);
+  });
+
+  it('import: a kernel issue keeps its code and severity, so the report can group it', () => {
+    const r = importReportUi('ctc.step', [], {
+      imported: [],
+      presentationOnly: [],
+      skipped: [
+        { name: 'A', reason: 'Filled text', code: 'filledPresentation', severity: 'cosmetic' },
+        { name: 'B', reason: 'Filled text', code: 'filledPresentation', severity: 'cosmetic' },
+        { name: 'C', reason: 'No value', code: 'noValue' },
+      ],
+      notes: [],
+    });
+    expect(r.entries).toEqual([
+      { label: 'A', reason: 'Filled text', code: 'filledPresentation', severity: 'cosmetic' },
+      { label: 'B', reason: 'Filled text', code: 'filledPresentation', severity: 'cosmetic' },
+      { label: 'C', reason: 'No value', code: 'noValue', severity: 'lost' },
     ]);
   });
 
@@ -205,8 +228,13 @@ describe('importing a STEP file’s PMI', () => {
       kind: 'import',
       title: 'Imported 1 annotation from x.step',
       entries: [
-        { label: 'DIM4', reason: 'Its value could not be read', tone: 'skipped' },
-        { label: 'GT1', reason: 'face 9 of body 1 is not in the imported shape', tone: 'skipped' },
+        { label: 'DIM4', reason: 'Its value could not be read', severity: 'lost' },
+        {
+          label: 'GT1',
+          reason: 'face 9 of body 1 is not in the imported shape',
+          code: 'targetNotInBodies',
+          severity: 'lost',
+        },
       ],
     });
   });

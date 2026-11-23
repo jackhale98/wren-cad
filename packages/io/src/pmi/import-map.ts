@@ -23,9 +23,12 @@ import type {
   Id,
   PmiImportItem,
   PmiImportResult,
+  PmiIssueSeverity,
   PmiTarget,
   PmiToleranceType,
   Tolerance,
+  Vec3,
+  ZoneModifier,
 } from '@wren-cad/contracts';
 import { PMI_TOLERANCE_TYPES } from './export-map';
 
@@ -55,7 +58,7 @@ export interface PmiImportReport {
   /** Presentation-only items (no semantics): kept for display, not annotations. */
   presentationOnly: { name?: string }[];
   /** Items not imported, and entities the reader could not read, each with the reason. */
-  skipped: { name?: string; reason: string }[];
+  skipped: { name?: string; reason: string; code?: string; severity?: PmiIssueSeverity }[];
   /** Imported, with something to check (an unbound datum letter). */
   notes: { annotationId: Id; note: string }[];
 }
@@ -81,6 +84,14 @@ export function numberLiteral(v: number): string {
 export function valueExpr(v: number, unit: 'length' | 'angle'): Expr {
   return unit === 'angle' ? `${numberLiteral((v * 180) / Math.PI)} deg` : `${numberLiteral(v)} mm`;
 }
+
+const ZONE_MODIFIERS: readonly ZoneModifier[] = [
+  'freeState',
+  'tangentPlane',
+  'statistical',
+  'combinedZone',
+  'separateZones',
+];
 
 const SHAFT = /^[a-z]{1,2}(01|[1-9]|1[0-8])$/;
 const HOLE = /^[A-Z]{1,2}(01|[1-9]|1[0-8])$/;
@@ -139,7 +150,12 @@ export function annotationsFromPmi(input: PmiImportInput): {
   const used = new Set(input.existing.map((a) => a.id));
   const report: PmiImportReport = { imported: [], presentationOnly: [], skipped: [], notes: [] };
   for (const i of input.issues) {
-    report.skipped.push({ ...(i.name ? { name: i.name } : {}), reason: i.reason });
+    report.skipped.push({
+      ...(i.name ? { name: i.name } : {}),
+      reason: i.reason,
+      ...(i.code ? { code: i.code } : {}),
+      ...(i.severity ? { severity: i.severity } : {}),
+    });
   }
   const idFor = (item: Semantic): Id => {
     for (const n of [item.annotationId, item.name]) {
@@ -160,22 +176,31 @@ export function annotationsFromPmi(input: PmiImportInput): {
   for (const a of input.existing) if (a.kind === 'datumFeature') datumIds.set(a.label, a.id);
   const fileDatums = new Map<string, Id>();
 
-  const refsOf = (e: PmiImportEntry): EntityRef[] | { reason: string } => {
+  const refsOf = (e: PmiImportEntry): EntityRef[] | { reason: string; code: string } => {
     const item = e.item as Semantic;
-    if (item.targets.length === 0) return { reason: 'It is attached to no model geometry' };
+    if (item.targets.length === 0) {
+      return { reason: 'It is attached to no model geometry', code: 'noGeometry' };
+    }
     if (e.refs.length !== item.targets.length) {
-      return { reason: 'Its model geometry could not be matched to the imported body' };
+      return {
+        reason: 'Its model geometry could not be matched to the imported body',
+        code: 'targetNotInBodies',
+      };
     }
     const out: EntityRef[] = [];
     for (const r of e.refs) {
-      if ('reason' in r) return { reason: r.reason };
+      if ('reason' in r) return { reason: r.reason, code: 'targetNotInBodies' };
       out.push(r);
     }
     return out;
   };
-  const skipEntry = (e: PmiImportEntry, reason: string): void => {
+  const skipEntry = (e: PmiImportEntry, reason: string, code?: string): void => {
     const name = nameOf(e.item);
-    report.skipped.push({ ...(name ? { name } : {}), reason });
+    report.skipped.push({
+      ...(name ? { name } : {}),
+      reason,
+      ...(code ? { code } : {}),
+    });
   };
 
   const appliesToFor = (targets: readonly PmiTarget[]): Id | undefined =>
@@ -188,17 +213,18 @@ export function annotationsFromPmi(input: PmiImportInput): {
       if (item.kind !== pass) continue;
       const refs = refsOf(e);
       if ('reason' in refs) {
-        skipEntry(e, refs.reason);
+        skipEntry(e, refs.reason, refs.code);
         continue;
       }
       if (item.kind === 'dimension') {
         const a = dimensionAnnotation(item, refs, input.origin);
         if ('reason' in a) {
-          skipEntry(e, a.reason);
+          skipEntry(e, a.reason, a.code);
           continue;
         }
         const id = idFor(item);
-        made.set(index, { ...a, id } as DimensionAnnotation);
+        for (const note of a.notes) report.notes.push({ annotationId: id, note });
+        made.set(index, { ...a.annotation, id } as DimensionAnnotation);
         dims.push({ id, targets: item.targets });
         continue;
       }
@@ -235,7 +261,7 @@ export function annotationsFromPmi(input: PmiImportInput): {
     if (item.kind !== 'tolerance') continue;
     const refs = refsOf(e);
     if ('reason' in refs) {
-      skipEntry(e, refs.reason);
+      skipEntry(e, refs.reason, refs.code);
       continue;
     }
     const characteristic = CHARACTERISTICS[item.type];
@@ -264,6 +290,14 @@ export function annotationsFromPmi(input: PmiImportInput): {
       };
     });
     const applies = appliesToFor(item.targets);
+    const modifiers = (item.modifiers ?? []).filter((m) => ZONE_MODIFIERS.includes(m));
+    if (modifiers.length !== (item.modifiers ?? []).length) {
+      report.notes.push({
+        annotationId: id,
+        note: 'A zone modifier Wren does not know was left out',
+      });
+    }
+    const shape = item.spherical ? 'sphericalDiameter' : item.diameter ? 'diameter' : undefined;
     made.set(index, {
       id,
       kind: 'geometricTolerance',
@@ -271,11 +305,19 @@ export function annotationsFromPmi(input: PmiImportInput): {
       characteristic,
       zone: {
         value: valueExpr(item.value, 'length'),
-        ...(item.diameter ? { shape: 'diameter' as const } : {}),
+        ...(shape ? { shape } : {}),
         ...(item.material
           ? { material: item.material === 'M' ? ('mmc' as const) : ('lmc' as const) }
           : {}),
+        ...(modifiers.length > 0 ? { modifiers } : {}),
+        ...(item.projected !== undefined && Number.isFinite(item.projected)
+          ? { projected: valueExpr(item.projected, 'length') }
+          : {}),
+        ...(item.unequal !== undefined && Number.isFinite(item.unequal)
+          ? { unequal: valueExpr(item.unequal, 'length') }
+          : {}),
       },
+      ...(item.allAround ? { allAround: true } : {}),
       ...(datums.length > 0 ? { datums } : {}),
       ...(applies !== undefined ? { refs: [], appliesTo: applies } : { refs }),
     });
@@ -298,48 +340,104 @@ export function annotationsFromPmi(input: PmiImportInput): {
   return { annotations, report };
 }
 
+type WithoutId<T> = T extends unknown ? Omit<T, 'id'> : never;
+
+type DimensionResult =
+  | { annotation: WithoutId<DimensionAnnotation>; notes: string[] }
+  | { reason: string; code?: string };
+
+const isDirection = (d: Vec3 | undefined): d is Vec3 =>
+  d !== undefined && d.length === 3 && d.every(Number.isFinite) && d.some((c) => c !== 0);
+
 function dimensionAnnotation(
   item: Extract<Semantic, { kind: 'dimension' }>,
   refs: EntityRef[],
   origin: AnnotationOrigin,
-): Omit<DimensionAnnotation, 'id'> | { reason: string } {
-  if (!Number.isFinite(item.value)) return { reason: 'The dimension value is not a number' };
+): DimensionResult {
+  if (!Number.isFinite(item.value)) {
+    return { reason: 'The dimension value is not a number', code: 'noValue' };
+  }
   const unit = item.type === 'angular' ? 'angle' : 'length';
-  const tol = importTolerance(item.tolerance, unit);
-  if (tol && 'reason' in tol) return tol;
+  const notes: string[] = [];
+  // A basic or reference dimension has no tolerance: the qualifier wins over one in the file.
+  let tol: Tolerance | { reason: string } | undefined;
+  if (item.qualifier) {
+    tol = { kind: item.qualifier };
+    if (item.tolerance) {
+      notes.push(
+        `A ${item.qualifier} dimension has no tolerance: the one in the file was left out`,
+      );
+    }
+  } else tol = importTolerance(item.tolerance, unit);
+  if (tol && 'reason' in tol) return { reason: tol.reason, code: 'badTolerance' };
+  const at = item.at?.slice(0, refs.length);
   const base = {
     origin,
     refs,
     nominal: valueExpr(item.value, unit),
     ...(tol ? { tolerance: tol } : {}),
+    ...(at?.some((p) => p !== 'self') ? { at: [...at] } : {}),
   };
+  const done = (annotation: WithoutId<DimensionAnnotation>): DimensionResult => ({
+    annotation,
+    notes,
+  });
   switch (item.type) {
     case 'linearDistance':
+    case 'size': {
       if (refs.length !== 2) {
-        return { reason: `A distance on ${refs.length} entities has no Wren equivalent` };
+        return {
+          reason:
+            item.type === 'size'
+              ? 'A size dimension on one entity has no Wren equivalent yet'
+              : `A distance on ${refs.length} entities has no Wren equivalent`,
+          code: 'dimensionArity',
+        };
       }
-      return { ...base, kind: 'linear' };
-    case 'size':
-      if (refs.length !== 2) {
-        return { reason: 'A size dimension on one entity has no Wren equivalent yet' };
+      const direction = isDirection(item.direction) ? item.direction : undefined;
+      if (item.direction !== undefined && !direction) {
+        notes.push('The measurement direction in the file is not usable and was left out');
       }
-      return { ...base, kind: 'linear' };
+      if (item.ordinate) {
+        if (!direction) {
+          return {
+            reason: 'An ordinate without a usable direction has no Wren equivalent',
+            code: 'ordinateNoDirection',
+          };
+        }
+        return done({ ...base, kind: 'ordinate', direction: [...direction] });
+      }
+      if (direction) return done({ ...base, kind: 'linear', direction: [...direction] });
+      // No direction: the true distance between points is an aligned dimension; faces and edges
+      // (parallel planes or lines) keep the natural separation of a linear one.
+      const points =
+        item.targets.some((t) => t.kind === 'vertex') || (at?.some((p) => p !== 'self') ?? false);
+      return done({ ...base, kind: points ? 'aligned' : 'linear' });
+    }
     case 'linearDiameter':
     case 'linearRadius':
       if (refs.length !== 1) {
         return {
           reason: `A ${item.type === 'linearDiameter' ? 'diameter' : 'radius'} on ${refs.length} entities has no Wren equivalent`,
+          code: 'dimensionArity',
         };
       }
-      return { ...base, kind: item.type === 'linearDiameter' ? 'diameter' : 'radius' };
+      // `spherical` (SR, SØ) is read from the face: Wren shows the S when the ref is a sphere.
+      return done({ ...base, kind: item.type === 'linearDiameter' ? 'diameter' : 'radius' });
     case 'angular':
       if (refs.length !== 2) {
-        return { reason: `An angle on ${refs.length} entities has no Wren equivalent` };
+        return {
+          reason: `An angle on ${refs.length} entities has no Wren equivalent`,
+          code: 'dimensionArity',
+        };
       }
-      return { ...base, kind: 'angle' };
+      return done({ ...base, kind: 'angle' });
     case 'curveLength':
-      return { reason: 'Curve length dimensions have no Wren equivalent yet' };
+      return {
+        reason: 'Curve length dimensions have no Wren equivalent yet',
+        code: 'unsupportedDimension',
+      };
     case 'other':
-      return { reason: 'The dimension type is not one Wren knows' };
+      return { reason: 'The dimension type is not one Wren knows', code: 'unsupportedDimension' };
   }
 }

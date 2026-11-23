@@ -8,14 +8,14 @@ end is done by hand and recorded here.
 
 | Wren annotation | AP242 / XCAF | Notes |
 | --- | --- | --- |
-| Linear, aligned, ordinate dimension | `linearDistance` | The measuring direction and the `at` point qualifiers (axis, centre, min/max) are not in the exchange contract yet: a re-import makes a plain linear dimension between the same faces. Aligned and ordinate come back as linear. |
-| Diameter, radius | `linearDiameter`, `linearRadius` | |
+| Linear, aligned, ordinate dimension | `linearDistance` | Contract v2 (ADR-101): a linear dimension's `direction`, the `at` point qualifiers, and `ordinate` are carried and come back. No direction: points (or any `at`) read back as aligned, faces and edges as linear. STEP has no ordinate type: it is a linear distance that only another Wren reads back as an ordinate. The current kernel build ignores the v2 fields until its v2 support lands. |
+| Diameter, radius | `linearDiameter`, `linearRadius` | `spherical` (SR, SØ) is written when the ref is a sphere and read back from the face: Wren draws the S from the sphere. |
 | Angle | `angular` | |
 | Tolerance: ± and +/− deviations, limits | plus-minus deviation | Limits come back as deviations (noted in the report). |
 | Tolerance: ISO 286 fit | limits and fits | STEP holds one class per dimension: H8/f7 writes H8, with a note (kernel). |
-| Tolerance: basic, reference | none | Written without a tolerance, with a note: the contract has no basic or reference flag yet. |
+| Tolerance: basic, reference | `qualifier` `basic` or `reference`, no tolerance | Carried (ADR-101); no note. |
 | Datum feature, also on a feature of size | datum on the faces (of the dimension) | Comes back bound to the dimension (`appliesTo`) when its faces are that dimension's. |
-| Feature control frame | geometric tolerance: type, zone, Ø, Ⓜ/Ⓛ, up to three datums with modifiers | Not exported (skipped with the reason): SØ zones, zone modifiers, projected, unequal, per-unit zones, all around, common datums (A–B). |
+| Feature control frame | geometric tolerance: type, zone, Ø, Ⓜ/Ⓛ, up to three datums with modifiers | SØ zones, zone modifiers, projected and unequal zones and all around are carried (ADR-101). Not exported (skipped with the reason): per-unit zones, common datums (A–B). |
 | Chamfer and hole callouts, notes, surface finish | none yet | Skipped with the reason. |
 | Presentation | tessellated lines and stroked text from the M4 layout | On the plane of the view that places the annotation in a drawing, else a model view from its faces. Without presentation the annotation ids do not survive (OCCT 8.0.1, ADR-100 amendment). |
 

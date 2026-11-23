@@ -22,6 +22,7 @@ export function PmiNotice({ wb, touch }: { wb: Workbench; touch: boolean }) {
         key={r.id}
         title={r.title}
         {...(r.summary ? { summary: r.summary } : {})}
+        {...(r.counts ? { counts: r.counts } : {})}
         entries={r.entries}
         size={touch ? 'touch' : 'md'}
         onDismiss={() => wb.patchUi({ pmiReport: null })}

@@ -3633,3 +3633,8 @@ CI on the orthographic view failed twice for one cause: an orthographic view str
 - **Brief:** goal and why, files to read, the contract excerpt, the tests that must pass, what is out of scope, the golden rules restated. **Hand-back:** at most 300 words (what changed, tests run with counts, open risks, proposed contract diffs); test output through `tail`, never whole logs.
 - **Verification:** the lead runs the tests or reads CI; a report is not evidence. The reviewer runs at milestone gates and before risky merges, on the diff.
 - **Context:** `docs/NEXT.md` is the state file; one session per phase; no model switch mid-session; CI checked once at its expected finish.
+
+### ADR-101 amendment: PMI v2 mapping and the grouped report (Phase 1d)
+
+- **Linear versus aligned on import.** The item carries `direction` for a linear dimension. Without one, an item on vertices or with any `at` other than `self` is an aligned dimension (the true distance between points); on faces and edges it stays linear (natural separation). A basic or reference `qualifier` wins over a tolerance in the file (noted). `spherical` on a radius or diameter has no annotation field: Wren derives the S from the sphere face, so export sets it from the sphere anchor and import ignores it.
+- **Report.** `groupIssues` (`packages/ui`, pure) groups by `code`, else `reason`, ranks `lost`, `approximated`, `cosmetic` (a missing severity is `lost`), and `PmiReport` shows a counts line, the ranked groups, and cosmetic groups behind one line. Presentation-only items are one `lost` group (`presentationOnly`) until M5b draws them; nothing draws `PmiPresentation.triangles` yet.

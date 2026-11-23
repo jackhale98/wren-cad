@@ -173,7 +173,7 @@ function decodePresentation(v: unknown, what: string): PmiPresentation {
     if (points.length < 2) fail(`${what}.polylines[${i}] has fewer than two points`);
     return points;
   });
-  return {
+  const out: PmiPresentation = {
     plane: {
       origin: vec3(plane.origin, `${what}.plane.origin`),
       x: vec3(plane.x, `${what}.plane.x`),
@@ -181,6 +181,62 @@ function decodePresentation(v: unknown, what: string): PmiPresentation {
     },
     polylines,
   };
+  // v2 (ADR-101): filled areas, three points per triangle.
+  if (p.triangles !== undefined) {
+    const points = arr(p.triangles, `${what}.triangles`).map((q, j) =>
+      vec3(q, `${what}.triangles[${j}]`),
+    );
+    if (points.length % 3 !== 0) fail(`${what}.triangles is not a multiple of three points`);
+    if (points.length > 0) out.triangles = points;
+  }
+  return out;
+}
+
+const REFPOINTS = ['self', 'center', 'axis', 'start', 'end', 'mid', 'min', 'max'] as const;
+const ZONE_MODIFIERS = [
+  'freeState',
+  'tangentPlane',
+  'statistical',
+  'combinedZone',
+  'separateZones',
+] as const;
+
+function bool(v: unknown, what: string): boolean {
+  return typeof v === 'boolean' ? v : fail(`${what} is not a boolean`);
+}
+
+/** v2 dimension fields (ADR-101), copied when present. */
+function decodeDimensionV2(
+  item: Extract<KernelPmiImportItem, { kind: 'dimension' }>,
+  raw: Record<string, unknown>,
+  what: string,
+): void {
+  if (raw.direction !== undefined) item.direction = vec3(raw.direction, `${what}.direction`);
+  if (raw.at !== undefined) {
+    item.at = arr(raw.at, `${what}.at`).map((p, i) => oneOf(p, REFPOINTS, `${what}.at[${i}]`));
+  }
+  if (raw.qualifier !== undefined) {
+    item.qualifier = oneOf(raw.qualifier, ['basic', 'reference'] as const, `${what}.qualifier`);
+  }
+  if (raw.ordinate !== undefined) item.ordinate = bool(raw.ordinate, `${what}.ordinate`);
+  if (raw.spherical !== undefined) item.spherical = bool(raw.spherical, `${what}.spherical`);
+}
+
+/** v2 tolerance fields (ADR-101), copied when present. */
+function decodeToleranceV2(
+  item: Extract<KernelPmiImportItem, { kind: 'tolerance' }>,
+  raw: Record<string, unknown>,
+  what: string,
+): void {
+  if (raw.spherical !== undefined) item.spherical = bool(raw.spherical, `${what}.spherical`);
+  if (raw.modifiers !== undefined) {
+    item.modifiers = arr(raw.modifiers, `${what}.modifiers`).map((m, i) =>
+      oneOf(m, ZONE_MODIFIERS, `${what}.modifiers[${i}]`),
+    );
+  }
+  if (raw.projected !== undefined) item.projected = num(raw.projected, `${what}.projected`);
+  if (raw.unequal !== undefined) item.unequal = num(raw.unequal, `${what}.unequal`);
+  if (raw.allAround !== undefined) item.allAround = bool(raw.allAround, `${what}.allAround`);
 }
 
 /** Copies the optional `name` and `presentation` of an item. */
@@ -231,6 +287,7 @@ function decodeImportItem(
           fail(`${what}.tolerance.kind '${String(t.kind)}' is unknown`);
         }
       }
+      decodeDimensionV2(item, raw, what);
       return decorate(item, raw, what);
     }
     case 'datum': {
@@ -265,6 +322,7 @@ function decodeImportItem(
           return dm === undefined ? { label } : { label, material: dm };
         });
       }
+      decodeToleranceV2(item, raw, what);
       return decorate(item, raw, what);
     }
     case 'presentationOnly': {
@@ -308,7 +366,21 @@ export function decodePmiImport(value: unknown, bodyCount: number): Result<Kerne
       const o = obj(issue, `pmi.issues[${i}]`);
       const reason = str(o.reason, `pmi.issues[${i}].reason`);
       const name = optStr(o.name, `pmi.issues[${i}].name`);
-      return name === undefined ? { reason } : { name, reason };
+      const code = optStr(o.code, `pmi.issues[${i}].code`);
+      const severity =
+        o.severity === undefined
+          ? undefined
+          : oneOf(
+              o.severity,
+              ['lost', 'approximated', 'cosmetic'] as const,
+              `pmi.issues[${i}].severity`,
+            );
+      return {
+        ...(name === undefined ? {} : { name }),
+        reason,
+        ...(code === undefined ? {} : { code }),
+        ...(severity === undefined ? {} : { severity }),
+      };
     });
     return { ok: true, value: { items, issues, counts } };
   } catch (e) {

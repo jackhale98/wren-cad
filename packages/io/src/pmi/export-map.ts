@@ -8,8 +8,10 @@
  *
  * An annotation that cannot be written faithfully is skipped with a reason, never approximated:
  * needs attention, suppressed, an unsupported kind, construction geometry, a modifier or a datum
- * form the exchange contract cannot carry. Basic and reference dimensions are written without a
- * tolerance (what they are semantically) and noted, since the contract has no flag for them yet.
+ * form the exchange contract cannot carry. Contract v2 (ADR-101) fields map 1:1: a linear
+ * dimension's `direction`, the point qualifiers (`at`), basic and reference dimensions
+ * (`qualifier`, written without a tolerance), ordinates, spherical radius and diameter, and a
+ * frame's spherical zone, modifiers, projected and unequal zones and all around.
  */
 
 import type {
@@ -26,6 +28,7 @@ import type {
   PmiTarget,
   PmiToleranceType,
   Tolerance,
+  Vec3,
 } from '@wren-cad/contracts';
 
 /** Evaluates an annotation `Expr`: lengths in mm, angles in rad; undefined when it fails. */
@@ -127,8 +130,8 @@ function allTargets(
 }
 
 /**
- * A dimension's tolerance as the contract carries it. `basic` and `reference` have no tolerance
- * (noted); `undefined` value = an expression that does not evaluate.
+ * A dimension's tolerance as the contract carries it. `basic` and `reference` have none (the
+ * item's `qualifier` says which); an expression that does not evaluate skips the item.
  */
 function dimensionTolerance(
   tol: Tolerance | undefined,
@@ -174,12 +177,9 @@ function dimensionTolerance(
         },
       };
     case 'basic':
-      return { ok: true, note: 'Written without a tolerance: the exchange has no basic flag yet' };
     case 'reference':
-      return {
-        ok: true,
-        note: 'Written without a tolerance: the exchange has no reference flag yet',
-      };
+      // Carried by the item's `qualifier`; neither has a tolerance.
+      return { ok: true };
   }
 }
 
@@ -195,6 +195,16 @@ function dimensionItem(
   const tol = dimensionTolerance(a.tolerance, unit, input.evaluate);
   if (!tol.ok) return skip(tol.reason);
   const notes = tol.note ? [tol.note] : [];
+  const at = a.at?.slice(0, targets.length);
+  const qualifier =
+    a.tolerance?.kind === 'basic' || a.tolerance?.kind === 'reference'
+      ? a.tolerance.kind
+      : undefined;
+  // A sphere is anchored by its centre (kernel-client), as the drawing layout reads it.
+  const spherical =
+    (a.kind === 'radius' || a.kind === 'diameter') &&
+    input.resolution?.anchors?.[0]?.kind === 'point';
+  const direction = a.kind === 'linear' || a.kind === 'ordinate' ? a.direction : undefined;
   const item: PmiExportItem = {
     annotationId: a.id,
     kind: 'dimension',
@@ -202,6 +212,11 @@ function dimensionItem(
     targets,
     value,
     ...(tol.tolerance ? { tolerance: tol.tolerance } : {}),
+    ...(direction ? { direction: [...direction] as Vec3 } : {}),
+    ...(at?.some((p) => p !== 'self') ? { at: [...at] } : {}),
+    ...(qualifier ? { qualifier } : {}),
+    ...(a.kind === 'ordinate' ? { ordinate: true } : {}),
+    ...(spherical ? { spherical: true } : {}),
   };
   return { ok: true, item, notes };
 }
@@ -217,13 +232,7 @@ function datumLabel(input: PmiExportInput, ref: { datum: Id } | { label: string 
 function toleranceItem(a: GeometricToleranceAnnotation, input: PmiExportInput): PmiExportDecision {
   const z = a.zone;
   const unsupported: string[] = [];
-  if (z.shape === 'sphericalDiameter') unsupported.push('a spherical (SØ) zone');
-  if (z.modifiers && z.modifiers.length > 0)
-    unsupported.push(`zone modifiers (${z.modifiers.join(', ')})`);
-  if (z.projected !== undefined) unsupported.push('a projected zone');
-  if (z.unequal !== undefined) unsupported.push('an unequally disposed zone');
   if (z.perUnit !== undefined) unsupported.push('a per-unit refinement');
-  if (a.allAround) unsupported.push('all around');
   if (a.datums && a.datums.length > 3) unsupported.push('more than three datums');
   if (a.datums?.some((c) => c.datums.length !== 1)) unsupported.push('a common datum (A–B)');
   if (unsupported.length > 0) {
@@ -232,6 +241,14 @@ function toleranceItem(a: GeometricToleranceAnnotation, input: PmiExportInput): 
   const value = input.evaluate(z.value, 'length');
   if (value === undefined || !Number.isFinite(value)) {
     return skip(`The tolerance zone “${z.value}” does not evaluate`);
+  }
+  const projected = z.projected === undefined ? undefined : input.evaluate(z.projected, 'length');
+  if (z.projected !== undefined && (projected === undefined || !Number.isFinite(projected))) {
+    return skip(`The projected zone height “${z.projected}” does not evaluate`);
+  }
+  const unequal = z.unequal === undefined ? undefined : input.evaluate(z.unequal, 'length');
+  if (z.unequal !== undefined && (unequal === undefined || !Number.isFinite(unequal))) {
+    return skip(`The unequal zone offset “${z.unequal}” does not evaluate`);
   }
   let targets: PmiTarget[] | { reason: string };
   if (a.appliesTo !== undefined) {
@@ -255,7 +272,12 @@ function toleranceItem(a: GeometricToleranceAnnotation, input: PmiExportInput): 
     type: PMI_TOLERANCE_TYPES[a.characteristic],
     targets,
     value,
-    ...(z.shape === 'diameter' ? { diameter: true } : {}),
+    ...(z.shape === 'diameter' || z.shape === 'sphericalDiameter' ? { diameter: true } : {}),
+    ...(z.shape === 'sphericalDiameter' ? { spherical: true } : {}),
+    ...(z.modifiers && z.modifiers.length > 0 ? { modifiers: [...z.modifiers] } : {}),
+    ...(projected !== undefined ? { projected } : {}),
+    ...(unequal !== undefined ? { unequal } : {}),
+    ...(a.allAround ? { allAround: true } : {}),
     ...(z.material ? { material: MATERIAL[z.material] } : {}),
     ...(datums.length > 0 ? { datums } : {}),
   };
