@@ -291,7 +291,10 @@ export function ViewportOverlays({ wb, touch }: { wb: Workbench; touch: boolean 
   const doc = useDoc(wb);
   const part = doc.parts[0];
   const session = wb.sketch;
-  const sk = ui.sketch;
+  // Edit-only overlays (sketch layer, toolbar, feature handles) follow the capability, so a layout
+  // that cannot edit never shows them even if an edit were left open (ADR-101).
+  const caps = useObservable(wb.capabilities);
+  const sk = caps.editSketches ? ui.sketch : null;
   // Fetch the radial menu's chunk once the app is idle so a first flick is not lost to a download.
   useEffect(() => {
     if (!ui.ready) return;
@@ -302,7 +305,10 @@ export function ViewportOverlays({ wb, touch }: { wb: Workbench; touch: boolean 
     return () => clearTimeout(t);
   }, [ui.ready]);
 
-  const editing = ui.featureId ? part?.features.find((f) => f.id === ui.featureId) : undefined;
+  const editing =
+    caps.editFeatures && ui.featureId
+      ? part?.features.find((f) => f.id === ui.featureId)
+      : undefined;
   const verb = touch ? 'Tap' : 'Click';
   const promptText = ui.section.picking
     ? `${verb} a flat face for the section plane`
@@ -513,7 +519,7 @@ export function ViewportOverlays({ wb, touch }: { wb: Workbench; touch: boolean 
       >
         {sk && session ? (
           // The toolbar wraps at half the width, as it did when it hung off the centre line.
-          <div className="max-w-[50vw]">
+          <div className="max-w-[50vw] max-[640px]:max-w-full">
             <Suspense fallback={null}>
               <SketchToolbarPane wb={wb} session={session} sk={sk} touch={touch} />
             </Suspense>

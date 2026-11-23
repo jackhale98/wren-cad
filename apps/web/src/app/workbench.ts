@@ -76,15 +76,10 @@ import type { SyncController, SyncHost } from '../sync/controller';
 import * as attention from './attention-actions';
 import { ConfigController } from './config-controller';
 import { activeIdOf, type MassSummaryView } from './config-model';
+import * as editLayout from './edit-layout';
 import * as fileOps from './files';
 import type { BubbleActionId } from './gestures';
-import {
-  commandFor,
-  type InputSettings,
-  loadInput,
-  readFullEditor,
-  writeFullEditor,
-} from './input';
+import { commandFor, type InputSettings, loadInput, readFullEditor } from './input';
 import * as keys from './keyboard';
 import { MeasureTool } from './measure-tool';
 import type { MotionPrefs } from './motion';
@@ -218,7 +213,7 @@ export class Workbench {
       capabilitiesFor(this.tier, { fullEditor: this.fullEditor.get() }),
     );
     // The inspector panel starts open beside the view on desktop, closed on a tablet until editing opens it.
-    this.ui.set((u) => ({ ...u, inspectorOpen: this.tier === 'desktop' }));
+    this.ui.set((u) => ({ ...u, inspectorOpen: this.capabilities.get().density === 'compact' }));
     this.pushPull = new PushPullTool(this);
     this.sectionTool = new SectionTool(this);
     this.measure = new MeasureTool(this);
@@ -239,9 +234,7 @@ export class Workbench {
 
   /** Phone: switch between the review shell and the full editor. Remounts the chrome only. */
   setFullEditor(on: boolean): void {
-    writeFullEditor(on);
-    this.fullEditor.set(on);
-    this.capabilities.set(capabilitiesFor(this.tier, { fullEditor: on }));
+    editLayout.setFullEditor(this, on);
   }
 
   // ------------------------------------------------------------------ lifecycle

@@ -15,6 +15,7 @@ import {
   Sparkles,
   X,
 } from 'lucide-react';
+import { useObservable } from '../app/observable';
 import type { Workbench } from '../app/workbench';
 import { promptInstall, useInstallState } from '../platform/install';
 
@@ -24,7 +25,7 @@ export const LICENSE_URL = 'https://github.com/jackhale98/wren-cad/blob/main/LIC
 export function WelcomeContent({ wb, compact }: { wb: Workbench; compact?: boolean }) {
   const install = useInstallState();
   // 44 px targets on touch tiers (ADR-012 item 6).
-  const size = wb.tier === 'desktop' ? 'md' : 'touch';
+  const size = useObservable(wb.capabilities).density === 'touch' ? 'touch' : 'md';
   return (
     <div className={cn('flex flex-col items-center text-center', compact ? 'gap-3' : 'gap-4')}>
       <BirdMark className={compact ? 'size-14' : 'size-20'} />
@@ -107,6 +108,7 @@ export function WelcomeContent({ wb, compact }: { wb: Workbench; compact?: boole
 }
 
 export default function Welcome({ wb }: { wb: Workbench }) {
+  const touch = useObservable(wb.capabilities).density === 'touch';
   return (
     <section
       aria-label="Welcome"
@@ -115,10 +117,10 @@ export default function Welcome({ wb }: { wb: Workbench }) {
     >
       <IconButton
         label="Close welcome"
-        size={wb.tier === 'desktop' ? 'md' : 'touch'}
+        size={touch ? 'touch' : 'md'}
         icon={<X className="size-4" />}
         onClick={() => wb.patchUi({ welcome: false })}
-        className={wb.tier === 'desktop' ? 'absolute top-2.5 right-2.5' : 'absolute top-1 right-1'}
+        className={touch ? 'absolute top-1 right-1' : 'absolute top-2.5 right-2.5'}
       />
       <WelcomeContent wb={wb} />
     </section>

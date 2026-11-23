@@ -12,6 +12,7 @@ import { Gallery } from './gallery';
  *   ?shell=desktop|tablet|phone   (default desktop)
  *   &theme=light|dark|system      (default light)
  *   &status=idle|downloading|downloading-unknown|compiling|ready|error  (default ready)
+ *   &layout=full                 a phone with the full editor (desktop structure at touch density)
  *   ?view=chips                   renders every KernelStatus chip (gallery)
  */
 const q = new URLSearchParams(location.search);
@@ -151,6 +152,9 @@ function Harness() {
     <AppShell
       tier={tier}
       {...LAYOUT_FOR[tier]}
+      {...(q.get('layout') === 'full'
+        ? { layout: 'full' as const, density: 'touch' as const }
+        : {})}
       theme={theme}
       documentName="Untitled bracket"
       kernelStatus={status}

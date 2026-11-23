@@ -239,9 +239,9 @@ export function attachViewport(
   );
   viewport.setNavigation(wb.input.get().navigation);
   startMotionDevice(wb); // 3D mouse: loads when idle, only where WebHID exists
-  // Touch tiers: the Pencil draws or selects and never orbits; fingers keep navigating, and
+  // Touch hardware (policy): the Pencil draws or selects and never orbits; fingers keep navigating, and
   // touch taps right after a pen contact are palm rejected.
-  if (wb.tier !== 'desktop') viewport.setInputPolicy({ penDraws: true });
+  if (wb.policy.penDraws) viewport.setInputPolicy({ penDraws: true });
   wb.syncViewport();
   wb.syncSection();
   const view = wb.regen.get();

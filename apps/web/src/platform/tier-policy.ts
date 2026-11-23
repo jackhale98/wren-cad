@@ -25,6 +25,10 @@ export interface TierPolicy {
   kernelBoot: KernelBoot;
   /** The user may opt into the full editor (Settings and the command palette offer it). */
   fullEditorOptional: boolean;
+  /** Touch hardware: the Pencil draws or selects and never orbits (a pointer fact, not a layout). */
+  penDraws: boolean;
+  /** Per-configuration timeout of a configuration export: a slower device waits longer (hardware). */
+  exportTimeoutMs: number;
 }
 
 const POLICIES: Record<DeviceTier, TierPolicy> = {
@@ -34,6 +38,8 @@ const POLICIES: Record<DeviceTier, TierPolicy> = {
     meshQuality: 'fine',
     kernelBoot: 'eager',
     fullEditorOptional: false,
+    penDraws: false,
+    exportTimeoutMs: 60_000,
   },
   tablet: {
     tier: 'tablet',
@@ -41,6 +47,8 @@ const POLICIES: Record<DeviceTier, TierPolicy> = {
     meshQuality: 'fine',
     kernelBoot: 'eager',
     fullEditorOptional: false,
+    penDraws: true,
+    exportTimeoutMs: 90_000,
   },
   phone: {
     tier: 'phone',
@@ -48,6 +56,8 @@ const POLICIES: Record<DeviceTier, TierPolicy> = {
     meshQuality: 'coarse',
     kernelBoot: 'onEdit',
     fullEditorOptional: true,
+    penDraws: true,
+    exportTimeoutMs: 120_000,
   },
 };
 

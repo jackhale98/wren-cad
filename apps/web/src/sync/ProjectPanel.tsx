@@ -55,7 +55,7 @@ export default function ProjectPanel({ wb }: { wb: Workbench }) {
     };
   }, [wb]);
   const ui = useObservable(wb.ui);
-  const touch = wb.tier !== 'desktop';
+  const touch = useObservable(wb.capabilities).density === 'touch';
   const tab = ui.project ?? 'versions';
   return (
     <section

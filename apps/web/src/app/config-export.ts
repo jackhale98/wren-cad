@@ -102,7 +102,7 @@ export async function exportAll(wb: Workbench, request: ExportRequest): Promise<
   const docId = doc.meta.id;
   // Each wait of the export races Cancel and a per-configuration timeout (a kernel that hangs must
   // not hold the model forever); both release the hold and the live model regenerates.
-  const timeoutMs = ({ desktop: 60_000, tablet: 90_000, phone: 120_000 } as const)[wb.tier];
+  const timeoutMs = wb.policy.exportTimeoutMs; // hardware: keyed by tier in the policy;
   let abort: (reason: string) => void = () => {};
   const aborted = new Promise<never>((_, reject) => {
     abort = (reason) => reject(new Error(reason));
