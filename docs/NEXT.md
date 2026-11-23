@@ -146,6 +146,19 @@ report and v2 mapping (app). Details: ADR-101 and its amendments, `PMI_VALIDATIO
   seven items, so on a flat face Section gives way first, then Draft; both stay in the command
   bar and can be put back in Settings. Both items are in the ring editor's command list
   (`app/face-owner.ts`, `radial-edit.spec.ts`).
+- Sketch links and touch multi-select merged (ADR-087 amendment): inferred constraints between
+  separate shapes are kept, announced with Remove, shown at both shapes and highlighted while
+  they carry a drag; a constraint glyph can be removed on touch; a tap adds to the sketch
+  selection. Full local E2E after the merge: 285 passed. Not checked: the sketch context
+  bubble's constraint list for a multi-selection on the tablet. Known: link glyphs can stack at
+  a shared corner; the sketch toolbar clips at its left with both side panels open near 1100 px.
+- 3D mouse (owner: "has to re-pair every time I open the app"): Chrome and Edge keep a WebHID
+  permission across restarts only for a device with a serial number, and many 3D mice have
+  none; a site cannot change that. Added: a "3D mouse not connected · Reconnect" chip in the
+  view when a device was paired before and none is granted (one click to the browser's chooser;
+  × is remembered until the next connection), the reason in Settings, and a user-guide section
+  with the `WebHidAllowDevicesForUrls` browser policy that makes it permanent (not tested by us
+  on a real machine).
 - Local E2E and agents: Playwright reuses a server on port 4173. An agent running E2Es in a
   worktree and the lead clash on it and each tests the other's build. Give every runner its
   own `WREN_E2E_PORT`.

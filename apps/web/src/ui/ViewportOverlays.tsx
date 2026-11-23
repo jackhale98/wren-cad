@@ -27,6 +27,7 @@ import type { Workbench } from '../app/workbench';
 import { ORIGIN_FRAMES, type OriginPlane } from '../model/frames';
 import { measureLabel } from '../model/measure';
 import { describeRef, useDoc } from './Inspector';
+import { MotionReconnectChip } from './MotionReconnectChip';
 
 const LibraryPanel = lazy(() => import('./LibraryPanel'));
 // The inline extrude depth loads when an extrude is first edited.
@@ -552,6 +553,7 @@ export function ViewportOverlays({ wb, touch }: { wb: Workbench; touch: boolean 
             />
           </div>
         ) : null}
+        <MotionReconnectChip wb={wb} touch={touch} />
         {ui.toast ? (
           <output
             key={ui.toast.id}

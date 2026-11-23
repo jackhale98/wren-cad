@@ -1051,6 +1051,49 @@ Keys are ignored while you type in a field.
 
 Not in the app yet: the plan's H (Hide) key.
 
+## 3D mouse
+
+Wren reads a 3D mouse (3Dconnexion SpaceMouse and similar) directly in desktop Chrome and Edge.
+Pair it once in **Settings → 3D mouse → Pair a 3D mouse**; the browser asks for permission.
+
+### Why it may need pairing again after a restart
+
+Chrome and Edge keep that permission across restarts only for a device that reports a serial
+number. Many 3D mice report none, so the browser forgets them when it closes, or when the device
+is unplugged. Wren cannot change this. When it happens, a **3D mouse not connected · Reconnect**
+chip appears in the view when Wren opens: one click, then pick the device in the browser's list.
+The × on the chip stops it from being offered until the next time a 3D mouse is connected.
+
+To see what your device reports, open `chrome://device-log` and look for the "HID device added"
+line.
+
+### Making it permanent (optional)
+
+A browser policy can grant Wren the device with no prompt at all. It is a setting of your
+computer, not of Wren. The policy is `WebHidAllowDevicesForUrls` (Chrome and Edge). Its value
+for 3Dconnexion devices (vendor ids 9583 and 1133) on wren-cad.app:
+
+```json
+[
+  {
+    "devices": [{ "vendor_id": 9583 }, { "vendor_id": 1133 }],
+    "urls": ["https://wren-cad.app"]
+  }
+]
+```
+
+- **Windows:** registry value `WebHidAllowDevicesForUrls` (type string, the JSON above on one
+  line) under `HKLM\SOFTWARE\Policies\Google\Chrome` (Edge: `…\Policies\Microsoft\Edge`).
+- **macOS:** the same key in the `com.google.Chrome` managed preferences (a configuration
+  profile).
+- **Linux:** a JSON file in `/etc/opt/chrome/policies/managed/` containing
+  `{ "WebHidAllowDevicesForUrls": [ … ] }`.
+
+Restart the browser and check `chrome://policy`. Vendor id 1133 is Logitech's and covers older
+3Dconnexion devices; it also covers other Logitech HID devices for this one site, so leave it out
+if your 3D mouse is listed under 9583 (0x256F). Wren has not tested this policy on every
+platform; the browser's policy list is the reference.
+
 ## Touch and pen
 
 These gestures work today on a touch device.

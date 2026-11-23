@@ -82,7 +82,7 @@ export const MOTION_STATE_TEXT: Record<
   disconnected: {
     title: 'Paired device not connected',
     detail:
-      'Plug the 3D mouse in (or wake its receiver) and Wren reconnects on its own. If it is plugged in, the browser has forgotten its permission (it does for some devices after a restart or an unplug): pair it again.',
+      'Plug the 3D mouse in (or wake its receiver) and Wren reconnects on its own. If it is plugged in, the browser has forgotten its permission: Chrome and Edge keep it only for devices that report a serial number, and many 3D mice do not, so it is lost when the browser closes or the device is unplugged. Pair it again (one click from the “Reconnect” chip in the view), or make it permanent with the browser policy described in the user guide under “3D mouse”.',
   },
   noReports: {
     title: 'Connected, but no movement is arriving',
