@@ -2,7 +2,7 @@
 
 The order of work after M5a, the architecture rules it follows, and how agents are used.
 Live: main `82656ff` on wren-cad.app and github.io (released 2026-11-24; both deploys of that
-run succeeded).
+run succeeded). Work happens on a `claude/**` session
 branch and reaches main by merge; there is no `dev` branch.
 This file is the single state file: update it at every merge; a new session starts by reading it.
 
