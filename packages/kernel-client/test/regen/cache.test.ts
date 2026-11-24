@@ -142,6 +142,45 @@ describe.skipIf(!built)(`regen golden: cache and handles${skipNote}`, () => {
     expect(median).toBeLessThan(300 * PERF_FACTOR);
   }, 60_000); // cold 50-feature regen is ~2 s alone, ~4 s on a loaded 2-vCPU CI runner
 
+  it('50 features: the edit budget holds with the change preview of the last feature on', async () => {
+    // ADR-103 slice 2e.2: one more boolean (tool ∩ body before), its mesh and its volume.
+    await api.closePart(PART);
+    const doc = makeDoc({ last_depth: '4 mm' }, fiftyFeatures());
+    const last = fid('QC23');
+    const run = (depth: string, preview: boolean) =>
+      api.regenerate({
+        doc: withParams(doc, { last_depth: depth }),
+        partId: PART,
+        quality: 'coarse',
+        massProperties: true,
+        ...(preview ? { preview: { featureId: last } } : {}),
+      });
+    await run('4 mm', false);
+    const median = (xs: number[]) => [...xs].sort((a, b) => a - b)[Math.floor(xs.length / 2)] ?? 0;
+    const off: number[] = [];
+    const on: number[] = [];
+    // Interleaved, every depth new to the cache, so both see the same machine state.
+    for (let i = 0; i < 7; i++) {
+      const a = await run(`${4.1 + 0.2 * i} mm`, false);
+      expect(a.cache).toEqual({ hits: 49, misses: 1 });
+      expect(a.preview).toBeUndefined();
+      off.push(a.totalMs);
+      const b = await run(`${4.2 + 0.2 * i} mm`, true);
+      expect(b.cache).toEqual({ hits: 49, misses: 1 });
+      relClose(b.preview?.volume ?? 0, PI * 16 * (4.2 + 0.2 * i), 1e-9);
+      on.push(b.totalMs);
+    }
+    // The same inputs again: the preview is served from its cache entry.
+    const again = await run('4.2 mm', true);
+    expect(again.cache).toEqual({ hits: 50, misses: 0 });
+    console.log(
+      `[regen timing] 50 features, edit last (coarse): median ${ms(median(off))} without the ` +
+        `change preview, ${ms(median(on))} with it [${on.map(ms).join(', ')}]; ` +
+        `all cached with it ${ms(again.totalMs)}`,
+    );
+    expect(median(on)).toBeLessThan(300 * PERF_FACTOR);
+  }, 60_000);
+
   it('bracket timings (cold full regen, warm, one-dimension edit)', async () => {
     await api.closePart(PART);
     const doc = bracketDoc();

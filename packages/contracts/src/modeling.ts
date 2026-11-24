@@ -171,6 +171,35 @@ export interface RegenRequest {
    * passes `true` for those consumers. Measurement costs about one exact distance per annotation.
    */
   annotations?: boolean;
+  /**
+   * Change preview (ADR-103, slice 2e.2): the one feature being created or edited. The engine also
+   * evaluates what that feature adds or removes, as a scratch solid beside the walk, and returns
+   * it as `RegenResult.preview`. Omitted: nothing extra is computed. The request never changes the
+   * rest of the result (names, statuses, bodies): the scratch solid is not part of the model.
+   */
+  preview?: { featureId: Id };
+}
+
+/**
+ * Change preview (ADR-103, slice 2e.2): the exact solid the edited feature adds to or removes from
+ * the model, for the current values, meshed at the request's quality. Display only: the solid has
+ * no persistent names (`faceNames` / `edgeNames` are empty) and nothing may reference it.
+ */
+export interface FeaturePreview {
+  featureId: Id;
+  /** `add`: material that appears with the feature. `cut`: material that disappears with it. */
+  effect: 'add' | 'cut';
+  /**
+   * What the solid is. `tool`: the feature's own tool solid, before its boolean (what the same
+   * operation makes as a new body). `removed`: the part of the bodies the feature takes away
+   * (a cut: tool ∩ body before; an intersect: body before − tool), so its volume is exactly
+   * volume(before) − volume(after).
+   */
+  shows: 'tool' | 'removed';
+  /** One mesh per solid (a cut through two bodies has two). Transferred, like body meshes. */
+  meshes: MeshBuffers[];
+  /** Exact volume of the solids together, mm³. */
+  volume: number;
 }
 
 export interface RegenResult {
@@ -188,6 +217,12 @@ export interface RegenResult {
   references?: ReferenceResult[];
   /** M4: one resolution per annotation of the part, in this slot (see `RegenRequest.annotations`). */
   annotations?: AnnotationResolution[];
+  /**
+   * Change preview (see `RegenRequest.preview`). Absent when none was asked for, the feature is
+   * not `ok` in this regen (error, needs attention, blocked, suppressed, rolled back), or its kind
+   * has no preview: a result never carries the preview of other values.
+   */
+  preview?: FeaturePreview;
 }
 
 /**

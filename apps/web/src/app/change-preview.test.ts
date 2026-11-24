@@ -10,7 +10,7 @@ import type { RegenView } from './state';
 import type { Workbench } from './workbench';
 
 interface Call {
-  kind: 'tint' | 'prism';
+  kind: 'tint' | 'prism' | 'solid';
   arg: unknown;
 }
 
@@ -63,6 +63,7 @@ function setup() {
     viewport: {
       setFeatureTint: (arg: unknown) => calls.push({ kind: 'tint', arg }),
       setRegionPrism: (arg: unknown) => calls.push({ kind: 'prism', arg }),
+      setFeatureSolid: (arg: unknown) => calls.push({ kind: 'solid', arg }),
     },
     viewDoc: () => state.viewDoc,
     evaluate: () => ({ ok: true, value: 10 }),
@@ -73,7 +74,7 @@ function setup() {
   } as unknown as Workbench;
   const cp = new ChangePreview(wb);
   const last = (kind: Call['kind']) => calls.filter((c) => c.kind === kind).at(-1)?.arg;
-  return { cp, calls, ui, state, doc, last, features };
+  return { cp, calls, ui, state, doc, last, features, wb };
 }
 
 describe('feature tint', () => {
@@ -220,6 +221,211 @@ describe('extrude volume before the kernel answers', () => {
     s.state.view = viewOf(s.state.viewDoc, ['FA:start'], {}, sketches);
     s.cp.onFeature(extrude as never);
     expect(s.cp.state().prism).toBeNull();
+  });
+});
+
+describe('the exact solid the feature adds or removes (slice 2e.2)', () => {
+  const mesh = (n: number) =>
+    ({ positions: new Float32Array(9), indices: new Uint32Array([0, 1, 2]), n }) as never;
+  const previewOf = (featureId: string, effect: 'add' | 'cut' = 'cut') => ({
+    featureId,
+    effect,
+    shows: effect === 'cut' ? ('removed' as const) : ('tool' as const),
+    meshes: [mesh(1)],
+    volume: 123.5,
+  });
+  /** Editing extrude A; the result on screen carries its preview. */
+  const editing = (preview: unknown = previewOf('A')) => {
+    const s = setup();
+    s.ui.featureId = 'A';
+    const withPreview = (doc: unknown, p: unknown, states = {}): RegenView => {
+      const v = viewOf(doc, ['FA:start'], states);
+      return p ? ({ ...v, result: { ...v.result, preview: p } } as RegenView) : v;
+    };
+    s.state.view = withPreview(s.doc, preview);
+    return { ...s, withPreview };
+  };
+
+  it('is drawn with the result that carries it, in its effect colour', () => {
+    const s = editing();
+    s.cp.sync();
+    expect(s.last('solid')).toMatchObject({ effect: 'cut' });
+    expect((s.last('solid') as { meshes: unknown[] }).meshes).toHaveLength(1);
+    expect(s.cp.state().solid).toEqual({
+      featureId: 'A',
+      effect: 'cut',
+      shows: 'removed',
+      volume: 123.5,
+      meshes: 1,
+    });
+  });
+
+  it('a new result replaces it; a result without one (the feature errors) removes it', () => {
+    const s = editing();
+    s.cp.sync();
+    const next = { ...previewOf('A'), volume: 200 };
+    s.state.view = s.withPreview(s.doc, next);
+    s.cp.sync();
+    expect(s.cp.state().solid?.volume).toBe(200);
+    // The feature errors with the next value: the engine sends no preview, the old one goes.
+    s.state.view = s.withPreview(s.doc, null, { A: 'error' });
+    s.cp.sync();
+    expect(s.last('solid')).toBeNull();
+    expect(s.cp.state().solid).toBeNull();
+  });
+
+  it('is gone when editing ends, another feature is edited, or a sketch or push/pull opens', () => {
+    const s = editing();
+    s.cp.sync();
+    s.ui.featureId = null;
+    s.cp.sync();
+    expect(s.last('solid')).toBeNull();
+    s.ui.featureId = 'A';
+    s.cp.sync();
+    expect(s.cp.state().solid).not.toBeNull();
+    s.ui.featureId = 'B'; // the result's preview is of A
+    s.cp.sync();
+    expect(s.cp.state().solid).toBeNull();
+    s.ui.featureId = 'A';
+    (s.ui as { pushPull: unknown }).pushPull = {};
+    s.cp.sync();
+    expect(s.cp.state().solid).toBeNull();
+  });
+
+  it('is cleared on undo and comes back only with the next result', () => {
+    const s = editing();
+    s.cp.sync();
+    s.cp.clear();
+    expect(s.last('solid')).toBeNull();
+    s.cp.sync(); // the old result is still on screen
+    expect(s.cp.state().solid).toBeNull();
+    s.state.view = s.withPreview(s.doc, previewOf('A'));
+    s.cp.sync();
+    expect(s.cp.state().solid).not.toBeNull();
+  });
+
+  it('Before hides it and the release shows the same solid again', () => {
+    const s = editing();
+    s.cp.sync();
+    const shown = s.last('solid');
+    s.cp.setBefore(true);
+    expect(s.last('solid')).toBeNull();
+    expect(s.cp.state().solid).toBeNull();
+    // The rolled-back result arrives while the key is held: still nothing.
+    const stash = s.state.view;
+    s.state.view = s.withPreview(s.doc, null, { A: 'rolledBack' });
+    s.cp.sync();
+    expect(s.cp.state().solid).toBeNull();
+    s.state.view = stash;
+    (s.wb as { syncViewport: () => void }).syncViewport = () => s.cp.sync();
+    s.cp.setBefore(false);
+    expect(s.last('solid')).toEqual(shown);
+  });
+
+  it('only a live result has one; a rolled-back feature has none', () => {
+    const s = editing();
+    s.state.view = { ...s.state.view, source: 'cache' } as RegenView;
+    s.cp.sync();
+    expect(s.cp.state().solid).toBeNull();
+  });
+
+  it('the extrude prism stands in until the regen of the new value arrives', () => {
+    const s = editing();
+    const sketches = [
+      {
+        featureId: 'SK',
+        regions: [
+          {
+            name: 'R1',
+            mesh: { positions: new Float32Array(9), indices: new Uint32Array([0, 1, 2]) },
+          },
+        ],
+        frame: { origin: [0, 0, 0], x: [1, 0, 0], y: [0, 1, 0], z: [0, 0, 1] },
+      },
+    ];
+    s.state.view = {
+      ...s.state.view,
+      result: { ...s.state.view.result, sketches },
+    } as unknown as RegenView;
+    s.cp.sync();
+    expect(s.cp.state().solid).not.toBeNull();
+    // A new depth: a newer document, the prism is up at once and the old solid is not shown with it.
+    s.state.viewDoc = { parts: [{ ...s.doc.parts[0] }] };
+    s.cp.onFeature({
+      id: 'A',
+      type: 'extrude',
+      name: 'Extrude',
+      suppressed: false,
+      profile: [{ name: 'R1', kind: 'region' }],
+      direction: 'normal',
+      end: { kind: 'blind', depth: '10 mm' },
+      op: 'cut',
+    } as never);
+    expect(s.cp.state().prism).not.toBeNull();
+    expect(s.cp.state().solid).toBeNull();
+    expect(s.last('solid')).toBeNull();
+    // The regen of that document: the prism goes, the exact solid of the new value shows.
+    const next = { ...previewOf('A'), volume: 77 };
+    s.state.view = s.withPreview(s.state.viewDoc, next);
+    s.cp.sync();
+    expect(s.cp.state().prism).toBeNull();
+    expect(s.cp.state().solid?.volume).toBe(77);
+  });
+
+  it('counts as showing (no library thumbnail is taken with it) until it is cleared', () => {
+    const s = editing();
+    (s.features[0] as { type: string }).type = 'import'; // a kind with no tint of its own faces
+    s.state.view = s.withPreview(s.doc, previewOf('A'));
+    (s.state.view.result.bodies[0] as { mesh: unknown }).mesh = { faceNames: ['other'] };
+    s.cp.sync();
+    expect(s.cp.state().tint).toBeNull();
+    expect(s.cp.state().solid).not.toBeNull();
+    expect(s.cp.showing()).toBe(true);
+    s.ui.featureId = null;
+    s.cp.sync();
+    expect(s.cp.showing()).toBe(false);
+  });
+
+  it('does not push the same solid again', () => {
+    const s = editing();
+    s.cp.sync();
+    const n = s.calls.filter((c) => c.kind === 'solid').length;
+    // Mass properties arrive: a new view object around the same result data.
+    s.state.view = { ...s.state.view, result: { ...s.state.view.result } } as RegenView;
+    s.cp.sync();
+    s.cp.sync();
+    expect(s.calls.filter((c) => c.kind === 'solid').length).toBe(n);
+  });
+
+  it('knows when the result on screen already carries the solid (no regen to ask for it)', () => {
+    const s = editing();
+    expect(s.cp.carries('A')).toBe(true);
+    expect(s.cp.carries('B')).toBe(false);
+    s.state.viewDoc = { parts: [{ ...s.doc.parts[0] }] }; // an edit: the result is of an older document
+    expect(s.cp.carries('A')).toBe(false);
+    s.state.viewDoc = s.doc;
+    s.state.view = { ...s.state.view, source: 'cache' } as RegenView;
+    expect(s.cp.carries('A')).toBe(false);
+    s.state.view = s.withPreview(s.doc, null);
+    expect(s.cp.carries('A')).toBe(false);
+  });
+
+  it('asks the regen for the solid of the edited feature only where a solid exists', () => {
+    const s = editing();
+    expect(s.cp.requestId()).toBe('A');
+    s.ui.featureId = 'B'; // a fillet
+    expect(s.cp.requestId()).toBeNull();
+    s.ui.featureId = null;
+    expect(s.cp.requestId()).toBeNull();
+    s.ui.featureId = 'A';
+    s.ui.before = true;
+    expect(s.cp.requestId()).toBeNull();
+    s.ui.before = false;
+    (s.ui as { sketch: unknown }).sketch = {};
+    expect(s.cp.requestId()).toBeNull();
+    (s.ui as { sketch: unknown }).sketch = null;
+    (s.features[0] as { suppressed: boolean }).suppressed = true;
+    expect(s.cp.requestId()).toBeNull();
   });
 });
 

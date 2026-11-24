@@ -78,6 +78,7 @@ import { hashKey } from './hash';
 import { allBodiesFor, copiedFeatures, kerr, meshOnlyError } from './helpers';
 import { bodyResult, densityOf, referenceResults, sketchResult } from './outputs';
 import type { ImportedPmi } from './pmi';
+import { featurePreview, notePreview, previewWalk } from './preview';
 import { absorbedInto, fingerprintOf, rememberAbsorbed } from './refs';
 import {
   capitalise,
@@ -759,6 +760,7 @@ export class RegenEngine {
       rec: null,
       index: new Map(part.features.map((f, i) => [f.id, i])),
       bodyOwner: new Map(),
+      preview: previewWalk(request),
     };
     const rollback = Math.max(0, Math.min(part.rollbackIndex, part.features.length));
     const features: RegenFeatureStatus[] = [];
@@ -833,10 +835,14 @@ export class RegenEngine {
       partName: part.name,
       merged: ctx.state.merged,
       // For anchor queries against this final state (ADR-092 proposal 2); no attachment bytes.
-      context: { ...ctx, attachments: {}, rec: null },
+      context: { ...ctx, attachments: {}, rec: null, preview: null },
     };
     if (annotations) pc.latest.annotations = annotations;
     if (density !== undefined) pc.latest.density = density;
+    // Change preview (ADR-103): the edited feature's scratch solid, after everything real. Its
+    // entry stays with this regen, so asking again with the same inputs computes nothing.
+    const shown = await featurePreview(this.core, ctx, request.quality);
+    if (shown.key !== undefined) pc.latest.keys.add(shown.key);
     await this.cache.evict(pc);
     await this.cache.evictImports(pc, ctx.usedImports);
 
@@ -852,6 +858,7 @@ export class RegenEngine {
     if (ghosts && ghosts.length > 0) result.ghosts = ghosts;
     if (references.length > 0) result.references = references;
     if (annotations) result.annotations = annotations;
+    if (shown.preview) result.preview = shown.preview;
     return result;
   }
 
@@ -1023,6 +1030,7 @@ export class RegenEngine {
         ...waits,
       });
     }
+    notePreview(ctx, f.id, plan, r);
     ctx.state.apply(r);
     rec.delta = walkDelta(r);
     for (const b of r.set) ctx.bodyOwner.set(b.id, f.id);

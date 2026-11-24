@@ -113,13 +113,110 @@ test('editing an extrude tints add; its depth shows the swept volume before the 
   expect(f?.type === 'extrude' && f.end.kind === 'blind' && f.end.depth).toBe('25 mm');
 });
 
-test('editing a cut tints cut; a through-all end shows no volume', async ({ page }) => {
+test('editing a cut tints cut; a through-all end has no same-frame prism', async ({ page }) => {
   test.slow();
   const { a, byName } = await openDemo(page);
   const holes = byName('Holes');
   await a.editFeature(holes.id);
   await expect.poll(async () => (await a.changePreview()).tint?.effect).toBe('cut');
   expect((await a.changePreview()).prism).toBeNull();
+});
+
+/**
+ * Slice 2e.2: the exact solid the edited feature adds or removes comes with the regen result
+ * (`RegenResult.preview`) and is drawn translucent. Demo bracket: thickness 8, four 6 mm holes.
+ */
+const HOLES = 4 * Math.PI * 3 ** 2;
+
+test('editing the Holes cut shows the removed material; values update it; Done clears it', async ({
+  page,
+}) => {
+  test.slow();
+  const { a, byName } = await openDemo(page);
+  const holes = byName('Holes');
+  expect((await a.changePreview()).solid).toBeNull();
+  expect((await a.changePreviewDrawn())?.solid).toBeNull();
+
+  await a.editFeature(holes.id);
+  await expect.poll(async () => (await a.changePreview()).solid).not.toBeNull();
+  const solid = (await a.changePreview()).solid;
+  // Through all: what is shown is the material removed, not the over-long tool.
+  expect(solid).toMatchObject({ featureId: holes.id, effect: 'cut', shows: 'removed', meshes: 1 });
+  expect(solid?.volume).toBeCloseTo(HOLES * 8, 3);
+  // The viewport holds it, in the section-clipped root, and nothing was rebuilt needlessly.
+  await a.idle();
+  const drawn = (await a.changePreviewDrawn())?.solid;
+  expect(drawn).toMatchObject({ effect: 'cut', meshes: 1, clipped: true });
+  expect(drawn?.triangles).toBeGreaterThan(0);
+  // The request changed nothing else: the part is the demo bracket's.
+  expect((await a.regen())?.features.every((f) => f.state === 'ok')).toBe(true);
+
+  // Blind: the inspector's default depth (10 mm) still goes through the 8 mm plate.
+  const inspector = page.getByTestId('feature-inspector');
+  await inspector.getByRole('radio', { name: 'Blind' }).click();
+  await a.idle();
+  await expect.poll(async () => (await a.changePreview()).solid?.volume).toBeCloseTo(HOLES * 8, 3);
+  // A new depth: the exact solid of that value replaces the one of the old value.
+  const depth = inspector.locator('[data-pointer="/end/depth"] input');
+  await depth.fill('3 mm');
+  await depth.press('Enter');
+  await a.idle();
+  await expect.poll(async () => (await a.changePreview()).solid?.volume).toBeCloseTo(HOLES * 3, 3);
+  expect((await a.changePreview()).prism).toBeNull(); // the same-frame estimate is gone
+  expect((await a.changePreviewDrawn())?.solid).toMatchObject({ effect: 'cut', meshes: 1 });
+
+  // A depth the kernel refuses: the feature errors, and no solid of the old value stays.
+  await depth.fill('0 mm');
+  await depth.press('Enter');
+  await a.idle();
+  await expect
+    .poll(async () => (await a.regen())?.features.find((f) => f.id === holes.id)?.state)
+    .not.toBe('ok');
+  expect((await a.changePreview()).solid).toBeNull();
+  expect((await a.changePreviewDrawn())?.solid).toBeNull();
+  await depth.fill('5 mm');
+  await depth.press('Enter');
+  await a.idle();
+  await expect.poll(async () => (await a.changePreview()).solid?.volume).toBeCloseTo(HOLES * 5, 3);
+
+  // Before (H held): the model without the cut, and no solid; released, the same solid is back.
+  await depth.blur(); // the key is a shortcut, not text for the depth field
+  await page.keyboard.down('h');
+  await expect.poll(async () => (await a.changePreview()).before).toBe(true);
+  await a.idle();
+  expect((await a.changePreview()).solid).toBeNull();
+  expect((await a.changePreviewDrawn())?.solid).toBeNull();
+  await page.keyboard.up('h');
+  await expect.poll(async () => (await a.changePreview()).before).toBe(false);
+  await a.idle();
+  await expect.poll(async () => (await a.changePreview()).solid?.volume).toBeCloseTo(HOLES * 5, 3);
+
+  // Editing ends: nothing of the preview stays, in the app or in the viewport.
+  await inspector.getByRole('button', { name: 'Done' }).click();
+  await expect.poll(async () => (await a.ui()).featureId).toBeNull();
+  expect((await a.changePreview()).solid).toBeNull();
+  expect((await a.changePreviewDrawn())?.solid).toBeNull();
+});
+
+test('editing an extrude add shows its tool solid; a fillet has no solid', async ({ page }) => {
+  test.slow();
+  const { a, byName } = await openDemo(page);
+  const upright = byName('Upright');
+  await a.editFeature(upright.id);
+  await expect.poll(async () => (await a.changePreview()).solid).not.toBeNull();
+  // Upright: width 80 x thickness 8, height 50 (the demo's parameters).
+  const solid = (await a.changePreview()).solid;
+  expect(solid).toMatchObject({ featureId: upright.id, effect: 'add', shows: 'tool', meshes: 1 });
+  expect(solid?.volume).toBeGreaterThan(0);
+  expect((await a.changePreviewDrawn())?.solid).toMatchObject({ effect: 'add', clipped: true });
+
+  // Another feature is opened: the solid of the first is not shown for it.
+  const fillet = byName('Bend fillet');
+  await a.editFeature(fillet.id);
+  await expect.poll(async () => (await a.changePreview()).tint?.effect).toBe('modify');
+  await a.idle();
+  expect((await a.changePreview()).solid).toBeNull();
+  expect((await a.changePreviewDrawn())?.solid).toBeNull();
 });
 
 test('holding the Before key shows the model without the feature and changes no document', async ({

@@ -1,8 +1,42 @@
 import type { ExtrudeFeature, Feature, MeshBuffers, SketchResult } from '@wren-cad/contracts';
 import { describe, expect, it } from 'vitest';
-import { extrudePrism, featureEffect, isOwnFace, ownedFaces } from './feature-effect';
+import {
+  extrudePrism,
+  featureEffect,
+  hasSolidPreview,
+  isOwnFace,
+  ownedFaces,
+} from './feature-effect';
 
 const f = (x: Record<string, unknown>) => ({ suppressed: false, name: 'x', ...x }) as Feature;
+
+describe('kinds with an exact preview solid (slice 2e.2)', () => {
+  it('the solid makers have one; modifiers, copies, holes and references do not', () => {
+    for (const type of ['extrude', 'revolve', 'sweep', 'loft', 'primitive']) {
+      expect(hasSolidPreview(f({ id: 'a', type, op: 'cut' })), type).toBe(true);
+    }
+    for (const type of [
+      'sketch',
+      'fillet',
+      'chamfer',
+      'shell',
+      'draft',
+      'hole',
+      'boolean',
+      'mirror',
+      'linearPattern',
+      'circularPattern',
+      'pushPull',
+      'import',
+      'plane',
+      'axis',
+      'point',
+      'thread',
+    ]) {
+      expect(hasSolidPreview(f({ id: 'a', type })), type).toBe(false);
+    }
+  });
+});
 
 describe('effect by feature', () => {
   it('material makers follow their operation', () => {

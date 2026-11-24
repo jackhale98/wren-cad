@@ -30,7 +30,7 @@ import { hashKey } from './hash';
 import { definition, kerr } from './helpers';
 import { AXIS_NAME, partDiag, refKeyOf, resolvePlane, resolveSub, scopeBodies } from './refs';
 import type { ResolvedTarget } from './resolve';
-import type { BodyState, EntryResult, Planned, ToolSpec, WalkContext } from './state';
+import type { BodyState, EntryResult, Planned, PreviewSpec, ToolSpec, WalkContext } from './state';
 
 export async function planSolid(
   core: EngineCore,
@@ -113,7 +113,27 @@ export async function planSolid(
       reads: scoped.bodies.map((b) => b.id),
       run: () => runSolid(core, f, inputs, scoped, key),
       tool: solidTool(core, f, inputs, refKeys),
+      preview: solidPreview(core, f, inputs),
     },
+  };
+}
+
+/**
+ * The change preview of a solid feature (ADR-103, slice 2e.2): the same feature and resolved
+ * inputs with another body op, against no body (`new`: the tool solid) or one body.
+ */
+function solidPreview(
+  core: EngineCore,
+  f: ExtrudeFeature | RevolveFeature | PrimitiveFeature | SweepFeature | LoftFeature,
+  inputs: FeatureInputs,
+): PreviewSpec {
+  return {
+    op: f.op,
+    exec: (op, target) =>
+      core.exec(
+        { ...f, op, scope: undefined } as Feature,
+        target === undefined ? inputs : { ...inputs, target },
+      ),
   };
 }
 
@@ -494,6 +514,7 @@ export async function planSweepLoft(
       reads: scoped.bodies.map((b) => b.id),
       run: () => runSolid(core, feature, inputs, scoped, key),
       tool: solidTool(core, feature, inputs, refKeys),
+      preview: solidPreview(core, feature, inputs),
     },
   };
 }

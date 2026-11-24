@@ -8,7 +8,7 @@
  * prism (`prism.ts`, `preview.ts`) on sketch-region meshes.
  */
 
-import type { MeshBuffers, Vec3 } from '@wren-cad/contracts';
+import type { FeatureEffect, FeatureTint, MeshBuffers, RegionPrismSpec } from '@wren-cad/contracts';
 import { BufferGeometry } from 'three/webgpu';
 import { COMPARE_COLORS } from './compare';
 import { faceDrawRange } from './ids';
@@ -18,26 +18,8 @@ import { buildRegionPrism } from './prism';
 import { requestRender } from './renderLoop';
 import type { ViewportImpl } from './viewport';
 
-/** What a feature does to the body: adds material, cuts it away, or reshapes faces that stay. */
-export type FeatureEffect = 'add' | 'cut' | 'modify';
-
-export interface FeatureTint {
-  effect: FeatureEffect;
-  /** Face ordinals per body (the app derives them from the faces' persistent names). */
-  faces: ReadonlyArray<{ bodyId: string; faces: readonly number[] }>;
-}
-
-export interface RegionPrismSpec {
-  /** Sketch region meshes (world space, on the sketch plane). */
-  regions: readonly MeshBuffers[];
-  /** Unit vector the profile is swept along (already flipped for "reverse"). */
-  direction: Vec3;
-  /** Sweep length, mm (> 0). */
-  distance: number;
-  /** Start of the sweep along `direction`, mm (-distance / 2 for a symmetric extrude). */
-  offset?: number;
-  effect: 'add' | 'cut';
-}
+// The types are the contract's (folded in with slice 2e.2); re-exported for existing imports.
+export type { FeatureEffect, FeatureTint, RegionPrismSpec };
 
 /**
  * Add and cut are the compare overlay's green and vermillion (the same words: material added,

@@ -91,11 +91,28 @@ export class EngineCore {
     return v;
   }
 
-  async meshOf(shape: ShapeHandle, quality: MeshQuality): Promise<MeshBuffers | null> {
+  /**
+   * The display mesh of a shape, memoised per handle and quality. The deflection is relative to
+   * the shape's own size, or to `extent` (mm) when given: a scratch solid shown beside a body is
+   * meshed as finely as that body, not finer. (Triangulations live in the kernel's shared
+   * sub-shapes: a much finer mesh of a solid that shares faces or edges with a body makes the
+   * next mesh of that body start from nothing.) A mesh already made for the handle is returned as it is.
+   */
+  async meshOf(
+    shape: ShapeHandle,
+    quality: MeshQuality,
+    extent?: number,
+  ): Promise<MeshBuffers | null> {
     const k = `${shape}|${quality}`;
     const cached = this.meshes.get(k);
     if (cached) return cached;
-    const r = await this.kernel.mesh(shape, { ...this.quality[quality], relative: true });
+    const q = this.quality[quality];
+    const r = await this.kernel.mesh(
+      shape,
+      extent !== undefined && extent > 0
+        ? { ...q, linearDeflection: q.linearDeflection * extent, relative: false }
+        : { ...q, relative: true },
+    );
     if (!r.ok) return null;
     this.meshes.set(k, r.value);
     return r.value;

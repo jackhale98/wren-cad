@@ -464,6 +464,8 @@ export class Workbench {
       },
       onError: (e) => this.toast(e.message, 'error'),
       attachments: (doc) => this.attachmentsFor(doc),
+      // Change preview: the solid of the feature being edited, when this is the displayed document.
+      preview: (doc) => (doc === this.viewDoc() ? this.changePreview.requestId() : null),
     });
     if (this.ui.get().ready) this.loop.request();
   }
@@ -495,11 +497,18 @@ export class Workbench {
     if (this.ui.get().before && !this.changePreview.canShowBefore())
       this.patchUi({ before: false });
     const viewKey = this.ui.get().before ? `${key}|before|${this.ui.get().featureId}` : key;
-    if (viewKey !== this.lastPickKey) {
+    // A feature opened for editing has no preview solid in the result on screen: ask for it.
+    const previewId = this.changePreview.requestId();
+    const wantSolid =
+      previewId !== null &&
+      previewId !== this.lastPreviewId &&
+      !this.changePreview.carries(previewId);
+    this.lastPreviewId = previewId;
+    if (viewKey !== this.lastPickKey || wantSolid) {
       this.lastPickKey = viewKey;
       this.loop?.request();
     }
-    this.changePreview.sync(); // tint and prism follow the edited feature
+    this.changePreview.sync(); // tint, prism and solid follow the edited feature
     // Which sketches show depends on what is being edited or picked: re-evaluate whenever that
     // changes, on every path (Done, clear selection, Esc, tree clicks), not only on some of them.
     const u = this.ui.get();
@@ -510,6 +519,7 @@ export class Workbench {
     }
   }
   private lastVisKey = '';
+  private lastPreviewId: Id | null = null;
 
   /** Stable subscribe/snapshot pair for `useSyncExternalStore`. */
   readonly subscribeDoc = (listener: () => void): (() => void) =>

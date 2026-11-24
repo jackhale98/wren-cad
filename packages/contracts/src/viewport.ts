@@ -235,6 +235,29 @@ export type PreviewSpec =
     }
   | { kind: 'mesh'; mesh: MeshBuffers; opacity?: number };
 
+/** Change preview (ADR-103): what a feature does to the body. `modify` reshapes faces that stay. */
+export type FeatureEffect = 'add' | 'cut' | 'modify';
+
+/** Change preview (ADR-103): the faces the edited feature made, tinted by effect. */
+export interface FeatureTint {
+  effect: FeatureEffect;
+  /** Face ordinals per body (the app derives them from the faces' persistent names). */
+  faces: ReadonlyArray<{ bodyId: string; faces: readonly number[] }>;
+}
+
+/** Change preview (ADR-103): the volume a profile sweeps, drawn before the kernel answers. */
+export interface RegionPrismSpec {
+  /** Sketch region meshes (world space, on the sketch plane). */
+  regions: readonly MeshBuffers[];
+  /** Unit vector the profile is swept along (already flipped for "reverse"). */
+  direction: Vec3;
+  /** Sweep length, mm (> 0). */
+  distance: number;
+  /** Start of the sweep along `direction`, mm (-distance / 2 for a symmetric extrude). */
+  offset?: number;
+  effect: 'add' | 'cut';
+}
+
 /**
  * A draggable handle drawn on top of geometry (push/pull arrow, later gizmos). Handles are picked
  * before anything else as `{ kind: 'handle', bodyId: <id>, entity: <id>, index: 0 }`; a press
@@ -379,6 +402,13 @@ export interface TouchViewport extends InteractiveViewport {
    * gesture is in flight, motion is ignored (never fights a drag). A zero sample ends the motion.
    */
   motion?(sample: MotionSample): void;
+  /**
+   * Change preview (ADR-103): translucent fills over the faces the edited feature made, beneath
+   * selection and hover. `null` removes them. Optional: a viewport without it draws nothing.
+   */
+  setFeatureTint?(tint: FeatureTint | null): void;
+  /** Change preview (ADR-103): the swept volume of a profile; a distance-only update allocates nothing. */
+  setRegionPrism?(spec: RegionPrismSpec | null): void;
 }
 
 // ---- M4.5: 3D mice (6-DoF controllers) -------------------------------------------------------

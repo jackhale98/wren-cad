@@ -91,6 +91,13 @@ import {
 import type { CompareObjects } from './compare';
 import { setCompare } from './compareView';
 import {
+  clearFeatureSolid,
+  type FeatureSolidEntry,
+  type FeatureSolidSpec,
+  featureSolidStats,
+  setFeatureSolid,
+} from './featureSolid';
+import {
   clearRegionPrism,
   type FeatureTint,
   type RegionPrismEntry,
@@ -144,6 +151,7 @@ import { OVERLAY_COLORS, type OverlayColors, PALETTES, type Palette } from './th
 import type {
   BodyMaterialState,
   CameraState,
+  ChangePreviewStats,
   CompareStats,
   FitOptions,
   NavigationState,
@@ -172,6 +180,7 @@ CameraControls.install({
 export type {
   BodyMaterialState,
   CameraState,
+  ChangePreviewStats,
   CompareStats,
   FitOptions,
   NavigationState,
@@ -273,6 +282,9 @@ export class ViewportImpl implements ViewportEngine {
   /** Change preview (ADR-103): the tinted faces and the region prism of the feature being edited. */
   tint: FeatureTint | null = null;
   regionPrism: RegionPrismEntry | null = null;
+  /** Change preview (slice 2e.2): the exact solid the edited feature adds or removes. */
+  featureSolid: FeatureSolidEntry | null = null;
+  featureSolidBuilds = 0;
   highlightDots: Dot[] = [];
   readonly sketches = new Map<string, SketchEntry>();
   readonly ghosts = new Map<string, GhostEntry>();
@@ -553,6 +565,7 @@ export class ViewportImpl implements ViewportEngine {
     this.setCompare(null);
     for (const [id, p] of [...this.previews]) removePreview(this, id, p);
     clearRegionPrism(this);
+    clearFeatureSolid(this);
     for (const id of [...this.handles.keys()]) this.setHandle(id, null);
     for (const id of [...this.markerSets.keys()]) this.setMarkers(id, null);
     this.idTarget?.dispose();
@@ -586,8 +599,12 @@ export class ViewportImpl implements ViewportEngine {
     setRegionPrism(this, spec);
   }
 
-  getTintStats(): ReturnType<typeof tintStats> {
-    return tintStats(this);
+  setFeatureSolid(spec: FeatureSolidSpec | null): void {
+    setFeatureSolid(this, spec);
+  }
+
+  getTintStats(): ChangePreviewStats {
+    return { ...tintStats(this), solid: featureSolidStats(this) };
   }
 
   setHighlights(highlights: { selected: HighlightItem[]; preselected: HighlightItem[] }): void {

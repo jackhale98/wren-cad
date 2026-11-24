@@ -11,6 +11,12 @@ export {
 } from './compare';
 export * as gestureConstants from './constants';
 export {
+  type FeatureSolidSpec,
+  SOLID_GROUP_ORDER,
+  SOLID_OPACITY,
+  SOLID_THROUGH_OPACITY,
+} from './featureSolid';
+export {
   FEATURE_TINT_COLORS,
   type FeatureEffect,
   type FeatureTint,

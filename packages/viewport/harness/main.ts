@@ -53,6 +53,15 @@ export interface HarnessApi {
   showSketchAt(z: number): void;
   /** Translucent mesh preview: a box at `origin` (kind 'mesh'); `null` removes it. */
   previewBox(id: string, origin: [number, number, number] | null): void;
+  /**
+   * Change preview (ADR-103, slice 2e.2): a 12 x 12 x 10 solid at `origin` as the edited feature's
+   * solid; `null` clears. `fresh: false` passes the same buffers again (no rebuild).
+   */
+  featureSolid(
+    effect: 'add' | 'cut' | 'modify' | null,
+    origin?: [number, number, number],
+    fresh?: boolean,
+  ): void;
   /** The synthetic sketch plus `SketchResult.points` entries (id `F03`, z = 20). */
   showSketchPoints(points: Array<{ entity: string; at: [number, number, number] }>): void;
   /**
@@ -182,6 +191,14 @@ async function main() {
         origin ? { kind: 'mesh', mesh: boxMesh(12, 12, 12, { origin }) } : null,
       );
     },
+    featureSolid(effect, origin = [14, 9, 10], fresh = true) {
+      if (effect === null) {
+        viewport.setFeatureSolid(null);
+        return;
+      }
+      if (fresh || !solidFixture) solidFixture = [boxMesh(12, 12, 10, { origin })];
+      viewport.setFeatureSolid({ effect, meshes: solidFixture });
+    },
     showSketchAt(z) {
       viewport.setSketch('F02', { sketch: sketchFixture(z, 'F02'), active: false, dof: DOF });
     },
@@ -207,6 +224,7 @@ async function main() {
     lastHover: [],
   };
   let compareFixture: { added: MeshBuffers[]; removed: MeshBuffers[] } | null = null;
+  let solidFixture: MeshBuffers[] | null = null;
   window.__viewport = api;
   if (!empty) loadBox();
 

@@ -115,6 +115,45 @@ export interface ToolSpec {
   bodies: string[];
 }
 
+/**
+ * How to evaluate what a solid feature adds or removes, for the change preview of the one feature
+ * being edited (ADR-103, slice 2e.2; preview.ts). `exec` runs the very same feature and inputs
+ * with another body op: `'new'` gives the kernel's own tool solid (no body involved), `'intersect'`
+ * and `'cut'` against one body give the part of that body inside and outside the tool. Nothing it
+ * returns ever enters the model state.
+ */
+export interface PreviewSpec {
+  op: 'new' | 'add' | 'cut' | 'intersect';
+  exec(op: 'new' | 'cut' | 'intersect', target?: ShapeHandle): Promise<Result<FeatureResult>>;
+}
+
+/** The edited feature's evaluated preview solids (a scratch cache entry owns the shapes). */
+export interface PreviewSolids {
+  effect: 'add' | 'cut';
+  shows: 'tool' | 'removed';
+  /** Empty: this feature has nothing to show for these inputs (also cached, so it is not retried). */
+  shapes: ShapeHandle[];
+  /** mm³, all shapes together. */
+  volume: number;
+}
+
+/**
+ * The preview request of a regen (`RegenRequest.preview`) and, once the feature ran ok in the
+ * walk, what its preview is evaluated from after the walk.
+ */
+export interface PreviewWalk {
+  featureId: Id;
+  source?: {
+    spec: PreviewSpec;
+    /** The feature's cache key (its own inputs and the content keys of the bodies it acts on). */
+    key: string;
+    /** The bodies the feature changed, as they were before it. */
+    before: BodyState[];
+    /** The bodies it set. */
+    set: BodyState[];
+  };
+}
+
 export type EntryResult =
   | {
       ok: true;
@@ -127,6 +166,8 @@ export type EntryResult =
       datum?: DatumState;
       /** Tool entries (see `ToolSpec`): the cached tool solid. */
       tool?: { shape: ShapeHandle; naming: NamingMap };
+      /** Preview entries (see `PreviewSolids`): the cached scratch solids of an edited feature. */
+      preview?: PreviewSolids;
       warnings: KernelError[];
     }
   | { ok: false; error: KernelError };
@@ -344,6 +385,8 @@ export interface WalkContext {
   index: Map<Id, number>;
   /** Body id → the feature whose result last set it. */
   bodyOwner: Map<string, Id>;
+  /** The change preview asked for with this regen, if any (preview.ts). */
+  preview?: PreviewWalk | null;
 }
 
 /** What a feature needs once its references are resolved. */
@@ -360,6 +403,8 @@ interface Plan {
   run: () => Promise<{ result: EntryResult; owned: ShapeHandle[]; transient?: boolean }>;
   /** Solid features: how to build their tool solid for copies (registered when the feature is ok). */
   tool?: Omit<ToolSpec, 'bodies'>;
+  /** Solid features: how to evaluate their change preview (only used for the edited feature). */
+  preview?: PreviewSpec;
 }
 
 export interface Planned {

@@ -3,8 +3,16 @@
  * read from the feature and the persistent names already in the mesh. No kernel call.
  */
 
-import type { BodyOp, ExtrudeFeature, Feature, Id, SketchResult, Vec3 } from '@wren-cad/contracts';
-import type { FeatureEffect, RegionPrismSpec } from '@wren-cad/viewport';
+import type {
+  BodyOp,
+  ExtrudeFeature,
+  Feature,
+  FeatureEffect,
+  Id,
+  RegionPrismSpec,
+  SketchResult,
+  Vec3,
+} from '@wren-cad/contracts';
 
 const byOp = (op: BodyOp): FeatureEffect =>
   op === 'cut' ? 'cut' : op === 'intersect' ? 'modify' : 'add';
@@ -34,6 +42,24 @@ export function featureEffect(f: Feature): FeatureEffect | null {
       return 'modify';
     default:
       return null;
+  }
+}
+
+/**
+ * Slice 2e.2: the kinds whose exact added or removed solid the regen engine can return for the
+ * feature being edited (`RegenRequest.preview`). The engine decides what the solid is; this only
+ * keeps the app from asking, and regenerating, for kinds that have none.
+ */
+export function hasSolidPreview(f: Feature): boolean {
+  switch (f.type) {
+    case 'primitive':
+    case 'extrude':
+    case 'revolve':
+    case 'sweep':
+    case 'loft':
+      return true;
+    default:
+      return false;
   }
 }
 

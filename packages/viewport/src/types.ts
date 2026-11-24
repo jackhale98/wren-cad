@@ -1,4 +1,5 @@
 import type { CompareViewport, Vec3, ViewportOptions } from '@wren-cad/contracts';
+import type { FeatureSolidSpec, featureSolidStats } from './featureSolid';
 import type { FeatureTint, RegionPrismSpec, tintStats } from './featureTint';
 import type { PivotSource } from './navigation';
 import type { Bounds, FrameInsets } from './views';
@@ -106,8 +107,14 @@ export interface ViewportEngine extends CompareViewport {
   setFeatureTint(tint: FeatureTint | null): void;
   /** Change preview: the swept volume of a profile (blind extrude), same frame as the input. */
   setRegionPrism(spec: RegionPrismSpec | null): void;
-  /** Tint and region-prism state for tests. */
-  getTintStats(): ReturnType<typeof tintStats>;
+  /**
+   * Change preview (slice 2e.2): the exact solid the edited feature adds or removes
+   * (`RegenResult.preview`), translucent in the effect colour, seen through the model, under
+   * selection and hover, clipped by a section. `null` clears. The mesh buffers are kept, not copied.
+   */
+  setFeatureSolid(spec: FeatureSolidSpec | null): void;
+  /** Tint, region-prism and solid state for tests. */
+  getTintStats(): ChangePreviewStats;
   getReferenceStats(): ReferenceStats;
   /** Live material state of a body (tests: ghosting is restored exactly on `setCompare(null)`). */
   getBodyMaterialState(id: string): BodyMaterialState | null;
@@ -185,3 +192,8 @@ export interface PickStats {
   idBufferPicks: number;
   fallbackPicks: number;
 }
+
+/** What the viewport draws for the change preview right now (tests, probes). */
+export type ChangePreviewStats = ReturnType<typeof tintStats> & {
+  solid: ReturnType<typeof featureSolidStats>;
+};

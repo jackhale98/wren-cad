@@ -199,6 +199,33 @@ Details:
 - Every temporary shape is released, also on failure. The diff meshes are transferred over
   Comlink, never copied.
 
+## Change preview of the edited feature (`src/regen/preview.ts`, ADR-103 slice 2e.2)
+
+`RegenRequest.preview = { featureId }` names the one feature being created or edited. After the
+walk and the outputs, the engine evaluates what that feature adds or removes with the façade's
+existing entries and returns it as `RegenResult.preview` (`FeaturePreview`: effect, what the solid
+is, one mesh per solid, exact volume). No request, nothing extra runs.
+
+| Feature op (extrude, revolve, sweep, loft, primitive) | Evaluated | Result |
+| --- | --- | --- |
+| cut | the feature as `intersect` on each body it changed, as it was before | the material removed (`shows: 'removed'`, `effect: 'cut'`) |
+| intersect | the feature as `cut` on each body before | the material removed |
+| add | the feature as `new` | the tool solid (`shows: 'tool'`, `effect: 'add'`); none for through-all |
+| new, or an add with no body to add to | nothing | the body the feature made, borrowed |
+| cut that removes nothing | the feature as `new` | the tool solid, `effect: 'cut'`; none for through-all |
+
+- The scratch solids are one cache entry, keyed `hash({ t: 'preview', feature: <feature key> })`:
+  the same inputs compute nothing again, an upstream edit that changes the body evaluates again.
+  The entry counts as used by the latest regen and is a spare entry afterwards. A refused
+  evaluation is cached as "nothing to show". A borrowed body is never cached here.
+- The request changes nothing else in the result (names, statuses, bodies, meshes, cache
+  counters). It allocates kernel handles after all handles of the result.
+- No preview unless the feature is `ok` in that regen. Other feature kinds have none.
+- Scratch solids are meshed no finer than the bodies of the part (`EngineCore.meshOf(shape,
+  quality, extent)`): OCCT keeps triangulations in shared sub-shapes, and a finer mesh of a plug
+  that shares the pocket floor with the body makes the kernel clear and rebuild the body's whole
+  triangulation at the next regen.
+
 ## M3 features (ADR-019; details in ADR-036)
 
 What the engine passes per type (FeatureInputs, refs keyed by JSON pointer into the feature):
@@ -547,6 +574,15 @@ face/edge/vertex refs → all current bodies; `body` refs → the body table by 
   configuration-only edits. `bounds` = union of the bodies' boxes.
 
 ## Tests
+
+Change preview (ADR-103 slice 2e.2): `preview.golden.test.ts` on the real kernel (extrude cut,
+add and intersect with blind, symmetric, reverse, up-to and through-all ends; revolve, sweep, loft
+and a primitive: the preview's volume equals before − after or the tool's; a cut through two
+bodies; a cut that misses; no preview for an error, an unresolved profile, a draft angle,
+suppressed, rolled back; the same inputs compute nothing; identical results with and without the
+request over an edit sequence; handles released with the part), `preview.test.ts` on the fake
+kernel (which kernel calls the request adds, the cache key, the spare budget, transferables) and
+the 50-feature budget with the preview on in `cache.test.ts`.
 
 M4: `annotations.golden.test.ts` (the bracket with linear, diameter on a face and on an edge,
 radius, angle, surface finish, datum, a position frame bound to the hole and a stated value; hole

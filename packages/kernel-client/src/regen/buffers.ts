@@ -106,6 +106,7 @@ export function regenTransferables(r: RegenResult & { ghosts?: { mesh: MeshBuffe
   const out: ArrayBuffer[] = [];
   for (const b of r.bodies) meshTransferables(b.mesh, out);
   for (const g of r.ghosts ?? []) meshTransferables(g.mesh, out);
+  for (const m of r.preview?.meshes ?? []) meshTransferables(m, out);
   for (const s of r.sketches) {
     for (const c of s.curves) {
       if (c.points.buffer instanceof ArrayBuffer && !out.includes(c.points.buffer)) {
