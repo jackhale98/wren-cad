@@ -372,6 +372,20 @@ describe('the exact solid the feature adds or removes (slice 2e.2)', () => {
     expect(s.cp.state().solid?.volume).toBe(77);
   });
 
+  it('counts as showing (no library thumbnail is taken with it) until it is cleared', () => {
+    const s = editing();
+    (s.features[0] as { type: string }).type = 'import'; // a kind with no tint of its own faces
+    s.state.view = s.withPreview(s.doc, previewOf('A'));
+    (s.state.view.result.bodies[0] as { mesh: unknown }).mesh = { faceNames: ['other'] };
+    s.cp.sync();
+    expect(s.cp.state().tint).toBeNull();
+    expect(s.cp.state().solid).not.toBeNull();
+    expect(s.cp.showing()).toBe(true);
+    s.ui.featureId = null;
+    s.cp.sync();
+    expect(s.cp.showing()).toBe(false);
+  });
+
   it('does not push the same solid again', () => {
     const s = editing();
     s.cp.sync();
@@ -381,6 +395,19 @@ describe('the exact solid the feature adds or removes (slice 2e.2)', () => {
     s.cp.sync();
     s.cp.sync();
     expect(s.calls.filter((c) => c.kind === 'solid').length).toBe(n);
+  });
+
+  it('knows when the result on screen already carries the solid (no regen to ask for it)', () => {
+    const s = editing();
+    expect(s.cp.carries('A')).toBe(true);
+    expect(s.cp.carries('B')).toBe(false);
+    s.state.viewDoc = { parts: [{ ...s.doc.parts[0] }] }; // an edit: the result is of an older document
+    expect(s.cp.carries('A')).toBe(false);
+    s.state.viewDoc = s.doc;
+    s.state.view = { ...s.state.view, source: 'cache' } as RegenView;
+    expect(s.cp.carries('A')).toBe(false);
+    s.state.view = s.withPreview(s.doc, null);
+    expect(s.cp.carries('A')).toBe(false);
   });
 
   it('asks the regen for the solid of the edited feature only where a solid exists', () => {

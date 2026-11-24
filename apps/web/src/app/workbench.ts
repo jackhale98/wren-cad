@@ -499,7 +499,10 @@ export class Workbench {
     const viewKey = this.ui.get().before ? `${key}|before|${this.ui.get().featureId}` : key;
     // A feature opened for editing has no preview solid in the result on screen: ask for it.
     const previewId = this.changePreview.requestId();
-    const wantSolid = previewId !== null && previewId !== this.lastPreviewId;
+    const wantSolid =
+      previewId !== null &&
+      previewId !== this.lastPreviewId &&
+      !this.changePreview.carries(previewId);
     this.lastPreviewId = previewId;
     if (viewKey !== this.lastPickKey || wantSolid) {
       this.lastPickKey = viewKey;

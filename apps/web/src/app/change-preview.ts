@@ -106,6 +106,16 @@ export class ChangePreview {
     return view?.doc.parts[0]?.features.find((f) => f.id === u.featureId && !f.suppressed);
   }
 
+  /** The live result on screen is of the displayed document and already carries this solid. */
+  carries(featureId: Id): boolean {
+    const v = this.wb.regen.get();
+    return (
+      v?.source === 'live' &&
+      v.doc === this.wb.viewDoc() &&
+      v.result.preview?.featureId === featureId
+    );
+  }
+
   /** After a regen result is applied and when what is edited changes: tint and prism follow. */
   sync(): void {
     const view = this.wb.regen.get();
@@ -228,9 +238,14 @@ export class ChangePreview {
     this.syncSolid();
   }
 
-  /** Whether the canvas shows more or less than the plain model (tint, swept volume, Before). */
+  /**
+   * Whether the canvas shows more or less than the plain model (tint, swept volume, the exact
+   * solid, Before).
+   */
   showing(): boolean {
-    return this.tint !== null || this.prism !== null || this.wb.ui.get().before;
+    return (
+      this.tint !== null || this.prism !== null || this.solid !== null || this.wb.ui.get().before
+    );
   }
 
   /** Whether Before can be shown now: a feature is open and some feature stands before it. */
