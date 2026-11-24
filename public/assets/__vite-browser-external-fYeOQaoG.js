@@ -1,0 +1,1 @@
+import{g as e}from"./worker-CIxXUN-J.js";var t=/* @__PURE__ */ e(((e,t)=>{t.exports={}}));export default t();
