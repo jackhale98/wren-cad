@@ -531,6 +531,29 @@ describe.skipIf(!built)(`regen golden: change preview${skipNote}`, () => {
     }, 60_000);
   });
 
+  describe('primitive', () => {
+    it('a box cut removes its part inside the body; a box add is its own solid', async () => {
+      const box = (op: 'cut' | 'add'): Feature => ({
+        id: TE,
+        type: 'primitive',
+        name: 'Box',
+        suppressed: false,
+        op,
+        shape: 'box',
+        dx: '10 mm',
+        dy: '10 mm',
+        dz: '25 mm',
+      });
+      const cut = await preview(makeDoc({}, [...block(), box('cut')]), TE);
+      expect(cut.p).toMatchObject({ effect: 'cut', shows: 'removed' });
+      relClose(cut.p?.volume ?? 0, 10 * 10 * 10, 1e-9);
+      relClose(cut.p?.volume ?? 0, cut.removed, 1e-9);
+      const add = await preview(makeDoc({}, [...block(), box('add')]), TE);
+      expect(add.p).toMatchObject({ effect: 'add', shows: 'tool' });
+      relClose(add.p?.volume ?? 0, 10 * 10 * 25, 1e-9);
+    });
+  });
+
   describe('failure, other features and the cache', () => {
     const doc = (d: string) =>
       makeDoc({ d }, [...block(), circleSketch(), extrude(TE, [region(TS, 'C')], 'd', 'cut')]);
@@ -546,6 +569,12 @@ describe.skipIf(!built)(`regen golden: change preview${skipNote}`, () => {
       const zero = await run(doc('0 mm'), TE);
       expect(zero.features[3]?.state).toBe('error');
       expect(zero.preview).toBeUndefined();
+      // A draft angle: the kernel has no drafted extrude, so the feature errors.
+      const drafted = doc('4 mm');
+      (drafted.parts[0]?.features[3] as { draft?: string }).draft = '5 deg';
+      const d = await run(drafted, TE);
+      expect(d.features[3]?.state).toBe('error');
+      expect(d.preview).toBeUndefined();
       // An unresolved profile: needs attention, no preview.
       const lost = doc('4 mm');
       const f = lost.parts[0]?.features[3] as { profile: EntityRef[] };

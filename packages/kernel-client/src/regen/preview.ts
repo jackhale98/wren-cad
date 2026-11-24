@@ -190,9 +190,15 @@ export async function featurePreview(
   }
   if (solids.shapes.length === 0) return key === undefined ? {} : { key };
   const meshes: MeshBuffers[] = [];
-  // As fine as the bodies the solid is seen against (see `EngineCore.meshOf`); a borrowed body
-  // has its own mesh already.
-  const extent = own === null ? await extentOf(core, [...src.before, ...src.set]) : undefined;
+  // Never finer than a body it may share faces with (see `EngineCore.meshOf`): the bodies the
+  // feature acted on and made, and the final ones, which later features may have grown or merged.
+  // A mesh-only body has no B-rep to share. Coarser than a small body's own mesh costs that body
+  // one face at its next mesh; finer than a body's costs the whole body.
+  const extent = await extentOf(core, [
+    ...src.before,
+    ...src.set,
+    ...[...ctx.state.bodies.values()].filter((b) => !b.meshOnly),
+  ]);
   for (const s of solids.shapes) {
     const m = await core.meshOf(s, quality, extent);
     if (!m) return key === undefined ? {} : { key };

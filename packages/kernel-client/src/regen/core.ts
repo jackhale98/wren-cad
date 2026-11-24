@@ -96,7 +96,7 @@ export class EngineCore {
    * the shape's own size, or to `extent` (mm) when given: a scratch solid shown beside a body is
    * meshed as finely as that body, not finer. (Triangulations live in the kernel's shared
    * sub-shapes: a much finer mesh of a solid that shares faces or edges with a body makes the
-   * next mesh of that body start from nothing.) A handle is always meshed with the same `extent`.
+   * next mesh of that body start from nothing.) A mesh already made for the handle is returned as it is.
    */
   async meshOf(
     shape: ShapeHandle,
