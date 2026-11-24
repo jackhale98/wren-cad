@@ -1,8 +1,8 @@
 # State and order of work (owner approved 2026-11-23; ADR-101, ADR-102)
 
 The order of work after M5a, the architecture rules it follows, and how agents are used.
-Live: main `5aed1f4` (released 2026-11-23: Phase 2, then the owner's requests of the same day;
-check the deploy jobs of that run). Work happens on a `claude/**` session
+Live: main `82656ff` on wren-cad.app and github.io (released 2026-11-24; both deploys of that
+run succeeded).
 branch and reaches main by merge; there is no `dev` branch.
 This file is the single state file: update it at every merge; a new session starts by reading it.
 
@@ -231,6 +231,11 @@ report and v2 mapping (app). Details: ADR-101 and its amendments, `PMI_VALIDATIO
   four main runs). Cloudflare deployed, so wren-cad.app is current and github.io is one release
   behind until the job is re-run or the next release. The deploy step now retries once after
   30 s (in `ci.yml`, takes effect with the next main release; not yet seen working).
+- Released to main as `82656ff` (2026-11-24; owner's go-ahead; CI run 172 green): 2e.2 with
+  its reviewer fixes, and the Pages deploy retry. In that release the first Pages deploy
+  succeeded, so the retry has still not been seen working. **Phase 2 is closed.** Start Phase 3
+  (6.0, the contract revision) in a new session from this file; what 6.0 takes is listed in
+  §3 and under "Proposed for 6.0" in this section.
 - Reviewer gate on 2e.2: pass with fixes, fixed. Previewing a feature that makes its own body
   meshed that real body at another body's deflection, and a later rollback showed the coarser
   mesh (300 against 408 indices in the test; names and volumes were never affected): the own
