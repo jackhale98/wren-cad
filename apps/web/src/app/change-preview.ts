@@ -1,29 +1,51 @@
 /**
- * Change preview (slice 2e.1, ADR-103): while a feature is created or edited, the faces it made are
- * tinted by effect, a blind extrude shows its swept volume before the kernel answers, and a held
- * key (touch: the Before chip) shows the model as it was before the feature.
+ * Change preview (ADR-103): while a feature is created or edited, the faces it made are tinted by
+ * effect, a blind extrude shows its swept volume before the kernel answers, the exact solid the
+ * feature adds or removes is drawn translucent (slice 2e.2), and a held key (touch: the Before
+ * chip) shows the model as it was before the feature.
  *
- * Nothing here calls the kernel or edits the document. The tint follows the displayed regen
- * result (so it appears in the frame the result does, and is gone when the feature errors or the
- * edit ends); the prism is drawn synchronously from the input and dropped when the regen of the
- * current document arrives. Before reuses the pick rollback of `view-doc.ts`.
+ * Nothing here calls the kernel or edits the document. The tint and the solid follow the displayed
+ * regen result (so they appear in the frame the result does, and are gone when the feature errors
+ * or the edit ends); the solid is the one that result carries (`RegenResult.preview`, asked for
+ * with the regen of the edited feature), never one of earlier values. The prism is drawn
+ * synchronously from the input and dropped when the regen of the current document arrives; while
+ * it is up it stands in for the solid. Before reuses the pick rollback of `view-doc.ts`.
  */
 
 import type {
   Feature,
   FeatureEffect,
+  FeaturePreview,
   FeatureTint,
   Id,
+  MeshBuffers,
   RegenResult,
   RegionPrismSpec,
+  TouchViewport,
 } from '@wren-cad/contracts';
-import { extrudePrism, featureEffect, ownedFaces } from '../model/feature-effect';
+import { extrudePrism, featureEffect, hasSolidPreview, ownedFaces } from '../model/feature-effect';
 import type { RegenView } from './state';
 import type { Workbench } from './workbench';
+
+/**
+ * The viewport engine's method for the preview solid (proposed for the contract, ADR-103): any
+ * other viewport simply draws nothing.
+ */
+type SolidViewport = TouchViewport & {
+  setFeatureSolid?(spec: { effect: FeatureEffect; meshes: readonly MeshBuffers[] } | null): void;
+};
 
 export interface ChangePreviewState {
   tint: { featureId: Id; effect: FeatureEffect; faces: number } | null;
   prism: { featureId: Id; effect: 'add' | 'cut'; distance: number } | null;
+  /** The exact solid on screen: what it is and its volume (mm³). */
+  solid: {
+    featureId: Id;
+    effect: FeaturePreview['effect'];
+    shows: FeaturePreview['shows'];
+    volume: number;
+    meshes: number;
+  } | null;
   before: boolean;
 }
 
@@ -38,7 +60,7 @@ export class ChangePreview {
   constructor(private readonly wb: Workbench) {}
 
   /** The change-preview methods are optional in the contract: other viewports draw nothing. */
-  private get vp() {
+  private get vp(): SolidViewport | null {
     return this.wb.viewport;
   }
 
@@ -52,8 +74,29 @@ export class ChangePreview {
             distance: this.prism.spec.distance,
           }
         : null,
+      solid: this.solid && {
+        featureId: this.solid.featureId,
+        effect: this.solid.effect,
+        shows: this.solid.shows,
+        volume: this.solid.volume,
+        meshes: this.solid.meshes.length,
+      },
       before: this.wb.ui.get().before,
     };
+  }
+
+  /**
+   * The feature whose preview solid the next regen should carry (`RegenRequest.preview`), or null:
+   * nothing is edited, a sketch, push/pull or Before is up, or the feature's kind has no solid.
+   * Read from the document being regenerated (the active configuration's own).
+   */
+  requestId(): Id | null {
+    const u = this.wb.ui.get();
+    if (!u.featureId || u.sketch || u.before || u.pushPull) return null;
+    const f = this.wb
+      .viewDoc()
+      .parts[0]?.features.find((x) => x.id === u.featureId && !x.suppressed);
+    return f && hasSolidPreview(f) ? f.id : null;
   }
 
   /** The feature being created or edited in the inspector (not a sketch, not while viewing Before). */
@@ -76,7 +119,25 @@ export class ChangePreview {
     const f = view === this.cleared ? undefined : this.editedFeature(view);
     this.syncTint(view, f);
     this.syncPrism(view, f);
+    this.syncSolid();
   }
+
+  /**
+   * The exact solid follows the displayed live result: shown when that result carries the preview
+   * of the edited feature, gone in every other case (the edit ended, the feature errored or was
+   * rolled back, undo, Before, a cached first frame). The extrude prism stands in for it while the
+   * regen of a new value is on its way.
+   */
+  private syncSolid(): void {
+    const view = this.wb.regen.get();
+    const f = view === this.cleared ? undefined : this.editedFeature(view);
+    const p = f && !this.prism && view?.source === 'live' ? view.result.preview : undefined;
+    const next = p && f && p.featureId === f.id && p.meshes.length > 0 ? p : null;
+    if (next === this.solid) return;
+    this.solid = next;
+    this.vp?.setFeatureSolid?.(next && { effect: next.effect, meshes: next.meshes });
+  }
+  private solid: FeaturePreview | null = null;
 
   private syncTint(view: RegenView | null, f: Feature | undefined): void {
     const next = f && view?.source === 'live' ? tintFor(f, view.result) : null;
@@ -118,6 +179,11 @@ export class ChangePreview {
    * cannot be exact shows nothing.
    */
   onFeature(feature: Feature): void {
+    this.prismFor(feature);
+    this.syncSolid();
+  }
+
+  private prismFor(feature: Feature): void {
     const vp = this.vp;
     if (!vp?.setRegionPrism) return;
     const view = this.wb.regen.get();
@@ -159,6 +225,7 @@ export class ChangePreview {
       this.tintedResult = undefined;
       this.vp?.setFeatureTint?.(null);
     }
+    this.syncSolid();
   }
 
   /** Whether Before can be shown now: a feature is open and some feature stands before it. */

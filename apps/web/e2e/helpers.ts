@@ -121,6 +121,14 @@ export interface AppHooks {
   changePreview(): {
     tint: { featureId: string; effect: 'add' | 'cut' | 'modify'; faces: number } | null;
     prism: { featureId: string; effect: 'add' | 'cut'; distance: number } | null;
+    /** Slice 2e.2: the exact solid the edited feature adds or removes (volume in mm³). */
+    solid: {
+      featureId: string;
+      effect: 'add' | 'cut';
+      shows: 'tool' | 'removed';
+      volume: number;
+      meshes: number;
+    } | null;
     before: boolean;
   };
   /** What the viewport itself draws for it (null on a viewport without the feature). */
@@ -128,6 +136,13 @@ export interface AppHooks {
     effect: 'add' | 'cut' | 'modify' | null;
     faces: number;
     prism: { effect: 'add' | 'cut'; distance: number; builds: number } | null;
+    solid: {
+      effect: 'add' | 'cut' | 'modify';
+      meshes: number;
+      triangles: number;
+      builds: number;
+      clipped: boolean;
+    } | null;
   } | null;
   /** Applies a command as one undo step (not through the UI path). */
   apply(command: unknown, label?: string): boolean;

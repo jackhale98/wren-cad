@@ -45,6 +45,24 @@ export function featureEffect(f: Feature): FeatureEffect | null {
   }
 }
 
+/**
+ * Slice 2e.2: the kinds whose exact added or removed solid the regen engine can return for the
+ * feature being edited (`RegenRequest.preview`). The engine decides what the solid is; this only
+ * keeps the app from asking, and regenerating, for kinds that have none.
+ */
+export function hasSolidPreview(f: Feature): boolean {
+  switch (f.type) {
+    case 'primitive':
+    case 'extrude':
+    case 'revolve':
+    case 'sweep':
+    case 'loft':
+      return true;
+    default:
+      return false;
+  }
+}
+
 /** True when a persistent face name was made by this feature (`F<id>:…`, outermost tag only). */
 export function isOwnFace(name: string, featureId: Id): boolean {
   return name.startsWith(`F${featureId}:`);

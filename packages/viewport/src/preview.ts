@@ -39,7 +39,7 @@ export interface PreviewColors {
 }
 
 /** Flat facet shading in view space, so the translucent solid still reads as a solid. */
-function facetShade() {
+export function facetShade() {
   const n = normalize(cross(dFdx(positionView), dFdy(positionView)));
   return mix(0.62, 1, abs(n.z));
 }

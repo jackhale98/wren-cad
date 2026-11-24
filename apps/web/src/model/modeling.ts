@@ -117,6 +117,12 @@ export interface RegenLoopOptions {
    * `forget(partId)` (the part was closed in the engine) sends them again next time.
    */
   attachments?(doc: WrenDoc): readonly Attachment[];
+  /**
+   * Change preview (ADR-103, slice 2e.2): the feature being edited in `doc`, whose exact added
+   * or removed solid the regen should carry (`RegenRequest.preview`), or null. Asked per regen;
+   * nothing is requested, and nothing extra computed, without it.
+   */
+  preview?(doc: WrenDoc): Id | null;
 }
 
 export interface Attachment {
@@ -246,12 +252,14 @@ export function createRegenLoop(options: RegenLoopOptions): RegenLoop {
       const material = doc.parts.find((p) => p.id === partId)?.material !== undefined;
       // Deferred needs the density for the separate fetch; without it, with a material, inline.
       const inline = inlineMass || (material && !options.density);
+      const editing = options.preview?.(doc) ?? null;
       const result = await port.regenerate({
         doc,
         partId,
         quality,
         massProperties: inline,
         ...(fresh.length ? { attachments } : {}),
+        ...(editing ? { preview: { featureId: editing } } : {}),
       });
       if (inline && wantMass && result.totalMs > INLINE_MASS_REGEN_MS) inlineMass = false;
       for (const a of fresh) sent.add(`${partId}:${a.sha256}`);

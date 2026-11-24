@@ -59,6 +59,40 @@ function manualIdle() {
 const tick = () => new Promise((r) => setTimeout(r, 0));
 
 describe('regen loop', () => {
+  it('asks for the change preview of the feature being edited, per regen (ADR-103)', async () => {
+    const doc: WrenDoc = newDoc({ firstPart: 'P' });
+    const s = scripted();
+    const idle = manualIdle();
+    let editing: string | null = null;
+    const loop = createRegenLoop({
+      port: s.port,
+      getDoc: () => doc,
+      onResult: () => {},
+      idle: idle.idle,
+      preview: () => editing,
+    });
+    loop.request();
+    expect(s.calls[0]?.request).not.toHaveProperty('preview');
+    s.answer(0);
+    await tick();
+    // A feature is opened: the next regen, and its fine pass, carry the request.
+    editing = 'F1';
+    loop.request();
+    expect(s.calls[1]?.request.preview).toEqual({ featureId: 'F1' });
+    s.answer(1);
+    await tick();
+    idle.flush();
+    expect(s.calls[2]?.request.quality).toBe('fine');
+    expect(s.calls[2]?.request.preview).toEqual({ featureId: 'F1' });
+    s.answer(2);
+    await tick();
+    // Editing ended: nothing is asked for.
+    editing = null;
+    loop.request();
+    expect(s.calls[3]?.request).not.toHaveProperty('preview');
+    loop.dispose();
+  });
+
   it('coarse immediately, fine on idle, one call in flight, latest doc wins', async () => {
     let doc: WrenDoc = newDoc({ firstPart: 'P' });
     const s = scripted();
