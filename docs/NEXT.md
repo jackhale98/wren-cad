@@ -1,8 +1,7 @@
 # State and order of work (owner approved 2026-11-23; ADR-101, ADR-102)
 
 The order of work after M5a, the architecture rules it follows, and how agents are used.
-Live: main `82656ff` on wren-cad.app and github.io (released 2026-11-24; both deploys of that
-run succeeded). Work happens on a `claude/**` session
+Live: main `9ef6d5e` (released 2026-11-24; check that run's deploy jobs). Work happens on a `claude/**` session
 branch and reaches main by merge; there is no `dev` branch.
 This file is the single state file: update it at every merge; a new session starts by reading it.
 
@@ -239,8 +238,14 @@ report and v2 mapping (app). Details: ADR-101 and its amendments, `PMI_VALIDATIO
 - Found 2026-11-24 after the release (owner asked whether the phone can edit now): the phone's
   review layout had no touch way to open the command palette or Settings, so "Use full editor"
   could only be reached with ⌘K; the 2a E2E used the keyboard and hid it. Fixed on the session
-  branch, NOT on main yet: a "More" button in the phone sheet opens the palette
+  branch and released as `9ef6d5e`: a "More" button in the phone sheet opens the palette
   (`data-testid="sheet-more"`), and the E2E turns the setting on by touch alone.
+- CI flake to fix: `sketch-touch.spec.ts:197` (a one-finger drag on empty space orbits) failed
+  with its retry in CI run 174 on `9ef6d5e` and passed when the owner re-ran the failed jobs;
+  it passes alone locally and fails under load with other touch-gesture tests (pinch, Pencil
+  hold to grab). Likely the known backlog item: long-press timing should use event timestamps,
+  not wall-clock timers (not confirmed). The GitHub integration cannot re-run workflow jobs
+  (403), so a flake needs the owner to re-run or a real code push.
 - Reviewer gate on 2e.2: pass with fixes, fixed. Previewing a feature that makes its own body
   meshed that real body at another body's deflection, and a later rollback showed the coarser
   mesh (300 against 408 indices in the test; names and volumes were never affected): the own
