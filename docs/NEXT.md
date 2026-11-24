@@ -213,6 +213,19 @@ report and v2 mapping (app). Details: ADR-101 and its amendments, `PMI_VALIDATIO
   baselines in `motion`, `m37` and `interactions` no longer match (panels render taller; the
   3D mouse text and the export menu changed today, the rest is not explained yet). Not
   regenerated: look at each before blessing it.
+- 2e.2 merged on the session branch (ADR-103 amendment; a Fable agent; no C++ change): for the
+  feature being edited the regen engine re-runs it with another body operation in a scratch
+  entry and returns the exact solid (`RegenRequest.preview`, `RegenResult.preview`:
+  `FeaturePreview`), drawn translucent, visible through the model. Cut and intersect show the
+  material removed (volume = before − after); add shows the tool solid; new shows the body.
+  For extrude, revolve, sweep, loft, primitive. Left out: a through-all add and a drafted
+  extrude (the kernel refuses the tool solid), hole, boolean, patterns and modifiers (hole and
+  boolean look feasible without C++). Cost on a 50-feature part, editing the last feature:
+  33 → 43 ms coarse, 46 → 56 ms fine (budget 300 ms). Proposed for 6.0: `setFeatureSolid` on
+  the viewport contract. Risks: one extra cached regen when a feature opens; a small body's
+  plug is faceted coarser beside a much larger body.
+- CI run 168 passed on `b5c4717` (change preview 2e.1, the tolerance editor, their reviewer
+  fixes): ready for main, waiting for the owner's go-ahead. 2e.2 is after that commit.
 - Next: Phase 3 starting with the 6.0 contract revision. Open: the first nightly Soak result.
 - Local E2E and agents: Playwright reuses a server on port 4173. An agent running E2Es in a
   worktree and the lead clash on it and each tests the other's build. Give every runner its
