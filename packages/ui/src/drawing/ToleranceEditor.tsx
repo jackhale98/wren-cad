@@ -13,6 +13,7 @@ import { LabelSvg } from './LabelSvg';
 import { ToleranceField } from './ToleranceField';
 import {
   type FitSupport,
+  fitUnavailable,
   numberExpr,
   numText,
   pairProblem,
@@ -124,20 +125,29 @@ function TypeTiles({
 }) {
   const group = useRef<HTMLDivElement>(null);
   const enabled = TOLERANCE_TYPES.filter((t) => !(t === 'fit' && fitDisabled));
+  // Arrows move focus only (manual activation): choosing commits, and a commit is an undo step
+  // that can drop the deviations, so passing a tile must not choose it. Space, Enter and a click
+  // choose. `cursor` is the tile that holds the one tab stop.
+  const [cursor, setCursor] = useState<ToleranceType | null>(null);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the cursor follows the chosen type
+  useEffect(() => setCursor(null), [value]);
+  const first = enabled[0];
+  const stop =
+    cursor && enabled.includes(cursor) ? cursor : enabled.includes(value) ? value : first;
   const onKey = (e: KeyboardEvent<HTMLDivElement>) => {
-    const i = enabled.indexOf(value);
-    let next = i;
+    const i = stop ? enabled.indexOf(stop) : -1;
+    let next: number;
     if (e.key === 'ArrowRight' || e.key === 'ArrowDown') next = (i + 1) % enabled.length;
     else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp')
       next = (i - 1 + enabled.length) % enabled.length;
+    else if (e.key === 'Home') next = 0;
+    else if (e.key === 'End') next = enabled.length - 1;
     else return;
     e.preventDefault();
     const target = enabled[next];
     if (!target) return;
-    onChange(target);
-    requestAnimationFrame(() =>
-      group.current?.querySelector<HTMLElement>(`[data-value="${target}"]`)?.focus(),
-    );
+    setCursor(target);
+    group.current?.querySelector<HTMLElement>(`[data-value="${target}"]`)?.focus();
   };
   return (
     <div
@@ -163,7 +173,8 @@ function TypeTiles({
             aria-label={TOLERANCE_TYPE_NAMES[t]}
             disabled={off}
             title={off ? fitDisabled : TOLERANCE_TYPE_HELP[t]}
-            tabIndex={on ? 0 : -1}
+            tabIndex={t === stop ? 0 : -1}
+            onFocus={() => setCursor(t)}
             onClick={() => onChange(t)}
             className={cn(
               'flex min-w-0 flex-col items-center justify-center gap-0.5 rounded-[8px] px-1 py-1 text-2xs font-medium transition-colors duration-fast disabled:opacity-40',
@@ -222,7 +233,7 @@ export function ToleranceEditor({
   measured,
   evaluate,
   fits,
-  fitDisabled,
+  fitDisabled: fitDisabledProp,
   inspection,
   labelStyle = DEFAULT_LABEL_STYLE,
   labelContext,
@@ -231,6 +242,12 @@ export function ToleranceEditor({
   label = 'Tolerance',
 }: ToleranceEditorProps) {
   const type = toleranceType(value);
+  // A fit that cannot be made is not offered (with the reason), instead of a tile that does nothing.
+  const fitDisabled =
+    fitDisabledProp ??
+    (type === 'fit'
+      ? undefined
+      : fitUnavailable({ quantity, fits, ...(measured !== undefined ? { size: measured } : {}) }));
   const unit = unitOf(quantity);
   const id = useId();
   const norm = (t: string) => toleranceExpr(t, quantity);
@@ -281,9 +298,15 @@ export function ToleranceEditor({
   if (value?.kind === 'symmetric') {
     fields = (
       <Field label="Plus and minus (±)">
-        {input('Symmetric tolerance', value.value, (t) =>
-          commit({ kind: 'symmetric', value: norm(t) }),
-        )}
+        {input('Symmetric tolerance', value.value, (t) => {
+          // ± takes a size: a typed sign is dropped, and zero (or what cannot be read) is not a
+          // tolerance, so the field keeps its last value.
+          const unsigned = norm(t.trim().replace(/^[+\-−–]\s*/, ''));
+          const r = evaluate(unsigned);
+          if (r.ok && typeof r.value === 'number' && r.value > 0) {
+            commit({ kind: 'symmetric', value: unsigned });
+          }
+        })}
       </Field>
     );
   } else if (value?.kind === 'bilateral') {

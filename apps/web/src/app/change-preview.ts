@@ -228,6 +228,11 @@ export class ChangePreview {
     this.syncSolid();
   }
 
+  /** Whether the canvas shows more or less than the plain model (tint, swept volume, Before). */
+  showing(): boolean {
+    return this.tint !== null || this.prism !== null || this.wb.ui.get().before;
+  }
+
   /** Whether Before can be shown now: a feature is open and some feature stands before it. */
   canShowBefore(): boolean {
     const u = this.wb.ui.get();

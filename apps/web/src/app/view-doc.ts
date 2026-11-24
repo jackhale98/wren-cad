@@ -27,10 +27,14 @@ export function viewDoc(wb: Workbench): WrenDoc {
   return rolledBack(wb, doc, part, idx);
 }
 
+/** Documents made by `rolledBack`: a result for one is only a view, never the real model. */
+export const rolledBackDocs = new WeakSet<WrenDoc>();
+
 function rolledBack(wb: Workbench, doc: WrenDoc, part: Part, idx: number): WrenDoc {
   const memo = wb.viewMemo;
   if (memo && memo.doc === doc && memo.index === idx) return memo.out;
   const out = { ...doc, parts: [{ ...part, rollbackIndex: idx }, ...doc.parts.slice(1)] };
+  rolledBackDocs.add(out);
   wb.viewMemo = { doc, index: idx, out };
   return out;
 }

@@ -64,7 +64,10 @@ export interface AnnotationInspectorProps {
   characteristics: readonly CharacteristicChoice[];
   /** `undefined` when the letter is fine. */
   datumLabelProblem(label: string, own: Id): string | undefined;
-  /** The dimension's value in mm or degrees, for the limits form. */
+  /**
+   * The value the sheet draws for the dimension, in mm or degrees (the source's or the stated
+   * nominal's, else the measurement): the size limits and fits are worked out from.
+   */
   measured?: number;
   /** ISO 286 for the tolerance editor's fit pickers (the table lives in the document package). */
   fits?: FitSupport;

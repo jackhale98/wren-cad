@@ -75,11 +75,15 @@ const LETTERS = [
 /** Nominal size ranges of ISO 286-1 up to 500 mm (upper limits; the first starts above 0). */
 const RANGE_UPPER = [3, 6, 10, 18, 30, 50, 80, 120, 180, 250, 315, 400, 500];
 export const ISO286_MAX_SIZE = 500;
+/** mm; far below any tolerance grade, far above measurement noise in a double. */
+const RANGE_EPS = 1e-9;
 
 /** Geometric mean of the size range containing `d` (mm), or undefined outside 0 < d ≤ 500. */
 export function rangeMean(d: number): number | undefined {
-  if (!Number.isFinite(d) || d <= 0 || d > ISO286_MAX_SIZE) return undefined;
-  const k = RANGE_UPPER.findIndex((u) => d <= u);
+  if (!Number.isFinite(d) || d <= 0 || d > ISO286_MAX_SIZE + RANGE_EPS) return undefined;
+  // A size on a range's upper limit belongs to that range, also when it carries float noise
+  // (30 + 4e-15 is "30", not the start of the next range).
+  const k = RANGE_UPPER.findIndex((u) => d <= u + RANGE_EPS);
   const hi = RANGE_UPPER[k] as number;
   const lo = k === 0 ? 1 : (RANGE_UPPER[k - 1] as number);
   return Math.sqrt(lo * hi);

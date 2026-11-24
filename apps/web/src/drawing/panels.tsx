@@ -319,13 +319,14 @@ export function AnnotationPanelBody({
   const res = b.main.resolutions.get(a.id);
   const state = res?.state ?? 'needsAttention';
   const problems = problemsOf(b, a.id);
+  // The size the tolerance editor works from is the value the sheet draws (`res.value`: the
+  // source's, the stated nominal's, else the measurement), never the raw measurement: typed
+  // limits become deviations from it, and a fit's table is read at it. With a stated 25 on
+  // geometry measuring 24.6, limits 25.1/24.9 must store +0.1/−0.1, not +0.5/+0.3.
+  // T1: a number only while the annotation resolved; needing attention shows none.
+  const drawn = state === 'ok' ? sheetValue(res) : undefined;
   const measured =
-    // T1: a number only while the annotation resolved; needing attention shows none.
-    state === 'ok' && res?.measured !== undefined
-      ? a.kind === 'angle'
-        ? (res.measured * 180) / Math.PI
-        : res.measured
-      : undefined;
+    drawn !== undefined ? (a.kind === 'angle' ? (drawn * 180) / Math.PI : drawn) : undefined;
   const text = valueText(a, res);
   const src = sourceText(b.part, a);
   const leader = leaderInfo(b, placement.id);
@@ -747,3 +748,10 @@ export function ExportPanelBody({
 }
 
 export { ratioExpr };
+
+/** The value a dimension shows on the sheet (mm or rad), falling back to the measurement. */
+export function sheetValue(
+  res: { value?: number; measured?: number } | undefined,
+): number | undefined {
+  return res?.value ?? res?.measured;
+}
