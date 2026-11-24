@@ -522,7 +522,7 @@ jobs:
       id-token: write
     environment:
       name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+      url: ${{ steps.deployment.outputs.page_url || steps.deployment-retry.outputs.page_url }}
     steps:
       - name: Download web build
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
@@ -535,8 +535,19 @@ jobs:
         uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:
           path: dist
+      # The artefact uploaded one step earlier is sometimes not listed yet when the deploy asks for
+      # it ("No artifacts named github-pages were found", one second after a successful upload: main
+      # runs of 7bc8e3d and b5c4717). One retry after a pause; the job fails only if both fail.
       - name: Deploy
         id: deployment
+        continue-on-error: true
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
+      - name: Wait before retrying the deploy
+        if: steps.deployment.outcome == 'failure'
+        run: sleep 30
+      - name: Deploy (retry)
+        id: deployment-retry
+        if: steps.deployment.outcome == 'failure'
         uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
 
   # Publishes the site for Cloudflare Pages (ADR-082). Cloudflare cannot build the OCCT kernel, so

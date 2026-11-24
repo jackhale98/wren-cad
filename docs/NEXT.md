@@ -226,6 +226,11 @@ report and v2 mapping (app). Details: ADR-101 and its amendments, `PMI_VALIDATIO
   plug is faceted coarser beside a much larger body.
 - Released to main as `b5c4717` (2026-11-24; owner's go-ahead; CI run 168 green): change
   preview 2e.1, the tolerance editor with inspection dimensions, their reviewer fixes.
+- The GitHub Pages deploy of `b5c4717` failed the same way as that of `7bc8e3d` ("No artifacts
+  named github-pages were found" one second after the upload step succeeded; two of the last
+  four main runs). Cloudflare deployed, so wren-cad.app is current and github.io is one release
+  behind until the job is re-run or the next release. The deploy step now retries once after
+  30 s (in `ci.yml`, takes effect with the next main release; not yet seen working).
 - Reviewer gate on 2e.2: pass with fixes, fixed. Previewing a feature that makes its own body
   meshed that real body at another body's deflection, and a later rollback showed the coarser
   mesh (300 against 408 indices in the test; names and volumes were never affected): the own
