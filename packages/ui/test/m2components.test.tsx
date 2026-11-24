@@ -450,7 +450,12 @@ describe('phone panels', () => {
       within(tabs)
         .getAllByRole('button')
         .map((b) => b.textContent),
-    ).toEqual(['Parts', 'Features', 'Params', 'Measure', 'Section', 'Export']);
+    ).toEqual(['Parts', 'Features', 'Params', 'Measure', 'Section', 'Export', 'More']);
+    // "More" opens the command palette by touch: a phone has no ⌘K, and Settings ("Use full
+    // editor") is only there.
+    fireEvent.click(within(tabs).getByRole('button', { name: 'More commands' }));
+    expect(await screen.findByRole('dialog')).toBeInTheDocument();
+    fireEvent.keyDown(document.activeElement ?? document.body, { key: 'Escape' });
     fireEvent.click(within(tabs).getByRole('button', { name: 'Measure' }));
     expect(await screen.findByTestId('measure-reading')).toHaveTextContent('90.00');
     expect(screen.getByTestId('tools-sheet')).toHaveAttribute('data-snap', 'half');

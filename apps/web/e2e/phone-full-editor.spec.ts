@@ -35,8 +35,15 @@ test('phone: Use full editor gives the editing shell at touch density, and off r
   // Review: no Settings button in the bar, and the setting is in Settings (reached by the palette).
   await expect(page.getByTestId('settings-button')).toHaveCount(0);
 
-  // Turn it on from the Settings panel (the command palette offers it too).
-  await palette(page, 'Settings');
+  // Turn it on from the Settings panel, reached by touch alone: a phone has no ⌘K. "More" in the
+  // sheet opens the command palette.
+  await page.getByTestId('sheet-more').tap();
+  const commands = page.getByRole('dialog');
+  await commands
+    .getByRole('option', { name: /^Settings/ })
+    .first()
+    .tap();
+  await expect(commands).toBeHidden();
   const sw = page.getByRole('switch', { name: 'Use full editor' });
   await expect(sw).toHaveAttribute('aria-checked', 'false');
   await sw.tap();

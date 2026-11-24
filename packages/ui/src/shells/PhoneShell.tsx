@@ -1,4 +1,12 @@
-import { Box, Download, ListTree, Ruler, Scissors, SlidersHorizontal } from 'lucide-react';
+import {
+  Box,
+  Download,
+  ListTree,
+  MoreHorizontal,
+  Ruler,
+  Scissors,
+  SlidersHorizontal,
+} from 'lucide-react';
 import { type ComponentType, type CSSProperties, lazy, Suspense, useState } from 'react';
 import { Button, cn } from '../components/primitives';
 import { StatusChip } from '../components/StatusChip';
@@ -101,7 +109,7 @@ export function PhoneShell(props: ShellProps) {
 
   return (
     <ShellRoot tier={props.tier ?? 'phone'} props={props}>
-      {() => (
+      {({ openPalette }) => (
         <ViewportStage
           viewport={viewport}
           // App overlays: below the title pill, beside the left inset, above the sheet.
@@ -162,7 +170,7 @@ export function PhoneShell(props: ShellProps) {
                   props.onSheetHeight?.(px);
                 }}
                 header={
-                  <fieldset className="m-0 grid min-w-0 shrink-0 grid-cols-6 gap-1 border-0 px-2 pt-0 pb-1">
+                  <fieldset className="m-0 grid min-w-0 shrink-0 grid-cols-7 gap-1 border-0 px-2 pt-0 pb-1">
                     <legend className="sr-only">Viewer tools</legend>
                     {sheetTabs.map(({ id, label, Icon }) => {
                       const on = tab === id && open;
@@ -188,6 +196,18 @@ export function PhoneShell(props: ShellProps) {
                         </button>
                       );
                     })}
+                    {/* A phone has no keyboard for ⌘K: every command, Settings and "Use full
+                        editor" included, is reached from here. */}
+                    <button
+                      type="button"
+                      data-testid="sheet-more"
+                      aria-label="More commands"
+                      onClick={openPalette}
+                      className="flex h-14 flex-col items-center justify-center gap-1 rounded-control text-2xs font-medium text-fg-muted transition-colors duration-fast active:bg-surface-2"
+                    >
+                      <MoreHorizontal className="size-[22px]" strokeWidth={1.6} />
+                      More
+                    </button>
                   </fieldset>
                 }
               >

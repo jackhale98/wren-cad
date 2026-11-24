@@ -236,6 +236,11 @@ report and v2 mapping (app). Details: ADR-101 and its amendments, `PMI_VALIDATIO
   succeeded, so the retry has still not been seen working. **Phase 2 is closed.** Start Phase 3
   (6.0, the contract revision) in a new session from this file; what 6.0 takes is listed in
   §3 and under "Proposed for 6.0" in this section.
+- Found 2026-11-24 after the release (owner asked whether the phone can edit now): the phone's
+  review layout had no touch way to open the command palette or Settings, so "Use full editor"
+  could only be reached with ⌘K; the 2a E2E used the keyboard and hid it. Fixed on the session
+  branch, NOT on main yet: a "More" button in the phone sheet opens the palette
+  (`data-testid="sheet-more"`), and the E2E turns the setting on by touch alone.
 - Reviewer gate on 2e.2: pass with fixes, fixed. Previewing a feature that makes its own body
   meshed that real body at another body's deflection, and a later rollback showed the coarser
   mesh (300 against 408 indices in the test; names and volumes were never affected): the own
