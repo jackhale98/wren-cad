@@ -841,7 +841,13 @@ export class RegenEngine {
     if (density !== undefined) pc.latest.density = density;
     // Change preview (ADR-103): the edited feature's scratch solid, after everything real. Its
     // entry stays with this regen, so asking again with the same inputs computes nothing.
-    const shown = await featurePreview(this.core, ctx, request.quality);
+    // A preview that fails is no preview: it must never fail the regen it rides on.
+    let shown: Awaited<ReturnType<typeof featurePreview>> = {};
+    try {
+      shown = await featurePreview(this.core, ctx, request.quality);
+    } catch {
+      shown = {};
+    }
     if (shown.key !== undefined) pc.latest.keys.add(shown.key);
     await this.cache.evict(pc);
     await this.cache.evictImports(pc, ctx.usedImports);

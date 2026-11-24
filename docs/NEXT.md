@@ -224,8 +224,16 @@ report and v2 mapping (app). Details: ADR-101 and its amendments, `PMI_VALIDATIO
   33 → 43 ms coarse, 46 → 56 ms fine (budget 300 ms). Proposed for 6.0: `setFeatureSolid` on
   the viewport contract. Risks: one extra cached regen when a feature opens; a small body's
   plug is faceted coarser beside a much larger body.
-- CI run 168 passed on `b5c4717` (change preview 2e.1, the tolerance editor, their reviewer
-  fixes): ready for main, waiting for the owner's go-ahead. 2e.2 is after that commit.
+- Released to main as `b5c4717` (2026-11-24; owner's go-ahead; CI run 168 green): change
+  preview 2e.1, the tolerance editor with inspection dimensions, their reviewer fixes.
+- Reviewer gate on 2e.2: pass with fixes, fixed. Previewing a feature that makes its own body
+  meshed that real body at another body's deflection, and a later rollback showed the coarser
+  mesh (300 against 408 indices in the test; names and volumes were never affected): the own
+  body is now meshed as bodies are. A failing preview can no longer fail the regen, and solids
+  kept before a throw are released. The reviewer compared regens with and without the preview
+  over an edit sequence (statuses, names, volumes identical) and found no handle leak. Left:
+  a small plug beside a much larger body is faceted coarsely (by design: finer would make the
+  kernel re-triangulate the large body). 2e.2 is on the session branch, not on main.
 - Next: Phase 3 starting with the 6.0 contract revision. Open: the first nightly Soak result.
 - Local E2E and agents: Playwright reuses a server on port 4173. An agent running E2Es in a
   worktree and the lead clash on it and each tests the other's build. Give every runner its

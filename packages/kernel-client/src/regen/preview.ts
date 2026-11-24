@@ -103,14 +103,20 @@ async function build(core: EngineCore, src: Source): Promise<Built> {
     if (!b || b.faceCount === 0) await core.releaseHandle(r.value.shape);
     else shapes.push(r.value.shape);
   };
-  if (spec.op === 'cut' || spec.op === 'intersect') {
-    const part = spec.op === 'cut' ? 'intersect' : 'cut';
-    for (const b of before) await keep(await spec.exec(part, b.shape));
-    if (shapes.length > 0) return { effect: 'cut', shows: 'removed', shapes };
-    if (spec.op === 'intersect') return NONE;
+  try {
+    if (spec.op === 'cut' || spec.op === 'intersect') {
+      const part = spec.op === 'cut' ? 'intersect' : 'cut';
+      for (const b of before) await keep(await spec.exec(part, b.shape));
+      if (shapes.length > 0) return { effect: 'cut', shows: 'removed', shapes };
+      if (spec.op === 'intersect') return NONE;
+    }
+    await keep(await spec.exec('new'));
+    return { effect: spec.op === 'cut' ? 'cut' : 'add', shows: 'tool', shapes };
+  } catch (e) {
+    // What was kept so far has no owner yet: release it, or it leaks in the kernel.
+    for (const s of shapes) await core.releaseHandle(s).catch(() => undefined);
+    throw e;
   }
-  await keep(await spec.exec('new'));
-  return { effect: spec.op === 'cut' ? 'cut' : 'add', shows: 'tool', shapes };
 }
 
 async function volumeOf(core: EngineCore, shapes: readonly ShapeHandle[]): Promise<number | null> {
@@ -200,7 +206,10 @@ export async function featurePreview(
     ...[...ctx.state.bodies.values()].filter((b) => !b.meshOnly),
   ]);
   for (const s of solids.shapes) {
-    const m = await core.meshOf(s, quality, extent);
+    // The feature's own body is a real shape of the model (a final body, or the state a rollback
+    // shows): it is meshed exactly as bodies are, relative to itself, because `meshOf` keeps one
+    // mesh per shape and quality and a later rollback would otherwise show this one, coarser.
+    const m = await core.meshOf(s, quality, own !== null ? undefined : extent);
     if (!m) return key === undefined ? {} : { key };
     // A fresh copy to transfer; a scratch solid has no persistent names to offer.
     const copy = copyMesh(m);
